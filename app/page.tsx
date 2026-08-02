@@ -154,6 +154,54 @@ const insightTemplates = {
   ],
 };
 
+const milestones = [
+  {
+    id: "M0",
+    title: "Product thesis",
+    status: "Complete",
+    detail: "Defined human-chaired multi-AI deliberation as the product wedge.",
+  },
+  {
+    id: "M1",
+    title: "Interaction prototype",
+    status: "Complete",
+    detail: "Built roles, bounded rounds, critique controls, and decision artifacts.",
+  },
+  {
+    id: "M2",
+    title: "Real model roundtable",
+    status: "Next",
+    detail: "Connect OpenAI, Anthropic, and Google adapters with streaming and cost controls.",
+  },
+  {
+    id: "M3",
+    title: "Deliberation harness",
+    status: "Planned",
+    detail: "Orchestrate proposal, critique, verification, revision, and synthesis phases.",
+  },
+  {
+    id: "M4",
+    title: "Engineering execution room",
+    status: "Planned",
+    detail: "Let coding agents implement bounded work, then require review and passing tests.",
+  },
+  {
+    id: "M5",
+    title: "Durable product system",
+    status: "Planned",
+    detail: "Persist rooms, templates, evaluations, permissions, budgets, and audit history.",
+  },
+];
+
+const developmentLoop = [
+  "Hypothesis",
+  "Build",
+  "Critique",
+  "Human decision",
+  "Evaluate",
+  "Log",
+];
+
 export default function Home() {
   const [topic, setTopic] = useState(
     "Design an AI meeting room for product strategy and MVP planning",
@@ -241,10 +289,15 @@ export default function Home() {
             <p className="eyebrow">AI Deliberation Room</p>
             <h1>Multi-AI Meeting Room</h1>
           </div>
-          <div className="room-stats" aria-label="Room status">
-            <span>{activeAgents.length} agents</span>
-            <span>Round {round}</span>
-            <span>{mode}</span>
+          <div className="topbar-actions">
+            <a className="devlog-link" href="#development-log">
+              Development Log
+            </a>
+            <div className="room-stats" aria-label="Room status">
+              <span>{activeAgents.length} agents</span>
+              <span>Round {round}</span>
+              <span>{mode}</span>
+            </div>
           </div>
         </header>
 
@@ -385,6 +438,75 @@ export default function Home() {
               Generate Decision Memo
             </button>
           </aside>
+        </section>
+
+        <section className="devlog" id="development-log" aria-labelledby="devlog-title">
+          <div className="devlog-heading">
+            <div>
+              <p className="eyebrow">Development Log / v0.1</p>
+              <h2 id="devlog-title">From interaction prototype to engineering harness</h2>
+            </div>
+            <div className="stage-marker">
+              <span>Current stage</span>
+              <strong>Interactive concept prototype</strong>
+            </div>
+          </div>
+
+          <div className="truth-strip" aria-label="Current product truth">
+            <strong>What is real today</strong>
+            <p>
+              The meeting flow, role controls, critique rounds, and decision surface are
+              interactive. Agent messages are still simulated; there are no live model
+              APIs, persistent rooms, evidence checks, or coding-agent execution yet.
+            </p>
+          </div>
+
+          <div className="milestone-list" aria-label="Product milestones">
+            {milestones.map((milestone) => (
+              <article className="milestone" key={milestone.id}>
+                <div className="milestone-id">{milestone.id}</div>
+                <div>
+                  <div className="milestone-title">
+                    <h3>{milestone.title}</h3>
+                    <span className={`milestone-status ${milestone.status.toLowerCase()}`}>
+                      {milestone.status}
+                    </span>
+                  </div>
+                  <p>{milestone.detail}</p>
+                </div>
+              </article>
+            ))}
+          </div>
+
+          <div className="devlog-lower">
+            <section className="product-hypothesis">
+              <p className="eyebrow">Active product hypothesis</p>
+              <h3>Multi-model review can become an engineering control system.</h3>
+              <p>
+                A chair model can route proposals through critique and verification,
+                while execution agents such as Codex or Claude Code apply approved work
+                to a real project. The value is observable disagreement, evidence,
+                implementation, and review, not simply more agent messages.
+              </p>
+              <p className="hypothesis-caution">
+                Still unvalidated: shared blind spots, duplicated work, review theater,
+                latency, and cost may outweigh the benefit.
+              </p>
+            </section>
+
+            <section className="development-loop">
+              <p className="eyebrow">Every development round</p>
+              <ol>
+                {developmentLoop.map((step) => (
+                  <li key={step}>{step}</li>
+                ))}
+              </ol>
+              <p className="next-gate">
+                <strong>Next gate:</strong> prove one real plan, implementation, review,
+                and test loop beats a single strong model at acceptable time and cost.
+              </p>
+            </section>
+          </div>
         </section>
       </section>
     </main>
