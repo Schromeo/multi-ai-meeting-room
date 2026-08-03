@@ -2,6 +2,37 @@
 
 This chronological log records shipped work, validation, limitations, and the next decision. It is not a place for uncommitted feature ideas; those belong in the roadmap or decision record.
 
+## 2026-08-03 - v0.3 - Real Discuss Implementation
+
+### Completed
+
+- Replaced simulated agent messages with a provider-neutral streaming protocol.
+- Added direct server adapters for OpenAI Responses, Anthropic Messages, and Gemini streaming generation APIs.
+- Added independent proposals, round-robin cross-review, synthesis, and one optional bounded revision.
+- Added human approve/reject controls, a hard stop control, token and latency reporting, and configurable cost estimates.
+- Added server-side secret detection without exposing key values to the browser.
+- Added role selection independent of provider identity.
+- Removed the unused starter loading-skeleton dependency.
+
+### Validation
+
+- Production build passes with the `/api/discuss` route.
+- Five automated tests pass, including a fully mocked two-provider proposal, review, and synthesis stream.
+- Invalid requests are rejected before any provider call.
+- No paid provider request was made during automated validation.
+
+### Current Limitations
+
+- Production provider secrets are not configured, so live meetings remain disabled.
+- No real provider latency, token accounting, output quality, or failure behavior has been evaluated yet.
+- Rooms are browser-session state only; persistence is M2.5.
+- Displayed prices are estimates configured through environment variables, not provider invoices.
+- Duplicate submission is blocked in the client, but durable idempotency belongs to the M4 orchestrator.
+
+### Next Decision
+
+Configure at least two provider keys, run one representative meeting, and record whether the cross-review adds useful objections relative to a single-model answer.
+
 ## 2026-08-01 - v0.2 - Project Continuity System
 
 ### Completed

@@ -9,6 +9,7 @@ These documents preserve project intent and prevent repeated work, scope drift, 
 3. [Decisions](DECISIONS.md) - choices already made and their reasoning.
 4. [Roadmap](ROADMAP.md) - milestone sequence and exit criteria.
 5. [Development Log](DEVLOG.md) - chronological progress and lessons.
+6. [Provider Configuration](PROVIDER_CONFIGURATION.md) - secret names, model defaults, and cost estimates.
 
 Chinese quick-read versions are available in [zh-CN](zh-CN/README.md).
 

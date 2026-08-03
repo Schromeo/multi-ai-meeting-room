@@ -33,7 +33,7 @@ These are permission levels inside one product, not separate products.
 
 ## Current Scope
 
-The current prototype validates the room metaphor and interaction flow. The next goal is a real Discuss room with provider adapters, streaming responses, bounded rounds, cross-review, and a decision memo.
+The M2 implementation now contains a real Discuss protocol with provider adapters, streaming responses, bounded rounds, cross-review, a decision memo, a human decision gate, and usage estimates. M2 remains current until at least two providers are configured and a live end-to-end meeting passes without duplicate calls.
 
 ## Non-Goals For The First Complete Version
 

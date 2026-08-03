@@ -2,7 +2,7 @@
 
 A human-chaired workspace where multiple AI participants can discuss, audit, decide, research, and eventually execute approved actions.
 
-The current release is an interactive concept prototype. Its agent messages are simulated; live provider APIs, persistence, evidence verification, and coding-agent execution have not been implemented yet.
+The current release contains the M2 real Discuss workflow: provider-neutral OpenAI, Anthropic, and Gemini adapters, token streaming, independent proposals, assigned cross-review, a decision memo, bounded revision, a human approval gate, and usage estimates. At least two server-side provider keys are required to run a live meeting. Persistence, evidence verification, and coding-agent execution remain later milestones.
 
 ## Product Modes
 
@@ -17,6 +17,7 @@ The current release is an interactive concept prototype. Its agent messages are 
 - [Roadmap](docs/ROADMAP.md)
 - [Development log](docs/DEVLOG.md)
 - [Decision record](docs/DECISIONS.md)
+- [Provider configuration](docs/PROVIDER_CONFIGURATION.md)
 - [Chinese quick-read index](docs/zh-CN/README.md)
 
 Any agent working in this repository must follow [AGENTS.md](AGENTS.md).

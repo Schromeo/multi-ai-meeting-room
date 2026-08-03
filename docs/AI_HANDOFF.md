@@ -1,14 +1,15 @@
 # AI Handoff
 
-Last updated: 2026-08-01
+Last updated: 2026-08-03
 
 ## Current Snapshot
 
-- **Stage:** M1.2 documentation and continuity system complete.
+- **Stage:** M2 real Discuss implementation complete; live provider verification pending.
 - **Product:** a human-chaired multi-AI meeting room with Discuss, Research, and Execute permission levels.
-- **Implemented:** interactive room UI, role selection, bounded simulated rounds, critique controls, decision surface, visible development log.
-- **Not implemented:** real provider calls, streaming, persistence, evidence retrieval, audit data model, execution connector, automated evaluation.
-- **Next milestone:** M2 real Discuss room.
+- **Implemented:** provider-neutral OpenAI, Anthropic, and Gemini adapters; server-side secrets; token streaming; independent proposals; assigned cross-review; synthesis; one optional revision; human approve/reject gate; usage estimates; stop control; mocked end-to-end protocol tests.
+- **Not implemented:** configured production provider keys, live provider evaluation, persistence, evidence retrieval, audit data model, execution connector, or comparative evaluation.
+- **Current milestone:** M2 real Discuss room.
+- **Next decision:** configure at least two provider secrets and run the first live evaluation.
 - **Live site:** `https://multi-ai-meeting-room.schromeo.chatgpt.site`
 
 ## Start-of-Session Checklist
@@ -63,9 +64,9 @@ A milestone is done only when:
 6. Durable choices are added to `DECISIONS.md`.
 7. Chinese mirrors are updated with the same meaning.
 
-## M2 Implementation Target
+## M2 Live Verification Target
 
-Build one real Discuss workflow:
+Verify the implemented Discuss workflow with real providers:
 
 1. The user submits an objective and chooses two or three participants.
 2. Participants produce independent streamed proposals.
@@ -74,7 +75,7 @@ Build one real Discuss workflow:
 5. A synthesizer produces a decision memo without erasing dissent.
 6. The human accepts, revises, rejects, or requests one additional bounded round.
 
-M2 does not include web research, coding execution, generic tool plugins, or autonomous loops.
+M2 does not include web research, coding execution, generic tool plugins, or autonomous loops. Provider secrets and model defaults are documented in `PROVIDER_CONFIGURATION.md`.
 
 ## End-of-Session Handoff
 

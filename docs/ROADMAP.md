@@ -36,6 +36,8 @@ Statuses: `Complete`, `Current`, `Planned`, `Deferred`.
 
 **Exit criteria:** one objective can complete the full Discuss protocol without simulated agent text, duplicate calls, or manual database repair.
 
+**Implementation progress:** all listed product and protocol surfaces are implemented and covered by a mocked end-to-end stream test. Remaining exit work is production secret configuration and at least one live two-provider evaluation.
+
 ## M2.5 - Durable Rooms - Planned
 
 **Deliverables:** room persistence, transcript recovery, artifacts, event history, and export.

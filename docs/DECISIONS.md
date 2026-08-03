@@ -50,3 +50,24 @@ Durable product and architecture choices live here. New entries are append-only.
 - **Date:** 2026-08-01
 - **Decision:** rooms have explicit round, retry, cost, permission, and stop boundaries.
 - **Reason:** more model activity is not automatically more useful and can create loops, duplicate actions, and review theater.
+
+## D-008 - Server-Side Provider Secrets
+
+- **Status:** Accepted
+- **Date:** 2026-08-03
+- **Decision:** provider API keys are stored only as server runtime secrets and are never entered into or returned to the browser.
+- **Reason:** the private UI does not need access to long-lived provider credentials.
+
+## D-009 - No Automatic Provider Retry In M2
+
+- **Status:** Accepted
+- **Date:** 2026-08-03
+- **Decision:** a failed or interrupted provider stream is surfaced to the room without an automatic retry.
+- **Reason:** retrying a partially generated stream can duplicate cost and mix two different answers. Deliberate retry policy belongs in the later orchestrator.
+
+## D-010 - Provider-Level Streaming Protocol
+
+- **Status:** Accepted
+- **Date:** 2026-08-03
+- **Decision:** M2 uses direct provider streaming APIs behind one normalized NDJSON room event protocol.
+- **Reason:** this preserves provider diversity while keeping the client independent of vendor-specific SSE formats and credentials.
