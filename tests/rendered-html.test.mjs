@@ -585,6 +585,7 @@ test("source contains real streaming adapters and credential-free structured roo
   assert.match(roomStore, /canonicalState/);
   assert.match(page, /This turn was interrupted before completion\./);
   assert.match(page, /reduceTurnEnvelope/);
+  assert.match(page, /setCurrentRoomId\(\(current\) => current \|\| createRoomId\(\)\)/);
   assert.match(meetingState, /renderedContextCharacters:\s*6_000/);
   assert.match(meetingState, /unknown_reference/);
   for (const objectStore of ["rooms", "participants", "events", "stateSnapshots", "artifacts", "usage", "metadata"]) {

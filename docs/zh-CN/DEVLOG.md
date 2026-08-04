@@ -11,13 +11,14 @@
 - 新增默认 6,000 字符硬上限的有效 JSON 上下文渲染。超限集合通过 omitted 数量明确显示，不截断 JSON，也不静默删除持久事件。
 - 三家供应商 prompt 统一返回同一个跨供应商 JSON Envelope。格式错误发出 `agent.format_error`、保存为 `turn.format_failed`，并且该 turn 不自动重试；语义归并失败保存为 `turn.reduction_failed`。
 - 在现有 IndexedDB state snapshot 中保存 Canonical Meeting State，同时继续读取 M2.8 之前创建的房间。
+- 开发热更新重新执行存储初始化时保留现有 room ID 与创建时间，防止被保留的 transcript 复制到新房间。
 - 记录 D-024：先使用一个跨供应商 JSON 契约，再评估供应商专用 structured-output API。
 
 ### 验证
 
 - 生产构建与全部十一项自动测试通过。新增测试覆盖 Envelope 解析、来源链、幂等、未知引用、原子 12-Claim 超限、有限且有效的 JSON context、格式错误时正好两次 proposal 调用且没有 review/synthesis/retry，以及从后续 synthesis 上下文中排除语义归并失败的 review。
 - ESLint 与聚焦严格 TypeScript 检查通过。
-- 浏览器刷新恢复了全部 3 个 M2.8 之前的房间，最新真实会议可以打开到 Decision Memo；恢复凭证数为 0，控制台无 warning 或 error。
+- 浏览器刷新恢复了最初全部 3 个 M2.8 之前的房间，最新真实会议可以打开到 Decision Memo；恢复凭证数为 0，控制台无 warning 或 error。反复开发热更新在加入 guard 前暴露了 room-ID remount 缺陷。
 - 没有发起真实供应商请求或付费模型调用。
 
 ### 当前限制
@@ -26,6 +27,7 @@
 - 生成期间，现有实时 transcript 可能短暂显示原始 JSON，直到 `agent.done` 用经过验证的 statement 替换。Card-first 流式界面属于 M2.11。
 - 当前一次性 route 已把有限 Canonical State 与 Claim ID 发布给 review 和 synthesis prompt，但仍会在同一请求中发送所有已接受的 proposal/review statement。M2.9 会在安全边界拆分 phase；M2.10 再把后续 turn 只路由给明确 Dispute。
 - Chair Directive、Human Choice 与 Follow-up record 已定义并验证，但运行时流程分别从 M2.9 与 M2.11 开始。
+- 修复前的开发热更新在当前浏览器里创建了 5 条英文基线房间副本。它们与最初 3 条记录一起保留，因为清理档案属于破坏性操作，需要人类明确确认。
 - 仓库级 `tsc --noEmit` 仍需要既有的 Cloudflare ambient type；本次修改文件通过聚焦严格检查。
 
 ### 下一步

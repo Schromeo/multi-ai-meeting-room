@@ -159,16 +159,16 @@ export default function Home() {
         const now = new Date().toISOString();
         meetingRecordsRef.current = records;
         setMeetingRecords(records);
-        setCurrentRoomId(createRoomId());
-        setCurrentRoomCreatedAt(now);
+        setCurrentRoomId((current) => current || createRoomId());
+        setCurrentRoomCreatedAt((current) => current || now);
         setHistoryError("");
         setHistoryReady(true);
       })
       .catch((storeError) => {
         if (!active) return;
         const now = new Date().toISOString();
-        setCurrentRoomId(createRoomId());
-        setCurrentRoomCreatedAt(now);
+        setCurrentRoomId((current) => current || createRoomId());
+        setCurrentRoomCreatedAt((current) => current || now);
         setHistoryError(safeClientError(storeError));
         setHistoryReady(true);
       });

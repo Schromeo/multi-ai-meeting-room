@@ -13,13 +13,14 @@ This chronological log records shipped work, validation, limitations, and the ne
 - Added valid JSON context rendering with a hard 6,000-character default cap. Oversized collections are omitted visibly by count rather than truncating JSON or silently deleting durable events.
 - Updated all three provider prompts to return the same portable JSON Envelope. Malformed output emits `agent.format_error`, persists as `turn.format_failed`, and stops that turn without an automatic retry; semantic rejection persists as `turn.reduction_failed`.
 - Persisted Canonical Meeting State inside existing IndexedDB state snapshots while retaining backward-compatible reads for rooms created before M2.8.
+- Preserved an existing room ID and creation time when development hot reload remounts the storage initializer, preventing a retained transcript from being copied into a new room.
 - Recorded D-024: use one portable JSON contract before evaluating provider-specific structured-output APIs.
 
 ### Validation
 
 - Production build and all eleven automated tests pass. New tests cover Envelope parsing, source lineage, idempotency, unknown references, atomic 12-Claim overflow, bounded valid-JSON context, malformed provider output with exactly two proposal calls and no review, synthesis, or retry, and exclusion of semantically rejected reviews from downstream synthesis.
 - ESLint and the focused strict TypeScript check pass.
-- Browser reload recovered all three pre-M2.8 rooms, opened the latest real room to its Decision Memo, restored zero credentials, and reported no console warnings or errors.
+- Browser reload recovered all three original pre-M2.8 rooms, opened the latest real room to its Decision Memo, restored zero credentials, and reported no console warnings or errors. Repeated development hot reload exposed the room-ID remount bug before the guard was added.
 - No real provider request or paid model call was made.
 
 ### Current Limitations
@@ -28,6 +29,7 @@ This chronological log records shipped work, validation, limitations, and the ne
 - During generation, the existing live transcript may briefly show raw JSON until `agent.done` replaces it with the validated statement. Card-first streaming belongs to M2.11 interface work.
 - The current one-shot route now publishes bounded Canonical State and Claim IDs to review and synthesis prompts, but it still sends every accepted proposal/review statement within the request. M2.9 will split phases at safe boundaries; M2.10 will route later turns only to named Disputes.
 - Chair Directive, Human Choice, and Follow-up records are defined and validated, but their runtime workflows begin in M2.9 and M2.11.
+- Five duplicate copies of the English baseline room were created in this browser by the pre-fix development hot-reload behavior. They remain visible alongside the three original records because destructive archive cleanup requires explicit human confirmation.
 - Repository-wide `tsc --noEmit` still requires the pre-existing Cloudflare ambient types; changed files pass the focused strict check.
 
 ### Next Action
