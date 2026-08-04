@@ -9,6 +9,7 @@ import {
   TranscriptItem,
 } from "./meeting-record";
 import { UsageSummary } from "./discuss-protocol";
+import { MeetingState } from "./meeting-state";
 
 const databaseName = "multi-ai-meeting-room";
 const databaseVersion = 1;
@@ -42,7 +43,12 @@ type EventRow = {
   id: string;
   roomId: string;
   sequence: number;
-  type: "agenda.published" | "turn.completed" | "turn.failed";
+  type:
+    | "agenda.published"
+    | "turn.completed"
+    | "turn.failed"
+    | "turn.format_failed"
+    | "turn.reduction_failed";
   createdAt: string;
   payload: TranscriptItem;
 };
@@ -56,6 +62,7 @@ type SnapshotRow = {
   lastEventSequence: number;
   createdAt: string;
   updatedAt: string;
+  canonicalState?: MeetingState;
 };
 
 type ArtifactRow = {
@@ -255,7 +262,11 @@ async function writeRoomRecord(database: Promise<IDBDatabase>, record: MeetingRe
       sequence,
       type: item.provider === "host"
         ? "agenda.published"
-        : item.status === "error" ? "turn.failed" : "turn.completed",
+        : item.formatError
+          ? "turn.format_failed"
+          : item.reductionError
+            ? "turn.reduction_failed"
+            : item.status === "error" ? "turn.failed" : "turn.completed",
       createdAt: record.updatedAt,
       payload: item,
     } satisfies EventRow);
@@ -278,6 +289,7 @@ async function writeRoomRecord(database: Promise<IDBDatabase>, record: MeetingRe
     ),
     createdAt: record.createdAt,
     updatedAt: record.updatedAt,
+    ...(record.meetingState ? { canonicalState: record.meetingState } : {}),
   } satisfies SnapshotRow);
 
   if (record.memo) {
@@ -352,6 +364,7 @@ async function listRoomRecords(db: IDBDatabase): Promise<MeetingRecord[]> {
         : emptyUsage,
       iteration: snapshot.iteration,
       participants,
+      ...(snapshot.canonicalState ? { meetingState: snapshot.canonicalState } : {}),
       createdAt: room.createdAt,
       updatedAt: snapshot.updatedAt,
     });

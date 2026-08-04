@@ -1,11 +1,11 @@
 # Meeting Protocol Blueprint v1
 
-Status: Approved design; M2.7 persistence foundation implemented
+Status: Approved design; M2.7 persistence and M2.8 structured-state foundations implemented
 Date: 2026-08-03
 
 ## Purpose
 
-This blueprint defines the next Discuss-room architecture after the v0.7 persistence foundation. It turns a bounded sequence of model calls into a human-chaired, resumable, cost-aware decision protocol without treating a growing transcript as shared model memory.
+This blueprint defines the next Discuss-room architecture after the v0.8 structured-state foundation. It turns a bounded sequence of model calls into a human-chaired, resumable, cost-aware decision protocol without treating a growing transcript as shared model memory.
 
 The design must preserve this chain:
 
@@ -15,7 +15,7 @@ The raw transcript remains available for people and audit. Models receive only t
 
 ## Product Truth
 
-### Implemented through v0.7
+### Implemented through v0.8
 
 - Direct streaming adapters for OpenAI, Anthropic, and Gemini.
 - Session-only BYOK plus workspace-managed credentials.
@@ -27,14 +27,15 @@ The raw transcript remains available for people and audit. Models receive only t
 - Stop control and per-room token, latency, and estimated-cost reporting.
 - Focus and overview transcript views.
 - Credential-free browser-local `RoomStore` with versioned IndexedDB stores for rooms, participant snapshots, append-only completed/failed turn events, state snapshots, memo artifacts, usage, and migration metadata.
-- Seven passing automated tests and a passing production build.
+- Strict portable JSON Turn Envelopes, explicit `turn.format_failed` events without automatic retry, and a deterministic Canonical Reducer with source lineage, versioning, idempotency, active-state caps, and bounded context rendering.
+- Canonical Meeting State persistence with backward-compatible recovery of rooms created before structured state.
+- Eleven passing automated tests and a passing production build.
 
 ### Approved here but not implemented
 
 - Auto, Checkpoints, and Turn-by-turn chair modes.
 - Raise-hand pause and append-only Chair Directives.
 - User-selected maximum debate rounds and multi-dimensional room budgets.
-- Structured Turn Envelopes and code-owned Canonical Meeting State.
 - System-level Observer / Recorder and independently selected Final Synthesizer.
 - Process monitoring for repetition, drift, premature homogenization, and loops.
 - Per-round Round Briefs and targeted debate instead of full-room reruns.
@@ -311,13 +312,13 @@ In Checkpoints or Turn-by-turn mode, a soft stop pauses for the Chair. In Auto m
 
 ## Persistence Architecture
 
-### Current v0.6
+### Implemented through v0.8
 
-Meeting history is a bounded browser `localStorage` record. It is useful for product validation but is not sufficient for an event ledger, large raw responses, versioned artifacts, transactions, or schema migration.
+Meeting history uses the credential-free IndexedDB `RoomStore`. Legacy bounded `localStorage` records migrate once and remain readable without acquiring Canonical State retroactively.
 
-### Next local layer
+### Implemented local layer
 
-Introduce a `RoomStore` interface and implement it with browser IndexedDB. The initial durable collections are:
+The provider-independent `RoomStore` uses browser IndexedDB. Its durable collections are:
 
 - Rooms.
 - Participant snapshots.
@@ -326,7 +327,7 @@ Introduce a `RoomStore` interface and implement it with browser IndexedDB. The i
 - Round Brief and Decision Memo artifacts.
 - Usage ledger entries.
 
-Streaming deltas remain in memory. On completion, one `turn.completed` event stores the final raw published response and Turn Envelope. An interrupted stream stores `turn.failed` with its bounded partial text. State snapshots are written after a successful reduction and at each round boundary.
+Streaming deltas remain in memory. On completion, one `turn.completed` event stores the final published statement and validated Turn Envelope. An interrupted stream stores `turn.failed` with its bounded partial text. Malformed output stores `turn.format_failed`; semantic reduction failures store `turn.reduction_failed`. Canonical snapshots are written after successful reductions through the room autosave path.
 
 ### Future server layer
 
@@ -384,8 +385,7 @@ The protocol is not complete merely because it runs. It must demonstrate:
 
 ## Remaining Open Decisions
 
-- Exact structured-output adapters and fallback behavior per provider.
-- Initial IndexedDB library versus a small native wrapper.
+- Whether provider-native structured-output modes improve reliability enough to replace the portable JSON prompt behind individual adapters.
 - Token ceilings after the first real-provider measurements.
 - Whether the Observer extraction fallback is enabled by default or only by Chair approval.
 - Export format and migration path from IndexedDB to account-backed storage.

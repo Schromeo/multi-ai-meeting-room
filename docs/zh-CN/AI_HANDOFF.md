@@ -4,14 +4,14 @@
 
 ## 当前状态
 
-- 阶段：v0.7 已完成 M2.1 连接护栏、M2.2 可复用席位核心和 M2.7 本地 Event Store。M2.6 会议协议蓝图 v1 已完成文档。2026-08-04，真实基线 001 已用 OpenAI + Anthropic 走到 Human Gate。
-- 已完成：三家统一适配；工作区 Secret 与当前页面 BYOK；显式供应商选择和本地 Key 前缀提示；凭证验证和兼容模型发现；带命名、事务式 Key 替换、模型刷新、席位占用显示和确认断开的统一连接库；可复用连接；逐席连接管理；重复供应商席位与逐席模型/角色；token 流式输出；独立提案；交叉审阅；综合；一次追加修订；人工决定；用量估算；停止控制；四阶段界面；发言聚焦与缩略总览；不含凭证、由七个带版本 IndexedDB store 支撑的 `RoomStore`；旧 localStorage 事务迁移与房间事务删除；只追加的完成/失败 turn 事件；room、参与者、状态快照、memo artifact 和用量持久化；有上限的房间裁剪；模拟端到端测试。
-- 已批准但未实现：Turn Envelope、Canonical Meeting State、Claim/Dispute 来源链、Auto/Checkpoints/Turn by turn、Raise Hand 与 Chair Directive、用户选择 Observer 与 Final Synthesizer、Round Brief、流程监测、最大轮数与多维预算、定向辩论、Meeting Whiteboard、带来源 Follow-up、版本化 Memo、导出、账号同步，以及身份完成后的 D1 持久化。
+- 阶段：v0.8 已完成 M2.1 连接护栏、M2.2 可复用席位核心、M2.7 本地 Event Store 和 M2.8 结构化 Meeting State。2026-08-04，真实基线 001 已用 OpenAI + Anthropic 走到 Human Gate。
+- 已完成：三家统一适配；工作区 Secret 与当前页面 BYOK；显式供应商选择；凭证验证与兼容模型发现；统一连接库；可复用供应商中立席位；token 流式输出；独立提案；交叉审阅；综合；一次追加修订；人工决定；用量估算；停止控制；分阶段工作区和 transcript 模式；不含凭证的 IndexedDB `RoomStore`；事务迁移与删除；只追加房间事件；严格的跨供应商 JSON Turn Envelope；不自动重试的格式失败事件；服务端和客户端双重确定性、带来源的 Canonical Reducer gate；Claim、Dispute、Assumption、Chair Directive、Human Choice 与 Follow-up 契约；幂等 turn 归并；active-state 上限；有限上下文渲染；canonical snapshot 持久化；十一项自动测试。
+- 已批准但未实现：Auto/Checkpoints/Turn by turn 编排、Raise Hand 与运行时 Chair Directive、用户选择 Observer 与 Final Synthesizer、Round Brief、流程监测、最大轮数与多维预算、定向辩论、Meeting Whiteboard、带来源 Follow-up 流程、版本化 Memo、导出、账号同步，以及身份完成后的 D1 持久化。
 - 真实证据：OpenAI `gpt-5-mini` 与 Anthropic `claude-haiku-4-5-20251001` 完成 5 次供应商调用，共 2,437 input tokens、3,424 output tokens、54 秒模型时间和 $0.032 提示性估算。Human Gate 仍待用户决定；报告见 `evaluations/2026-08-04-v0.6-live-baseline.md`。
 - 已修复真实缺陷：OpenAI 适配器不再无条件发送可选 `reasoning.effort` 或 `text.verbosity`；`gpt-4.1-mini` 回归测试断言这两个字段不存在。原失败房间仍证明系统会安全停止且不自动重试。
 - 其他未完成：生产 API Key、加密永久 BYOK、Skill 包、多样性指标、导出、证据系统、执行连接器和广泛比较评测。
-- 当前里程碑：M2.8 结构化 Meeting State。
-- 下一动作：在 M2.7 事件之上定义并验证 Turn Envelope，实现确定性 Canonical Reducer 契约；暂不开始计划中的界面重做。
+- 当前里程碑：M2.9 由人主持的可恢复编排器。
+- 下一动作：把一次性请求拆成显式房间状态机，加入安全边界暂停/恢复、默认 Checkpoints、只追加 Chair Directive、幂等 transition ID 和刷新恢复。暂不加入 Observer 调用，也不重做 Meeting UI。
 - 恢复点：commit `3298d40` 与 tag `backup/v0.6-live-baseline-2026-08-04` 保存了 M2.7 之前的真实基线。
 - 线上地址：`https://multi-ai-meeting-room.schromeo.chatgpt.site`
 - 发布状态：线上仍为上一版本。v0.4 源码已推送并保存，但 Sites 自动生成的 `nodejs_compat` 标记与 2026-08-04 生效的平台默认值冲突；输入不变时不要重复部署。
@@ -62,7 +62,7 @@ M2 不包括联网研究、代码执行、通用插件或自治循环。密钥�
 
 ## 已批准 Protocol v1 目标
 
-M2.7 持久化已完成；按顺序实现 M2.8～M2.12。先固定状态契约，再实现编排器，最后重做界面。目标架构分离 Raw Transcript、Canonical Meeting State 和逐代理上下文；让人类 Chair 在会议中持续控制；加入显式付费 Observer 与 Final Synthesizer；后续 turn 只路由到明确分歧。未来设计以 `MEETING_PROTOCOL_BLUEPRINT.md` 为准。
+M2.7 持久化与 M2.8 结构化状态已完成；按顺序实现 M2.9～M2.12。先实现编排器，最后重做界面。目标是让人类 Chair 在会议中持续控制，加入显式付费 Observer 与 Final Synthesizer，并让后续 turn 只路由到明确分歧。未来设计以 `MEETING_PROTOCOL_BLUEPRINT.md` 为准。
 
 ## 每次结束工作前
 

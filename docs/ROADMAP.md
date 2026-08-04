@@ -4,12 +4,12 @@ Statuses: `Complete`, `Current`, `Planned`, `Deferred`.
 
 ## Current Position
 
-- **Local product version:** v0.7.
-- **Working baseline:** real streaming Discuss protocol, reusable model Seats, session BYOK, human decision gate, and a credential-free IndexedDB Event Store.
+- **Local product version:** v0.8.
+- **Working baseline:** real streaming Discuss protocol, reusable model Seats, session BYOK, human decision gate, credential-free IndexedDB Event Store, and deterministic Canonical Meeting State.
 - **Live evidence gate:** completed on 2026-08-04 with OpenAI `gpt-5-mini` plus Anthropic `claude-haiku-4-5-20251001`; see [Live Baseline 001](evaluations/2026-08-04-v0.6-live-baseline.md).
-- **Immediate implementation gate:** M2.7 is complete; implement M2.8 Turn Envelope validation and Canonical Meeting State next.
-- **Approved next architecture:** Meeting Protocol Blueprint v1. Its M2.7 persistence foundation is implemented; the structured protocol remains planned.
-- **Critical path:** live baseline -> local Event Store (complete) -> Canonical Meeting State -> resumable Chair-controlled orchestrator -> Observer and targeted debate -> whiteboard and Follow-up -> comparative evaluation.
+- **Immediate implementation gate:** M2.8 is complete; implement the M2.9 resumable Chair-controlled state machine next.
+- **Approved next architecture:** Meeting Protocol Blueprint v1. Its persistence and structured-state foundations are implemented; orchestration and later protocol stages remain planned.
+- **Critical path:** live baseline -> local Event Store (complete) -> Canonical Meeting State (complete) -> resumable Chair-controlled orchestrator -> Observer and targeted debate -> whiteboard and Follow-up -> comparative evaluation.
 
 The protocol refactor must not begin with a large interface rewrite. Storage and state contracts come first; a named backup is required before major frontend work.
 
@@ -47,7 +47,7 @@ The protocol refactor must not begin with a large interface rewrite. Storage and
 
 **Exit criteria:** one objective can complete the full Discuss protocol without simulated agent text, duplicate calls, or manual database repair.
 
-**Implementation progress:** all listed product and protocol surfaces are implemented and covered by a mocked end-to-end stream test. A real OpenAI plus Anthropic room completed proposal, cross-review, synthesis, usage reporting, persistence, and the Human Gate on 2026-08-04. The OpenAI adapter now omits unsupported optional generation controls, and room history uses IndexedDB. M2 remains current while the comparison evidence is broadened and the approved structured protocol is implemented.
+**Implementation progress:** all listed product and protocol surfaces are implemented and covered by a mocked end-to-end stream test. A real OpenAI plus Anthropic room completed proposal, cross-review, synthesis, usage reporting, persistence, and the Human Gate on 2026-08-04. The OpenAI adapter omits unsupported optional generation controls, room history uses IndexedDB, and validated Turn Envelopes now feed a bounded Canonical Reducer. M2 remains current while the comparison evidence is broadened and the resumable protocol is implemented.
 
 ## M2.1 - Connection and Cost Guardrails - Complete
 
@@ -101,13 +101,13 @@ The protocol refactor must not begin with a large interface rewrite. Storage and
 
 **Exit criteria met:** `RoomStore` initializes a versioned seven-store IndexedDB database, migrates validated legacy localStorage records transactionally, persists only completed or failed turns, reconstructs rooms after refresh, prunes the archive to 30 rooms, and never restores credentials. Browser verification migrated and reopened three existing rooms with their memo and usage intact across two reloads.
 
-## M2.8 - Structured Meeting State - Planned
+## M2.8 - Structured Meeting State - Complete
 
 **Depends on:** M2.7.
 
 **Deliverables:** Turn Envelope validation; concise statement and card limits; Claim, Dispute, Assumption, Chair Directive, Human Choice, and Follow-up records; deterministic Canonical Reducer; source lineage; active-state token cap; state versions; and explicit format-error handling without automatic paid retry.
 
-**Exit criteria:** model output can update the room only through validated events, every active state item is traceable to source messages, and the rendered model working state remains within its configured cap.
+**Exit criteria met:** all provider turns must parse as strict bounded JSON Turn Envelopes before emitting `agent.done`; malformed output emits `agent.format_error`, is stored as `turn.format_failed`, and receives no automatic retry. The deterministic Reducer rejects unknown references and state overflow atomically, assigns stable source-linked record IDs, ignores duplicate turn IDs, versions every successful reduction, and renders valid JSON working context within a 6,000-character cap. Canonical snapshots persist in IndexedDB while old rooms without state remain readable.
 
 ## M2.9 - Human-Chaired Resumable Orchestrator - Planned
 
@@ -149,7 +149,7 @@ The protocol refactor must not begin with a large interface rewrite. Storage and
 
 **Exit criteria:** a user can trace a final decision back to its supporting claims, objections, revisions, and human approval.
 
-**Relationship to M2.8:** M2.8 introduces the local room records required by the Discuss protocol. M3 expands them into evidence-aware, queryable audit entities rather than restarting the data model.
+**Relationship to M2.8:** M2.8 introduces the structured local room records required by the Discuss protocol. M3 expands them into evidence-aware, queryable audit entities rather than restarting the data model.
 
 ## M3.5 - Research Room - Planned
 

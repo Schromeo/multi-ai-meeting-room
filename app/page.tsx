@@ -22,6 +22,11 @@ import {
   upsertMeetingRecord,
 } from "../lib/meeting-record";
 import { createBrowserRoomStore, RoomStore } from "../lib/room-store";
+import {
+  createInitialMeetingState,
+  MeetingState,
+  reduceTurnEnvelope,
+} from "../lib/meeting-state";
 
 type WorkspaceStage = "agenda" | "meeting" | "decision";
 type TranscriptMode = "focus" | "overview";
@@ -89,6 +94,8 @@ const milestones = [
   ["M2.1", "Connections", "Session BYOK, model choice, and cost guardrails."],
   ["M2.2", "Composable seats", "Separate connections, models, roles, skills, and seats."],
   ["M2.7", "Local Event Store", "IndexedDB events, snapshots, artifacts, usage, and migration."],
+  ["M2.8", "Structured state", "Validated turn cards and source-linked canonical records."],
+  ["M2.9", "Resumable Chair", "Checkpoints, directives, pause, resume, and recovery."],
   ["M3.5", "Research", "Sources, evidence checks, and freshness."],
   ["M4.5", "Execute", "Bounded tools, coding agents, and independent review."],
 ];
@@ -132,6 +139,7 @@ export default function Home() {
   const [memo, setMemo] = useState("");
   const [decision, setDecision] = useState<DecisionStatus>("waiting");
   const [usage, setUsage] = useState<UsageSummary>(emptyUsage);
+  const [meetingState, setMeetingState] = useState<MeetingState | null>(null);
   const [error, setError] = useState("");
   const [copied, setCopied] = useState(false);
   const abortRef = useRef<AbortController | null>(null);
@@ -139,6 +147,7 @@ export default function Home() {
   const overviewRef = useRef<HTMLDivElement | null>(null);
   const meetingRecordsRef = useRef<MeetingRecord[]>([]);
   const roomStoreRef = useRef<RoomStore | null>(null);
+  const meetingStateRef = useRef<MeetingState | null>(null);
 
   useEffect(() => {
     let active = true;
@@ -298,6 +307,7 @@ export default function Home() {
       usage,
       iteration,
       participants: currentParticipants,
+      ...(meetingState ? { meetingState } : {}),
       createdAt: currentRoomCreatedAt,
       updatedAt: new Date().toISOString(),
     };
@@ -325,6 +335,7 @@ export default function Home() {
     historyReady,
     iteration,
     memo,
+    meetingState,
     objective,
     transcript,
     usage,
@@ -568,6 +579,7 @@ export default function Home() {
       usage,
       iteration,
       participants: currentParticipants,
+      ...(meetingState ? { meetingState } : {}),
       createdAt: currentRoomCreatedAt,
       updatedAt: new Date().toISOString(),
     });
@@ -588,6 +600,8 @@ export default function Home() {
     setDecision(record.decision);
     setUsage(record.usage);
     setIteration(record.iteration);
+    meetingStateRef.current = record.meetingState ?? null;
+    setMeetingState(record.meetingState ?? null);
     setPhase(record.memo ? decisionLabel(record.decision) : "Saved meeting");
     setPhaseKey(latestPhase(record.transcript));
     setPinnedMessageId(null);
@@ -631,6 +645,8 @@ export default function Home() {
     setUsage(emptyUsage);
     setDecision("waiting");
     setIteration(0);
+    meetingStateRef.current = null;
+    setMeetingState(null);
     setPhase("Awaiting agenda");
     setPhaseKey("agenda");
     setError("");
@@ -654,6 +670,8 @@ export default function Home() {
     setMemo("");
     setUsage(emptyUsage);
     setDecision("waiting");
+    meetingStateRef.current = null;
+    setMeetingState(null);
     setPinnedMessageId(null);
     setTranscriptMode("focus");
     void runMeeting(1, "");
@@ -673,6 +691,9 @@ export default function Home() {
     setIteration(nextIteration);
 
     if (nextIteration === 1) {
+      const initialState = createInitialMeetingState(objective.trim());
+      meetingStateRef.current = initialState;
+      setMeetingState(initialState);
       setCurrentParticipants(
         seats.map((seat) => {
           const connection = connectionById.get(seat.connectionId);
@@ -717,6 +738,9 @@ export default function Home() {
           connections,
           iteration: nextIteration,
           priorMemo,
+          ...(nextIteration === 2 && meetingStateRef.current
+            ? { meetingState: meetingStateRef.current }
+            : {}),
           requestId: createRequestId(),
         }),
         signal: controller.signal,
@@ -789,11 +813,83 @@ export default function Home() {
       return;
     }
     if (event.type === "agent.done") {
+      const currentState =
+        meetingStateRef.current ?? createInitialMeetingState(objective.trim() || "Untitled meeting");
+      const reduction = reduceTurnEnvelope(currentState, {
+        id: event.id,
+        sourceMessageId: event.id,
+        seatId: event.seatId,
+        round: event.round,
+        phase: event.phase,
+        envelope: event.envelope,
+        usage: event.usage,
+      });
+      if (!reduction.ok) {
+        setError(`Structured state rejected this turn: ${reduction.error.message}`);
+        setTranscript((current) =>
+          current.map((item) =>
+            item.id === event.id
+              ? {
+                  ...item,
+                  text: event.envelope.statement,
+                  status: "error",
+                  envelope: event.envelope,
+                  reductionError: reduction.error.message,
+                  usage: event.usage,
+                }
+              : item,
+          ),
+        );
+        return;
+      }
+      meetingStateRef.current = reduction.state;
+      setMeetingState(reduction.state);
       setTranscript((current) =>
         current.map((item) =>
-          item.id === event.id ? { ...item, status: "done", usage: event.usage } : item,
+          item.id === event.id
+            ? {
+                ...item,
+                text: event.envelope.statement,
+                status: "done",
+                envelope: event.envelope,
+                usage: event.usage,
+              }
+            : item,
         ),
       );
+      return;
+    }
+    if (event.type === "agent.format_error") {
+      setTranscript((current) =>
+        current.map((item) =>
+          item.id === event.id
+            ? {
+                ...item,
+                status: "error",
+                formatError: event.message,
+                text: item.text || `This seat returned an invalid Turn Envelope: ${event.message}`,
+              }
+            : item,
+        ),
+      );
+      return;
+    }
+    if (event.type === "agent.reduction_error") {
+      setTranscript((current) =>
+        current.map((item) =>
+          item.id === event.id
+            ? {
+                ...item,
+                text: event.envelope.statement,
+                status: "error",
+                envelope: event.envelope,
+                reductionError: event.message,
+                usage: event.usage,
+              }
+            : item,
+        ),
+      );
+      setError(`Structured state rejected this turn: ${event.message}`);
       return;
     }
     if (event.type === "agent.error") {
@@ -834,6 +930,8 @@ export default function Home() {
     setUsage(emptyUsage);
     setDecision("waiting");
     setIteration(0);
+    meetingStateRef.current = null;
+    setMeetingState(null);
     setPhase("Awaiting agenda");
     setPhaseKey("agenda");
     setError("");

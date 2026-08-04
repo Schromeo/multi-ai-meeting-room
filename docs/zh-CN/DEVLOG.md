@@ -1,5 +1,37 @@
 # 开发日志
 
+## 2026-08-04 - v0.8 - 结构化 Meeting State
+
+### 已完成
+
+- 新增供应商中立 Turn Envelope 契约：严格 JSON 解析、精确字段验证、按 phase 限制 statement、有限 card，以及显式 `no_new_information` 规则。
+- 新增确定性的 Claim、Dispute、Assumption、Open Question、Chair Directive、Human Choice 与 Follow-up 契约。稳定 ID 和来源消息链由应用代码生成，不交给模型。
+- 实现原子 Canonical Reducer，包含 state version、重复 turn 防护、未知引用拒绝、active cap、归档 ID 和累计用量。
+- 在服务端 phase 边界和客户端重放路径使用同一个 Reducer。语义归并失败的 proposal 或 review 会发出 `agent.reduction_error`，并从所有后续 review 或 synthesis prompt 中排除。
+- 新增默认 6,000 字符硬上限的有效 JSON 上下文渲染。超限集合通过 omitted 数量明确显示，不截断 JSON，也不静默删除持久事件。
+- 三家供应商 prompt 统一返回同一个跨供应商 JSON Envelope。格式错误发出 `agent.format_error`、保存为 `turn.format_failed`，并且该 turn 不自动重试；语义归并失败保存为 `turn.reduction_failed`。
+- 在现有 IndexedDB state snapshot 中保存 Canonical Meeting State，同时继续读取 M2.8 之前创建的房间。
+- 记录 D-024：先使用一个跨供应商 JSON 契约，再评估供应商专用 structured-output API。
+
+### 验证
+
+- 生产构建与全部十一项自动测试通过。新增测试覆盖 Envelope 解析、来源链、幂等、未知引用、原子 12-Claim 超限、有限且有效的 JSON context、格式错误时正好两次 proposal 调用且没有 review/synthesis/retry，以及从后续 synthesis 上下文中排除语义归并失败的 review。
+- ESLint 与聚焦严格 TypeScript 检查通过。
+- 浏览器刷新恢复了全部 3 个 M2.8 之前的房间，最新真实会议可以打开到 Decision Memo；恢复凭证数为 0，控制台无 warning 或 error。
+- 没有发起真实供应商请求或付费模型调用。
+
+### 当前限制
+
+- 跨供应商 JSON 遵循率目前只用确定性 fixture 验证。还需要有限真实评测，才能声称 OpenAI、Anthropic 与 Gemini 的格式可靠性达到生产要求。
+- 生成期间，现有实时 transcript 可能短暂显示原始 JSON，直到 `agent.done` 用经过验证的 statement 替换。Card-first 流式界面属于 M2.11。
+- 当前一次性 route 已把有限 Canonical State 与 Claim ID 发布给 review 和 synthesis prompt，但仍会在同一请求中发送所有已接受的 proposal/review statement。M2.9 会在安全边界拆分 phase；M2.10 再把后续 turn 只路由给明确 Dispute。
+- Chair Directive、Human Choice 与 Follow-up record 已定义并验证，但运行时流程分别从 M2.9 与 M2.11 开始。
+- 仓库级 `tsc --noEmit` 仍需要既有的 Cloudflare ambient type；本次修改文件通过聚焦严格检查。
+
+### 下一步
+
+实现 M2.9 由人主持的可恢复编排器：显式持久协议状态、默认 Checkpoints、安全边界暂停/恢复、只追加 Chair Directive、幂等 transition 和刷新恢复。暂不加入 Observer 调用，也不重做 Meeting UI。
+
 ## 2026-08-04 - v0.7 - IndexedDB 本地 Event Store
 
 ### 已完成

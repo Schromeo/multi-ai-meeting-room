@@ -91,3 +91,7 @@ Participant Seat 负责实质贡献；Observer / Recorder 和 Final Synthesizer 
 ## D-023 最大轮数是边界，不是工作配额 - 已接受
 
 用户选择最大轮数而不是必须跑满的轮数。默认 2，普通范围 1～3，Advanced 硬上限 5。round、turn、token、time 和可运行席位等硬限制自动停止；重复、偏题、过早同质化和低 novelty 是 Monitor 软条件，在人工模式暂停，Auto 模式进入综合，但永远不能批准 Decision。这样既防止无限消耗，又避免一个可能出错的 Monitor 把正常收敛误判为循环并静默结束会议。
+
+## D-024 先使用跨供应商 JSON Envelope，再评估供应商专用结构化输出 - 已接受
+
+M2.8 通过三家供应商的普通文本生成 API 请求同一个有限 JSON Turn Envelope，再由应用拥有的严格 validator 处理。无效 JSON、额外字段、未知 Claim 引用或 active-state 超限都会产生显式失败事件，不能自动发起提取或供应商重试。只有测量过能力与流式差异后，才可以在 adapter 内增加供应商原生 structured-output 模式。这样 OpenAI、Anthropic 与 Gemini 使用同一 canonical 规则，供应商 API 不能拥有会议状态，也不会由隐藏修复调用额外花钱或改变原始答案。

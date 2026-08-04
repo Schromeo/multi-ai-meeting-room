@@ -5,6 +5,12 @@ import {
   RoleId,
   UsageSummary,
 } from "./discuss-protocol";
+import {
+  MeetingState,
+  parseMeetingState,
+  parseTurnEnvelope,
+  TurnEnvelope,
+} from "./meeting-state";
 
 export type TranscriptItem = {
   id: string;
@@ -17,6 +23,9 @@ export type TranscriptItem = {
   text: string;
   status: "streaming" | "done" | "error";
   usage?: UsageSummary;
+  envelope?: TurnEnvelope;
+  formatError?: string;
+  reductionError?: string;
 };
 
 export type DecisionStatus = "waiting" | "pending" | "approved" | "rejected";
@@ -39,6 +48,7 @@ export type MeetingRecord = {
   usage: UsageSummary;
   iteration: number;
   participants: ParticipantSnapshot[];
+  meetingState?: MeetingState;
   createdAt: string;
   updatedAt: string;
 };
@@ -59,6 +69,8 @@ export function parseMeetingRecord(value: unknown): MeetingRecord | null {
   const transcript = parseTranscript(record.transcript);
   const participants = parseParticipants(record.participants);
   const usage = parseUsage(record.usage);
+  const meetingState =
+    record.meetingState === undefined ? undefined : parseMeetingState(record.meetingState);
 
   if (
     record.version !== 1 ||
@@ -74,6 +86,7 @@ export function parseMeetingRecord(value: unknown): MeetingRecord | null {
     Number(record.iteration) < 1 ||
     Number(record.iteration) > 100 ||
     participants === null ||
+    (record.meetingState !== undefined && !meetingState) ||
     !isIsoDate(record.createdAt) ||
     !isIsoDate(record.updatedAt)
   ) {
@@ -91,6 +104,7 @@ export function parseMeetingRecord(value: unknown): MeetingRecord | null {
     usage,
     iteration: Number(record.iteration),
     participants,
+    ...(meetingState ? { meetingState } : {}),
     createdAt: record.createdAt,
     updatedAt: record.updatedAt,
   };
@@ -111,6 +125,10 @@ function parseTranscript(value: unknown): TranscriptItem[] | null {
     const provider = item.provider;
     const role = item.role;
     const usage = item.usage === undefined ? undefined : parseUsage(item.usage);
+    const envelope =
+      item.envelope === undefined || !isTurnPhase(item.phase)
+        ? undefined
+        : parseTurnEnvelope(item.envelope, item.phase);
     if (
       !isBoundedString(item.id, 1, 240) ||
       (provider !== "host" && !providerIds.includes(provider as ProviderId)) ||
@@ -123,7 +141,10 @@ function parseTranscript(value: unknown): TranscriptItem[] | null {
       typeof item.text !== "string" ||
       item.text.length > 500_000 ||
       !isTranscriptStatus(item.status) ||
-      usage === null
+      usage === null ||
+      (item.envelope !== undefined && (!envelope || !envelope.ok)) ||
+      (item.formatError !== undefined && !isBoundedString(item.formatError, 1, 1_000)) ||
+      (item.reductionError !== undefined && !isBoundedString(item.reductionError, 1, 1_000))
     ) {
       return null;
     }
@@ -138,6 +159,9 @@ function parseTranscript(value: unknown): TranscriptItem[] | null {
       text: item.text,
       status: item.status,
       ...(usage ? { usage } : {}),
+      ...(envelope?.ok ? { envelope: envelope.value } : {}),
+      ...(typeof item.formatError === "string" ? { formatError: item.formatError } : {}),
+      ...(typeof item.reductionError === "string" ? { reductionError: item.reductionError } : {}),
     });
   }
   return items;
@@ -210,6 +234,10 @@ function isDecisionStatus(value: unknown): value is DecisionStatus {
 
 function isPhase(value: unknown): value is TranscriptItem["phase"] {
   return value === "agenda" || value === "proposal" || value === "review" || value === "synthesis";
+}
+
+function isTurnPhase(value: unknown): value is "proposal" | "review" | "synthesis" {
+  return value === "proposal" || value === "review" || value === "synthesis";
 }
 
 function isTranscriptStatus(value: unknown): value is TranscriptItem["status"] {

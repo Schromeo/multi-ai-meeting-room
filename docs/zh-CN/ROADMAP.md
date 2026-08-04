@@ -4,12 +4,12 @@
 
 ## 当前定位
 
-- **本地产品版本：** v0.7。
-- **可运行基线：** 真实流式 Discuss、可复用模型席位、会话 BYOK、人工决定 Gate 和不含凭证的 IndexedDB Event Store。
+- **本地产品版本：** v0.8。
+- **可运行基线：** 真实流式 Discuss、可复用模型席位、会话 BYOK、人工决定 Gate、不含凭证的 IndexedDB Event Store 和确定性 Canonical Meeting State。
 - **真实证据 Gate：** 已于 2026-08-04 使用 OpenAI `gpt-5-mini` 与 Anthropic `claude-haiku-4-5-20251001` 完成；见[真实基线 001](evaluations/2026-08-04-v0.6-live-baseline.md)。
-- **最近实现 Gate：** M2.7 已完成；下一步实现 M2.8 Turn Envelope 验证与 Canonical Meeting State。
-- **已批准下一架构：** 会议协议蓝图 v1 的 M2.7 持久化基础已实现，结构化协议仍在计划中。
-- **关键路径：** 真实基线 -> 本地 Event Store（已完成）-> Canonical Meeting State -> 可恢复的 Chair 编排器 -> Observer 与定向辩论 -> Whiteboard 与 Follow-up -> 比较评测。
+- **最近实现 Gate：** M2.8 已完成；下一步实现 M2.9 可恢复的 Chair 控制状态机。
+- **已批准下一架构：** 会议协议蓝图 v1 的持久化与结构化状态基础已实现，编排与后续协议阶段仍在计划中。
+- **关键路径：** 真实基线 -> 本地 Event Store（已完成）-> Canonical Meeting State（已完成）-> 可恢复的 Chair 编排器 -> Observer 与定向辩论 -> Whiteboard 与 Follow-up -> 比较评测。
 
 协议重构不能从大型界面重写开始。先固定存储和状态契约；任何大型前端修改前必须创建命名备份。
 
@@ -35,7 +35,7 @@
 
 完成条件：一个目标可以在没有模拟回复、重复调用和人工修数据库的情况下走完整个 Discuss 流程。
 
-实现进度：产品和协议功能已完成，并通过模拟端到端流式测试。2026-08-04，真实 OpenAI + Anthropic 房间完成提案、交叉审阅、综合、用量报告、保存和 Human Gate。OpenAI 适配器现在会省略不兼容的可选生成参数，会议历史已迁入 IndexedDB。M2 在扩大比较证据并实现已批准结构化协议期间保持“当前”。
+实现进度：产品和协议功能已完成，并通过模拟端到端流式测试。2026-08-04，真实 OpenAI + Anthropic 房间完成提案、交叉审阅、综合、用量报告、保存和 Human Gate。OpenAI 适配器会省略不兼容的可选生成参数，会议历史已迁入 IndexedDB，经过验证的 Turn Envelope 现在会进入有上限的 Canonical Reducer。M2 在扩大比较证据并实现可恢复协议期间保持“当前”。
 
 ## M2.1 连接与费用护栏 - 已完成
 
@@ -81,13 +81,13 @@
 
 完成条件已满足：`RoomStore` 初始化带版本的七个 IndexedDB store，事务迁移经过验证的旧 localStorage 记录，只持久化已完成或失败的 turn，在刷新后重建房间，把档案实际裁剪到 30 个房间，并且不会恢复凭证。浏览器验证迁移并重新打开了 3 个旧房间；两次刷新后 memo 和用量仍完整。
 
-## M2.8 结构化 Meeting State - 计划中
+## M2.8 结构化 Meeting State - 已完成
 
 依赖：M2.7。
 
 交付：Turn Envelope 验证、短 statement 与 card 上限、Claim/Dispute/Assumption/Chair Directive/Human Choice/Follow-up record、确定性 Canonical Reducer、来源链、活跃状态 token cap、状态版本，以及无自动付费重试的 format-error 处理。
 
-完成条件：模型输出只能通过验证事件更新房间；每个活跃状态项都能追溯到来源消息；渲染后的模型工作状态保持在配置上限内。
+完成条件已满足：所有供应商 turn 必须解析成严格、有限的 JSON Turn Envelope，之后才能发出 `agent.done`；格式错误会发出 `agent.format_error`、保存为 `turn.format_failed`，且不自动重试。确定性 Reducer 会原子拒绝未知引用与状态超限，生成稳定且带来源的 record ID，忽略重复 turn ID，为每次成功归并增加版本，并把有效 JSON 工作上下文限制在 6,000 字符内。Canonical snapshot 保存到 IndexedDB，旧的无 state 房间仍可读取。
 
 ## M2.9 由人主持的可恢复编排器 - 计划中
 
@@ -127,7 +127,7 @@
 
 建立 Claim、Evidence、Dispute、Decision、Action、Artifact 和 Evaluation；最终决定可以追溯到依据、异议、修订和人工批准。
 
-与 M2.8 的关系：M2.8 建立 Discuss 协议需要的本地房间记录；M3 在其上扩展证据感知、可查询审计实体，不重新开始数据模型。
+与 M2.8 的关系：M2.8 建立 Discuss 协议需要的结构化本地房间记录；M3 在其上扩展证据感知、可查询审计实体，不重新开始数据模型。
 
 ## M3.5 Research 房间 - 计划中
 

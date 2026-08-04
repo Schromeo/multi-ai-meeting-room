@@ -1,6 +1,27 @@
 import assert from "node:assert/strict";
 import { readFile } from "node:fs/promises";
 import test from "node:test";
+import ts from "typescript";
+
+let meetingStateModule;
+
+async function loadMeetingStateModule() {
+  if (!meetingStateModule) {
+    meetingStateModule = readFile(
+      new URL("../lib/meeting-state.ts", import.meta.url),
+      "utf8",
+    ).then((source) => {
+      const output = ts.transpileModule(source, {
+        compilerOptions: {
+          module: ts.ModuleKind.ESNext,
+          target: ts.ScriptTarget.ES2022,
+        },
+      }).outputText;
+      return import(`data:text/javascript;base64,${Buffer.from(output).toString("base64")}`);
+    });
+  }
+  return meetingStateModule;
+}
 
 async function loadWorker() {
   const workerUrl = new URL("../dist/server/index.js", import.meta.url);
@@ -143,9 +164,7 @@ test("session BYOK streams a bounded meeting without exposing credentials", asyn
       assert.equal(request.model, "gpt-4.1-mini");
       assert.equal(request.reasoning, undefined);
       assert.equal(request.text, undefined);
-      const text = String(request.input).includes("Create the decision memo")
-        ? "# Recommendation\nRun the bounded experiment.\n# Unresolved Disputes\nNone in this fixture."
-        : "OpenAI fixture response.";
+      const text = fixtureTurnEnvelope(String(request.input), "OpenAI fixture response.");
       return sseResponse([
         { type: "response.output_text.delta", delta: text },
         {
@@ -164,7 +183,10 @@ test("session BYOK streams a bounded meeting without exposing credentials", asyn
         {
           type: "content_block_delta",
           index: 0,
-          delta: { type: "text_delta", text: "Anthropic fixture response." },
+          delta: {
+            type: "text_delta",
+            text: fixtureTurnEnvelope(String(init?.body ?? ""), "Anthropic fixture response."),
+          },
         },
         { type: "message_delta", usage: { output_tokens: 9 } },
         { type: "message_stop" },
@@ -222,6 +244,9 @@ test("session BYOK streams a bounded meeting without exposing credentials", asyn
       events.filter((event) => event.type === "phase.start").map((event) => event.phase),
       ["proposal", "review", "synthesis"],
     );
+    const completedTurns = events.filter((event) => event.type === "agent.done");
+    assert.equal(completedTurns.length, 5);
+    assert.ok(completedTurns.every((event) => event.round === 1 && event.envelope?.card));
     const completed = events.find((event) => event.type === "room.done");
     assert.ok(completed);
     assert.match(completed.memo, /# Recommendation/);
@@ -243,9 +268,7 @@ test("one verified connection can power multiple seats", async () => {
     if (url.startsWith("https://api.openai.com/")) {
       providerCalls += 1;
       const request = JSON.parse(String(init?.body ?? "{}"));
-      const text = String(request.input).includes("Create the decision memo")
-        ? "# Recommendation\nReuse the connection.\n# Unresolved Disputes\nNone."
-        : "Reusable OpenAI fixture response.";
+      const text = fixtureTurnEnvelope(String(request.input), "Reusable OpenAI fixture response.");
       return sseResponse([
         { type: "response.output_text.delta", delta: text },
         { type: "response.completed", response: { usage: { input_tokens: 12, output_tokens: 8 } } },
@@ -293,12 +316,252 @@ test("one verified connection can power multiple seats", async () => {
   }
 });
 
-test("source contains real streaming adapters and credential-free IndexedDB rooms", async () => {
-  const [page, styles, route, meetingRecord, roomStore, handoff, handoffZh] = await Promise.all([
+test("malformed Turn Envelopes fail visibly without a paid retry", async () => {
+  const originalFetch = globalThis.fetch;
+  let providerCalls = 0;
+  globalThis.fetch = async (input) => {
+    const url = typeof input === "string" ? input : input.url;
+    if (url.startsWith("https://api.openai.com/")) {
+      providerCalls += 1;
+      return sseResponse([
+        { type: "response.output_text.delta", delta: "not-json" },
+        { type: "response.completed", response: { usage: { input_tokens: 5, output_tokens: 2 } } },
+      ]);
+    }
+    return originalFetch(input);
+  };
+
+  try {
+    const worker = await loadWorker();
+    const response = await worker.fetch(
+      new Request("http://localhost/api/discuss", {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({
+          objective: "Verify malformed structured turns stop without automatic retry.",
+          seats: [
+            { id: "seat-1", connectionId: "shared", provider: "openai", model: "gpt-a", role: "strategist" },
+            { id: "seat-2", connectionId: "shared", provider: "openai", model: "gpt-b", role: "critic" },
+          ],
+          connections: { shared: { provider: "openai", apiKey: "format-test-key" } },
+          iteration: 1,
+          priorMemo: "",
+          requestId: "fixture-format-0001",
+        }),
+      }),
+      workerEnv(),
+      executionContext(),
+    );
+
+    const events = (await response.text()).trim().split("\n").map((line) => JSON.parse(line));
+    assert.equal(providerCalls, 2);
+    assert.equal(events.filter((event) => event.type === "agent.format_error").length, 2);
+    assert.equal(events.filter((event) => event.type === "agent.error").length, 0);
+    assert.ok(events.find((event) => event.type === "room.error"));
+    assert.equal(events.find((event) => event.type === "phase.start" && event.phase === "review"), undefined);
+  } finally {
+    globalThis.fetch = originalFetch;
+  }
+});
+
+test("semantic reduction failures are excluded from downstream synthesis", async () => {
+  const originalFetch = globalThis.fetch;
+  let providerCalls = 0;
+  let synthesisPrompt = "";
+  globalThis.fetch = async (input, init) => {
+    const url = typeof input === "string" ? input : input.url;
+    if (!url.startsWith("https://api.openai.com/")) return originalFetch(input, init);
+    providerCalls += 1;
+    const request = JSON.parse(String(init?.body ?? "{}"));
+    const prompt = String(request.input);
+    const synthesis = prompt.includes("Create the decision memo");
+    const review = prompt.includes("REVIEW TARGET");
+    if (synthesis) synthesisPrompt = prompt;
+    const statement = `${request.model}-${synthesis ? "synthesis" : review ? "review" : "proposal"}`;
+    const envelope = validEnvelope({
+      statement: synthesis
+        ? "# Recommendation\nUse accepted state only.\n# Agreements\nBound the state.\n# Unresolved Disputes\nNone.\n# Unverified Assumptions\nFixture.\n# Tradeoffs\nCoverage.\n# Next Actions\nContinue."
+        : statement,
+      stance: synthesis ? "support" : review ? "oppose" : "propose",
+      thesis: statement,
+      newClaims: synthesis
+        ? []
+        : [0, 1, 2].map((index) => ({ text: `${statement}-claim-${index}`, assumptionLevel: "low" })),
+    });
+    return sseResponse([
+      { type: "response.output_text.delta", delta: JSON.stringify(envelope) },
+      { type: "response.completed", response: { usage: { input_tokens: 10, output_tokens: 10 } } },
+    ]);
+  };
+
+  try {
+    const worker = await loadWorker();
+    const response = await worker.fetch(
+      new Request("http://localhost/api/discuss", {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({
+          objective: "Ensure semantically rejected turns cannot influence synthesis.",
+          seats: [
+            { id: "seat-1", connectionId: "shared", provider: "openai", model: "gpt-a", role: "strategist" },
+            { id: "seat-2", connectionId: "shared", provider: "openai", model: "gpt-b", role: "critic" },
+            { id: "seat-3", connectionId: "shared", provider: "openai", model: "gpt-c", role: "technical" },
+          ],
+          connections: { shared: { provider: "openai", apiKey: "reducer-gate-key" } },
+          iteration: 1,
+          priorMemo: "",
+          requestId: "fixture-reducer-gate-0001",
+        }),
+      }),
+      workerEnv(),
+      executionContext(),
+    );
+
+    const events = (await response.text()).trim().split("\n").map((line) => JSON.parse(line));
+    assert.equal(providerCalls, 7);
+    assert.equal(events.filter((event) => event.type === "agent.reduction_error").length, 2);
+    assert.ok(events.find((event) => event.type === "room.done"));
+    assert.match(synthesisPrompt, /gpt-a-review/);
+    assert.doesNotMatch(synthesisPrompt, /gpt-b-review|gpt-c-review/);
+  } finally {
+    globalThis.fetch = originalFetch;
+  }
+});
+
+test("Turn Envelope validation and the Canonical Reducer preserve lineage", async () => {
+  const {
+    createInitialMeetingState,
+    parseMeetingState,
+    parseTurnEnvelope,
+    reduceTurnEnvelope,
+    renderMeetingStateContext,
+  } = await loadMeetingStateModule();
+  const proposal = validEnvelope({
+    statement: "Start with a bounded local pilot.",
+    thesis: "A local pilot validates the protocol before broader scope.",
+    newClaims: [{ text: "A two-provider pilot is the narrowest useful test.", assumptionLevel: "high" }],
+  });
+  assert.equal(parseTurnEnvelope(JSON.stringify(proposal), "proposal").ok, true);
+  assert.equal(parseTurnEnvelope("```json\n{}\n```", "proposal").ok, false);
+
+  const initial = createInitialMeetingState(
+    "Choose the narrowest useful protocol test.",
+    Array.from({ length: 12 }, (_, index) => `Constraint ${index}: ${"bounded ".repeat(80)}`),
+  );
+  const first = reduceTurnEnvelope(initial, {
+    id: "turn-1",
+    sourceMessageId: "message-1",
+    seatId: "seat-1",
+    round: 1,
+    phase: "proposal",
+    envelope: proposal,
+    usage: { inputTokens: 10, outputTokens: 20, estimatedUsd: 0.01, latencyMs: 100 },
+  });
+  assert.equal(first.ok, true);
+  assert.equal(first.state.version, 1);
+  assert.deepEqual(first.state.claims[0].sourceMessageIds, ["message-1"]);
+  assert.equal(first.state.assumptions[0].claimId, first.state.claims[0].id);
+
+  const duplicate = reduceTurnEnvelope(first.state, {
+    id: "turn-1",
+    sourceMessageId: "message-1",
+    seatId: "seat-1",
+    round: 1,
+    phase: "proposal",
+    envelope: proposal,
+  });
+  assert.equal(duplicate.ok, true);
+  assert.equal(duplicate.duplicate, true);
+  assert.equal(duplicate.state.version, 1);
+
+  const review = validEnvelope({
+    statement: "The pilot still needs a measurable stop condition.",
+    stance: "oppose",
+    thesis: "The scope is plausible but its success condition is underspecified.",
+    claimUpdates: [{ claimId: first.state.claims[0].id, action: "oppose", reason: "No stop metric is named." }],
+    objections: [{ targetClaimId: first.state.claims[0].id, text: "The pilot lacks an explicit success threshold.", severity: "material" }],
+  });
+  const second = reduceTurnEnvelope(first.state, {
+    id: "turn-2",
+    sourceMessageId: "message-2",
+    seatId: "seat-2",
+    round: 1,
+    phase: "review",
+    envelope: review,
+  });
+  assert.equal(second.ok, true);
+  assert.equal(second.state.claims[0].status, "contested");
+  assert.equal(second.state.disputes[0].targetClaimId, first.state.claims[0].id);
+  assert.deepEqual(second.state.disputes[0].sourceMessageIds, ["message-2"]);
+  assert.ok(parseMeetingState(JSON.parse(JSON.stringify(second.state))));
+  const rendered = renderMeetingStateContext(second.state, 1_500);
+  assert.ok(rendered.length <= 1_500);
+  assert.doesNotThrow(() => JSON.parse(rendered));
+});
+
+test("the Canonical Reducer rejects unknown references and active-state overflow atomically", async () => {
+  const { createInitialMeetingState, reduceTurnEnvelope } = await loadMeetingStateModule();
+  const initial = createInitialMeetingState("Keep the active state bounded.");
+  const unknown = reduceTurnEnvelope(initial, {
+    id: "unknown-turn",
+    sourceMessageId: "unknown-message",
+    seatId: "seat-1",
+    round: 1,
+    phase: "review",
+    envelope: validEnvelope({
+      statement: "Oppose a missing claim.",
+      stance: "oppose",
+      thesis: "This reference must not mutate state.",
+      claimUpdates: [{ claimId: "claim-does-not-exist", action: "oppose", reason: "Missing." }],
+    }),
+  });
+  assert.equal(unknown.ok, false);
+  assert.equal(unknown.error.code, "unknown_reference");
+  assert.equal(unknown.state, initial);
+
+  let state = initial;
+  for (let index = 0; index < 4; index += 1) {
+    const result = reduceTurnEnvelope(state, {
+      id: `fill-turn-${index}`,
+      sourceMessageId: `fill-message-${index}`,
+      seatId: "seat-1",
+      round: 1,
+      phase: "proposal",
+      envelope: validEnvelope({
+        statement: `Add claims ${index}.`,
+        thesis: "Fill the bounded active state.",
+        newClaims: [0, 1, 2].map((claim) => ({ text: `Claim ${index}-${claim}`, assumptionLevel: "low" })),
+      }),
+    });
+    assert.equal(result.ok, true);
+    state = result.state;
+  }
+  assert.equal(state.claims.length, 12);
+  const overflow = reduceTurnEnvelope(state, {
+    id: "overflow-turn",
+    sourceMessageId: "overflow-message",
+    seatId: "seat-1",
+    round: 1,
+    phase: "proposal",
+    envelope: validEnvelope({
+      statement: "This claim exceeds the cap.",
+      thesis: "Overflow must be explicit.",
+      newClaims: [{ text: "Claim 13", assumptionLevel: "low" }],
+    }),
+  });
+  assert.equal(overflow.ok, false);
+  assert.equal(overflow.error.code, "state_limit");
+  assert.equal(overflow.state.version, state.version);
+  assert.equal(overflow.state.claims.length, 12);
+});
+
+test("source contains real streaming adapters and credential-free structured rooms", async () => {
+  const [page, styles, route, meetingRecord, meetingState, roomStore, handoff, handoffZh] = await Promise.all([
     readFile(new URL("../app/page.tsx", import.meta.url), "utf8"),
     readFile(new URL("../app/globals.css", import.meta.url), "utf8"),
     readFile(new URL("../app/api/discuss/route.ts", import.meta.url), "utf8"),
     readFile(new URL("../lib/meeting-record.ts", import.meta.url), "utf8"),
+    readFile(new URL("../lib/meeting-state.ts", import.meta.url), "utf8"),
     readFile(new URL("../lib/room-store.ts", import.meta.url), "utf8"),
     readFile(new URL("../docs/AI_HANDOFF.md", import.meta.url), "utf8"),
     readFile(new URL("../docs/zh-CN/AI_HANDOFF.md", import.meta.url), "utf8"),
@@ -318,7 +581,12 @@ test("source contains real streaming adapters and credential-free IndexedDB room
   assert.match(roomStore, /multi-ai-meeting-room\.history\.v1|legacyMeetingHistoryKey/);
   assert.match(roomStore, /localStorage\.removeItem\(legacyMeetingHistoryKey\)/);
   assert.match(roomStore, /participantStore\.delete/);
+  assert.match(roomStore, /turn\.format_failed/);
+  assert.match(roomStore, /canonicalState/);
   assert.match(page, /This turn was interrupted before completion\./);
+  assert.match(page, /reduceTurnEnvelope/);
+  assert.match(meetingState, /renderedContextCharacters:\s*6_000/);
+  assert.match(meetingState, /unknown_reference/);
   for (const objectStore of ["rooms", "participants", "events", "stateSnapshots", "artifacts", "usage", "metadata"]) {
     assert.match(roomStore, new RegExp(`["]${objectStore}["]`));
   }
@@ -336,6 +604,45 @@ function sseResponse(events) {
   return new Response(events.map((event) => `data: ${JSON.stringify(event)}\n\n`).join(""), {
     headers: { "content-type": "text/event-stream" },
   });
+}
+
+function fixtureTurnEnvelope(prompt, fallbackStatement) {
+  const synthesis = prompt.includes("Create the decision memo");
+  const review = prompt.includes("REVIEW TARGET");
+  const statement = synthesis
+    ? "# Recommendation\nRun the bounded experiment.\n# Agreements\nUse explicit bounds.\n# Unresolved Disputes\nNone in this fixture.\n# Unverified Assumptions\nFixture only.\n# Tradeoffs\nCost versus diversity.\n# Next Actions\nMeasure the pilot."
+    : fallbackStatement;
+  return JSON.stringify(validEnvelope({
+    statement,
+    stance: synthesis ? "support" : review ? "oppose" : "propose",
+    thesis: synthesis ? "Run the bounded experiment." : review ? "The target needs revision." : fallbackStatement,
+    newClaims: synthesis || review ? [] : [{ text: fallbackStatement, assumptionLevel: "low" }],
+    objections: review ? [{ text: "The target needs a clearer bound.", severity: "material" }] : [],
+  }));
+}
+
+function validEnvelope({
+  statement,
+  stance = "propose",
+  thesis,
+  newClaims = [],
+  claimUpdates = [],
+  objections = [],
+  questionForChair,
+}) {
+  return {
+    statement,
+    card: {
+      stance,
+      thesis,
+      newClaims,
+      claimUpdates,
+      objections,
+      ...(questionForChair ? { questionForChair } : {}),
+      recommendedAction: "Continue only within the declared bound.",
+      confidence: { level: "medium", reason: "This is a bounded test fixture." },
+    },
+  };
 }
 
 function restoreEnv(key, value) {

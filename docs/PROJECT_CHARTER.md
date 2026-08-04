@@ -33,7 +33,7 @@ These are permission levels inside one product, not separate products.
 
 ## Current Scope
 
-The M2 implementation now contains a real Discuss protocol with provider adapters, streaming responses, bounded rounds, cross-review, a decision memo, a human decision gate, usage estimates, and a credential-free IndexedDB Event Store. A real OpenAI plus Anthropic meeting passed the end-to-end path on 2026-08-04, and model-specific OpenAI request compatibility has been corrected. M2 remains current while the evidence base grows beyond one prompt and the approved structured protocol is implemented.
+The M2 implementation now contains a real Discuss protocol with provider adapters, streaming responses, bounded rounds, cross-review, a decision memo, a human decision gate, usage estimates, a credential-free IndexedDB Event Store, strict Turn Envelopes, and deterministic Canonical Meeting State. A real OpenAI plus Anthropic meeting passed the pre-structured end-to-end path on 2026-08-04. M2 remains current while the structured protocol is verified with real providers, made resumable and human-chaired between turns, and evaluated beyond one prompt.
 
 ## Non-Goals For The First Complete Version
 

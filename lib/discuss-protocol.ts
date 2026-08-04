@@ -1,3 +1,5 @@
+import type { TurnEnvelope, TurnPhase } from "./meeting-state";
+
 export const providerIds = ["openai", "anthropic", "gemini"] as const;
 export type ProviderId = (typeof providerIds)[number];
 
@@ -76,7 +78,23 @@ export type DiscussEvent =
       target?: string;
     }
   | { type: "agent.delta"; id: string; delta: string }
-  | { type: "agent.done"; id: string; usage: UsageSummary }
+  | {
+      type: "agent.done";
+      id: string;
+      seatId: string;
+      round: number;
+      phase: TurnPhase;
+      envelope: TurnEnvelope;
+      usage: UsageSummary;
+    }
+  | { type: "agent.format_error"; id: string; message: string }
+  | {
+      type: "agent.reduction_error";
+      id: string;
+      message: string;
+      envelope: TurnEnvelope;
+      usage: UsageSummary;
+    }
   | { type: "agent.error"; id: string; message: string }
   | {
       type: "room.done";

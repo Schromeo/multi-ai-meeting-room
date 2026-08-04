@@ -31,7 +31,7 @@
 
 ## 当前重点
 
-M2 已实现真实 Discuss 协议：模型适配、流式输出、有限轮次、交叉审阅、决策 memo、人工决策门、用量估算，以及不保存凭证的 IndexedDB Event Store。2026-08-04，真实 OpenAI + Anthropic 会议已经走通端到端路径，模型专用 OpenAI 请求兼容性也已修正。M2 在扩大问题证据并实现已批准结构化协议期间保持当前阶段。
+M2 已实现真实 Discuss 协议：模型适配、流式输出、有限轮次、交叉审阅、决策 memo、人工决策门、用量估算、不保存凭证的 IndexedDB Event Store、严格 Turn Envelope 和确定性 Canonical Meeting State。2026-08-04，真实 OpenAI + Anthropic 会议已经走通结构化之前的端到端路径。M2 在用真实供应商验证结构化协议、让 turn 之间可以恢复并由人主持，以及扩大问题证据期间保持当前阶段。
 
 ## 第一阶段不做
 

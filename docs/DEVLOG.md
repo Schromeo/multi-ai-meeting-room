@@ -2,6 +2,38 @@
 
 This chronological log records shipped work, validation, limitations, and the next decision. It is not a place for uncommitted feature ideas; those belong in the roadmap or decision record.
 
+## 2026-08-04 - v0.8 - Structured Meeting State
+
+### Completed
+
+- Added a provider-neutral Turn Envelope contract with strict JSON parsing, exact-field validation, phase-aware statement limits, bounded cards, and explicit `no_new_information` rules.
+- Added deterministic Claim, Dispute, Assumption, Open Question, Chair Directive, Human Choice, and Follow-up contracts. Stable IDs and source-message lineage are assigned by application code, not models.
+- Implemented an atomic Canonical Reducer with state versions, duplicate-turn protection, unknown-reference rejection, active caps, archived IDs, and cumulative usage.
+- Applied the same Reducer at server phase boundaries and in the client replay path. A semantically rejected proposal or review emits `agent.reduction_error` and is excluded from every downstream review or synthesis prompt.
+- Added valid JSON context rendering with a hard 6,000-character default cap. Oversized collections are omitted visibly by count rather than truncating JSON or silently deleting durable events.
+- Updated all three provider prompts to return the same portable JSON Envelope. Malformed output emits `agent.format_error`, persists as `turn.format_failed`, and stops that turn without an automatic retry; semantic rejection persists as `turn.reduction_failed`.
+- Persisted Canonical Meeting State inside existing IndexedDB state snapshots while retaining backward-compatible reads for rooms created before M2.8.
+- Recorded D-024: use one portable JSON contract before evaluating provider-specific structured-output APIs.
+
+### Validation
+
+- Production build and all eleven automated tests pass. New tests cover Envelope parsing, source lineage, idempotency, unknown references, atomic 12-Claim overflow, bounded valid-JSON context, malformed provider output with exactly two proposal calls and no review, synthesis, or retry, and exclusion of semantically rejected reviews from downstream synthesis.
+- ESLint and the focused strict TypeScript check pass.
+- Browser reload recovered all three pre-M2.8 rooms, opened the latest real room to its Decision Memo, restored zero credentials, and reported no console warnings or errors.
+- No real provider request or paid model call was made.
+
+### Current Limitations
+
+- Portable JSON compliance has only been exercised with deterministic provider fixtures. Real OpenAI, Anthropic, and Gemini format reliability still needs a bounded evaluation before claiming production robustness.
+- During generation, the existing live transcript may briefly show raw JSON until `agent.done` replaces it with the validated statement. Card-first streaming belongs to M2.11 interface work.
+- The current one-shot route now publishes bounded Canonical State and Claim IDs to review and synthesis prompts, but it still sends every accepted proposal/review statement within the request. M2.9 will split phases at safe boundaries; M2.10 will route later turns only to named Disputes.
+- Chair Directive, Human Choice, and Follow-up records are defined and validated, but their runtime workflows begin in M2.9 and M2.11.
+- Repository-wide `tsc --noEmit` still requires the pre-existing Cloudflare ambient types; changed files pass the focused strict check.
+
+### Next Action
+
+Implement M2.9 Human-Chaired Resumable Orchestrator: explicit persisted protocol state, Checkpoints by default, safe-boundary pause/resume, append-only Chair Directives, idempotent transitions, and refresh recovery. Do not add Observer calls or redesign the Meeting UI yet.
+
 ## 2026-08-04 - v0.7 - IndexedDB Local Event Store
 
 ### Completed

@@ -1,11 +1,11 @@
 # 会议协议蓝图 v1
 
-状态：已批准设计；M2.7 持久化基础已实现
+状态：已批准设计；M2.7 持久化与 M2.8 结构化状态基础已实现
 日期：2026-08-03
 
 ## 目的
 
-本蓝图定义 v0.7 持久化基础之后的 Discuss 房间架构：把有限模型调用变成由人主持、可以恢复、可以控制费用的决策协议，并避免把不断增长的完整 transcript 当成所有模型的共享记忆。
+本蓝图定义 v0.8 结构化状态基础之后的 Discuss 房间架构：把有限模型调用变成由人主持、可以恢复、可以控制费用的决策协议，并避免把不断增长的完整 transcript 当成所有模型的共享记忆。
 
 系统必须保留这条链：
 
@@ -15,7 +15,7 @@
 
 ## 当前事实
 
-### 截至 v0.7 已实现
+### 截至 v0.8 已实现
 
 - OpenAI、Anthropic、Gemini 直接流式适配。
 - 当前页面 BYOK 与工作区托管凭证。
@@ -27,14 +27,15 @@
 - 停止控制和逐房间 token、延迟、估算费用。
 - 发言聚焦和完整总览。
 - 不含凭证的浏览器本地 `RoomStore`：带版本的 IndexedDB store 保存 room、参与者快照、只追加的完成/失败 turn 事件、状态快照、memo artifact、用量和迁移 metadata。
-- 七项自动测试和生产构建通过。
+- 严格的跨供应商 JSON Turn Envelope、不自动重试的显式 `turn.format_failed` 事件，以及带来源链、版本、幂等、active-state 上限和有限上下文渲染的确定性 Canonical Reducer。
+- Canonical Meeting State 持久化，并向后兼容恢复结构化状态之前创建的房间。
+- 十一项自动测试和生产构建通过。
 
 ### 本蓝图已批准但尚未实现
 
 - Auto、Checkpoints、Turn by turn 三种主持模式。
 - Raise Hand 暂停和 append-only Chair Directive。
 - 用户选择最大讨论轮数与多维会议预算。
-- 结构化 Turn Envelope 和由代码拥有的 Canonical Meeting State。
 - 系统级 Observer / Recorder 和单独选择的 Final Synthesizer。
 - 对重复、偏题、过早同质化和循环的流程监测。
 - 每轮 Round Brief，以及只针对分歧的后续辩论。
@@ -311,13 +312,13 @@ Checkpoints 与 Turn by turn 中，软停止交给 Chair；Auto 中，软停止�
 
 ## 持久化架构
 
-### 当前 v0.6
+### 截至 v0.8 已实现
 
-会议历史是有限的浏览器 `localStorage` 记录，适合产品验证，但不足以承担事件账本、大型原始输出、版本化产物、事务和 schema migration。
+会议历史使用不含凭证的 IndexedDB `RoomStore`。旧的有限 `localStorage` 记录只迁移一次，并且无需凭空补造 Canonical State 也能继续读取。
 
-### 下一本地层
+### 已实现本地层
 
-引入 `RoomStore` 接口并使用浏览器 IndexedDB 实现。初始持久集合包括：
+供应商无关的 `RoomStore` 使用浏览器 IndexedDB，持久集合包括：
 
 - Rooms。
 - Participant snapshot。
@@ -326,7 +327,7 @@ Checkpoints 与 Turn by turn 中，软停止交给 Chair；Auto 中，软停止�
 - Round Brief 与 Decision Memo artifact。
 - Usage ledger entry。
 
-流式 delta 留在内存。完成时，一个 `turn.completed` 事件保存最终公开原文与 Turn Envelope；中断时保存 `turn.failed` 和有限部分文本。成功 Reduce 后和每轮边界写 State Snapshot。
+流式 delta 留在内存。完成时，一个 `turn.completed` 事件保存最终公开 statement 与通过验证的 Turn Envelope；中断时保存 `turn.failed` 和有限部分文本。格式错误保存为 `turn.format_failed`，语义归并失败保存为 `turn.reduction_failed`。成功归并后的 Canonical snapshot 通过房间自动保存路径写入。
 
 ### 未来服务端层
 
@@ -384,8 +385,7 @@ Human Gate 操作变为 Approve、Add Chair Direction、Request Targeted Revisio
 
 ## 剩余开放决定
 
-- 各供应商的精确结构化输出适配与 fallback。
-- IndexedDB 选用库还是小型原生封装。
+- 供应商原生 structured-output 模式是否能显著提高可靠性，值得在逐供应商 adapter 内替换跨供应商 JSON prompt。
 - 第一次真实供应商测量后的 token 上限。
 - Observer 提取 fallback 默认开启还是仅由 Chair 批准。
 - Export 格式，以及从 IndexedDB 迁移到账号存储的路径。

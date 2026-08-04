@@ -10,6 +10,16 @@ import {
   SeatRequest,
   UsageSummary,
 } from "../../../lib/discuss-protocol";
+import {
+  createInitialMeetingState,
+  MeetingState,
+  parseMeetingState,
+  parseTurnEnvelope,
+  reduceTurnEnvelope,
+  renderMeetingStateContext,
+  TurnEnvelope,
+  TurnPhase,
+} from "../../../lib/meeting-state";
 
 type ProviderConfig = ProviderSummary & {
   apiKey?: string;
@@ -24,6 +34,10 @@ type ProviderResult = {
   latencyMs: number;
 };
 
+type CompletedTurn = ProviderResult & {
+  envelope: TurnEnvelope;
+};
+
 type DiscussRequest = {
   objective?: unknown;
   seats?: unknown;
@@ -31,6 +45,7 @@ type DiscussRequest = {
   iteration?: unknown;
   priorMemo?: unknown;
   requestId?: unknown;
+  meetingState?: unknown;
 };
 
 type SessionConnection = {
@@ -41,6 +56,7 @@ type SessionConnection = {
 type AgentWork = Omit<SeatRequest, "id"> & {
   id: string;
   seatId: string;
+  round: 1 | 2;
   config: ProviderConfig;
   text?: string;
 };
@@ -74,11 +90,13 @@ export async function POST(request: Request) {
     return Response.json({ error: validation.error }, { status: 400 });
   }
 
-  const { objective, seats, connections, iteration, priorMemo, requestId } = validation.value;
+  const { objective, seats, connections, iteration, priorMemo, requestId, meetingState } =
+    validation.value;
   const work = seats.map((seat, index): AgentWork => ({
     ...seat,
     id: `${requestId}-${iteration}-${seat.id}-${index}`,
     seatId: seat.id,
+    round: iteration,
     config: getProviderConfig(
       seat.provider,
       seat.connectionId === `workspace-${seat.provider}`
@@ -115,6 +133,7 @@ export async function POST(request: Request) {
       };
 
       try {
+        let canonicalState = meetingState ?? createInitialMeetingState(objective);
         emit({
           type: "room.start",
           requestId,
@@ -133,17 +152,25 @@ export async function POST(request: Request) {
             const result = await runAgent(
               item,
               "proposal",
-              buildProposalPrompt(objective, item.role, iteration, priorMemo),
+              buildProposalPrompt(objective, item.role, iteration, priorMemo, canonicalState),
               buildSystemPrompt(item.role),
               request.signal,
               emit,
             );
-            item.text = result.text;
+            item.text = result.envelope.statement;
             return { item, result };
           }),
         );
 
-        const proposals = successfulResults(proposalResults);
+        const proposalCandidates = successfulResults(proposalResults);
+        const proposalReduction = reduceCompletedTurns(
+          canonicalState,
+          proposalCandidates,
+          "proposal",
+          emit,
+        );
+        canonicalState = proposalReduction.state;
+        const proposals = proposalReduction.accepted;
         if (proposals.length < 2) {
           throw new Error("Fewer than two participants completed a proposal. The room stopped.");
         }
@@ -160,7 +187,13 @@ export async function POST(request: Request) {
             const result = await runAgent(
               reviewWork,
               "review",
-              buildReviewPrompt(objective, target.role, target.config.name, target.text ?? ""),
+              buildReviewPrompt(
+                objective,
+                target.role,
+                target.config.name,
+                target.text ?? "",
+                canonicalState,
+              ),
               buildSystemPrompt(item.role),
               request.signal,
               emit,
@@ -170,7 +203,15 @@ export async function POST(request: Request) {
           }),
         );
 
-        const reviews = successfulResults(reviewResults);
+        const reviewCandidates = successfulResults(reviewResults);
+        const reviewReduction = reduceCompletedTurns(
+          canonicalState,
+          reviewCandidates,
+          "review",
+          emit,
+        );
+        canonicalState = reviewReduction.state;
+        const reviews = reviewReduction.accepted;
         if (reviews.length === 0) {
           throw new Error("No cross-review completed. The room stopped before synthesis.");
         }
@@ -187,7 +228,7 @@ export async function POST(request: Request) {
           id: `${synthesisSeat.id}-synthesis`,
           role: "synthesizer",
         };
-        const synthesis = await runAgent(
+        const synthesisCandidate = await runAgent(
           synthesisWork,
           "synthesis",
           buildSynthesisPrompt(
@@ -195,15 +236,27 @@ export async function POST(request: Request) {
             proposals.map(({ item }) => item),
             reviews.map(({ item, result, target }) => ({ item, result, target })),
             iteration,
+            canonicalState,
           ),
           buildSystemPrompt("synthesizer"),
           request.signal,
           emit,
         );
+        const synthesisReduction = reduceCompletedTurns(
+          canonicalState,
+          [{ item: synthesisWork, result: synthesisCandidate }],
+          "synthesis",
+          emit,
+        );
+        canonicalState = synthesisReduction.state;
+        const synthesis = synthesisReduction.accepted[0]?.result;
+        if (!synthesis) {
+          throw new Error("The synthesis could not update Canonical Meeting State. The room stopped.");
+        }
 
         const allResults = [
-          ...proposals.map(({ item, result }) => ({ result, config: item.config })),
-          ...reviews.map(({ item, result }) => ({ result, config: item.config })),
+          ...proposalCandidates.map(({ item, result }) => ({ result, config: item.config })),
+          ...reviewCandidates.map(({ item, result }) => ({ result, config: item.config })),
           { result: synthesis, config: synthesisWork.config },
         ];
 
@@ -211,7 +264,7 @@ export async function POST(request: Request) {
           type: "room.done",
           requestId,
           iteration,
-          memo: synthesis.text,
+          memo: synthesis.envelope.statement,
           usage: totalUsage(allResults),
         });
       } catch (error) {
@@ -249,6 +302,7 @@ function validateRequest(body: DiscussRequest):
         iteration: 1 | 2;
         priorMemo: string;
         requestId: string;
+        meetingState?: MeetingState;
       };
     }
   | { ok: false; error: string } {
@@ -311,6 +365,14 @@ function validateRequest(body: DiscussRequest):
   if (priorMemo.length > MAX_MEMO_LENGTH) {
     return { ok: false, error: `The prior memo must be under ${MAX_MEMO_LENGTH} characters.` };
   }
+  const meetingState =
+    body.meetingState === undefined ? undefined : parseMeetingState(body.meetingState);
+  if (body.meetingState !== undefined && !meetingState) {
+    return { ok: false, error: "The supplied Canonical Meeting State is invalid." };
+  }
+  if (meetingState && (iteration !== 2 || meetingState.objective !== body.objective.trim())) {
+    return { ok: false, error: "Canonical Meeting State belongs only to a matching revision room." };
+  }
   if (typeof body.requestId !== "string" || !/^[a-zA-Z0-9-]{8,80}$/.test(body.requestId)) {
     return { ok: false, error: "The request is missing a valid idempotency identifier." };
   }
@@ -324,6 +386,7 @@ function validateRequest(body: DiscussRequest):
       iteration,
       priorMemo: priorMemo.trim(),
       requestId: body.requestId,
+      ...(meetingState ? { meetingState } : {}),
     },
   };
 }
@@ -378,13 +441,13 @@ function validateSessionConnections(
 
 async function runAgent(
   item: AgentWork,
-  phase: "proposal" | "review" | "synthesis",
+  phase: TurnPhase,
   prompt: string,
   system: string,
   signal: AbortSignal,
   emit: (event: DiscussEvent) => void,
   target?: string,
-): Promise<ProviderResult> {
+): Promise<CompletedTurn> {
   emit({
     type: "agent.start",
     id: item.id,
@@ -402,18 +465,20 @@ async function runAgent(
     const result = await streamProvider(item.config, system, prompt, signal, (delta) => {
       emit({ type: "agent.delta", id: item.id, delta });
     });
-    emit({
-      type: "agent.done",
-      id: item.id,
-      usage: usageForResult(result, item.config),
-    });
-    return result;
+    const parsed = parseTurnEnvelope(result.text, phase);
+    if (!parsed.ok) {
+      emit({ type: "agent.format_error", id: item.id, message: parsed.error });
+      throw new TurnFormatError(parsed.error);
+    }
+    return { ...result, envelope: parsed.value };
   } catch (error) {
-    emit({
-      type: "agent.error",
-      id: item.id,
-      message: redactSecret(safeErrorMessage(error), item.config.apiKey),
-    });
+    if (!(error instanceof TurnFormatError)) {
+      emit({
+        type: "agent.error",
+        id: item.id,
+        message: redactSecret(safeErrorMessage(error), item.config.apiKey),
+      });
+    }
     throw error;
   }
 }
@@ -643,15 +708,22 @@ function buildSystemPrompt(role: RoleId) {
     "Do not claim to have searched or verified external sources; Research mode is disabled.",
     "Name uncertainty and meaningful disagreement directly.",
     "Be concise enough for other participants to review.",
+    "Return only one valid JSON object matching the requested Turn Envelope. Do not use markdown fences or add text outside the JSON.",
   ].join("\n");
 }
 
-function buildProposalPrompt(objective: string, role: RoleId, iteration: number, priorMemo: string) {
+function buildProposalPrompt(
+  objective: string,
+  role: RoleId,
+  iteration: number,
+  priorMemo: string,
+  state: MeetingState,
+) {
   const revision =
     iteration === 2
-      ? `\nThis is the single permitted revision round. Address unresolved disputes in the prior memo and state what you changed.\n\nPRIOR MEMO:\n${priorMemo}`
+      ? `\nThis is the single permitted revision round. Address unresolved disputes in the prior memo and state what you changed. Prefer claimUpdates using IDs from CURRENT CANONICAL STATE; add at most one genuinely new Claim.\n\nPRIOR MEMO:\n${priorMemo}\n\nCURRENT CANONICAL STATE:\n${renderMeetingStateContext(state)}`
       : "";
-  return `MEETING OBJECTIVE:\n${objective}\n\nAs ${roleLabels[role]}, provide:\n1. Your recommendation or framing.\n2. The three strongest reasons.\n3. Assumptions that could make it wrong.\n4. The most important tradeoff or objection.\n5. What the human chair should decide next.${revision}`;
+  return `MEETING OBJECTIVE:\n${objective}\n\nAs ${roleLabels[role]}, provide a concise proposal as a Turn Envelope. Use up to three newClaims, mark no more than two as medium/high assumptions, use up to two objections, and ask at most one questionForChair. claimUpdates must be empty because no canonical Claim IDs have been published yet.${revision}\n\n${turnEnvelopeSchema("proposal")}`;
 }
 
 function buildReviewPrompt(
@@ -659,15 +731,17 @@ function buildReviewPrompt(
   targetRole: RoleId,
   targetProvider: string,
   proposal: string,
+  state: MeetingState,
 ) {
-  return `MEETING OBJECTIVE:\n${objective}\n\nREVIEW TARGET: ${roleLabels[targetRole]} using ${targetProvider}\n\nTARGET PROPOSAL:\n${proposal}\n\nReview this specific proposal. Return:\n1. Strongest valid point.\n2. Most consequential weakness or missing assumption.\n3. Any unsupported factual claim.\n4. A concrete revision.\n5. Verdict: accept, revise, or reject.\n\nDo not repeat the proposal or review your own unrelated ideas.`;
+  return `MEETING OBJECTIVE:\n${objective}\n\nREVIEW TARGET: ${roleLabels[targetRole]} using ${targetProvider}\n\nTARGET PROPOSAL:\n${proposal}\n\nCURRENT CANONICAL STATE:\n${renderMeetingStateContext(state)}\n\nReview this specific proposal. The statement should name its strongest valid point, most consequential weakness, unsupported factual claims, concrete revision, and verdict. Use only published Claim IDs from CURRENT CANONICAL STATE in targetClaimId or claimUpdates. Do not repeat the proposal or review unrelated ideas.\n\n${turnEnvelopeSchema("review")}`;
 }
 
 function buildSynthesisPrompt(
   objective: string,
   proposals: AgentWork[],
-  reviews: Array<{ item: AgentWork; result: ProviderResult; target: AgentWork }>,
+  reviews: Array<{ item: AgentWork; result: CompletedTurn; target: AgentWork }>,
   iteration: number,
+  state: MeetingState,
 ) {
   const proposalText = proposals
     .map(
@@ -678,11 +752,31 @@ function buildSynthesisPrompt(
   const reviewText = reviews
     .map(
       ({ item, result, target }, index) =>
-        `REVIEW ${index + 1} — ${roleLabels[item.role]} / ${item.config.name} reviewing ${roleLabels[target.role]} / ${target.config.name}:\n${result.text}`,
+        `REVIEW ${index + 1} — ${roleLabels[item.role]} / ${item.config.name} reviewing ${roleLabels[target.role]} / ${target.config.name}:\n${result.envelope.statement}`,
     )
     .join("\n\n");
 
-  return `MEETING OBJECTIVE:\n${objective}\n\nITERATION: ${iteration} of 2 maximum\n\n${proposalText}\n\n${reviewText}\n\nCreate the decision memo. Do not force consensus and do not invent evidence. Use exactly these headings:\n\n# Recommendation\n# Agreements\n# Unresolved Disputes\n# Unverified Assumptions\n# Tradeoffs\n# Next Actions\n\nUnder Recommendation, state one clear recommendation or explicitly state that the evidence is insufficient. Preserve important minority objections and identify what requires a human decision.`;
+  return `MEETING OBJECTIVE:\n${objective}\n\nITERATION: ${iteration} of 2 maximum\n\nCURRENT CANONICAL STATE:\n${renderMeetingStateContext(state)}\n\n${proposalText}\n\n${reviewText}\n\nCreate the decision memo inside the Turn Envelope statement. Do not force consensus and do not invent evidence. The statement must use exactly these headings:\n\n# Recommendation\n# Agreements\n# Unresolved Disputes\n# Unverified Assumptions\n# Tradeoffs\n# Next Actions\n\nUnder Recommendation, state one clear recommendation or explicitly state that the evidence is insufficient. Preserve important minority objections and identify what requires a human decision. Keep newClaims, claimUpdates, and objections empty; synthesis organizes the validated discussion but does not create new canonical records.\n\n${turnEnvelopeSchema("synthesis")}`;
+}
+
+function turnEnvelopeSchema(phase: TurnPhase) {
+  return [
+    "Return only this JSON shape:",
+    "{",
+    '  "statement": "the visible concise response",',
+    '  "card": {',
+    `    "stance": "${phase === "proposal" ? "propose" : phase === "review" ? "support|oppose|revise|no_new_information" : "support|revise"}",`,
+    '    "thesis": "one sentence",',
+    '    "newClaims": [{"text": "claim", "assumptionLevel": "low|medium|high"}],',
+    '    "claimUpdates": [{"claimId": "published-claim-id", "action": "support|oppose|revise|withdraw", "reason": "why"}],',
+    '    "objections": [{"text": "objection", "severity": "minor|material|blocking"}],',
+    '    "questionForChair": "optional question",',
+    '    "recommendedAction": "optional action",',
+    '    "confidence": {"level": "low|medium|high", "reason": "why"}',
+    "  }",
+    "}",
+    "Use empty arrays when a collection has no entries. Omit optional fields instead of writing null.",
+  ].join("\n");
 }
 
 function getProviderConfig(id: ProviderId, session?: SessionConnection, model?: string): ProviderConfig {
@@ -773,6 +867,50 @@ function successfulResults<T>(results: PromiseSettledResult<T>[]) {
     .map((result) => result.value);
 }
 
+function reduceCompletedTurns<T extends { item: AgentWork; result: CompletedTurn }>(
+  initialState: MeetingState,
+  turns: T[],
+  phase: TurnPhase,
+  emit: (event: DiscussEvent) => void,
+) {
+  let state = initialState;
+  const accepted: T[] = [];
+  for (const turn of turns) {
+    const usage = usageForResult(turn.result, turn.item.config);
+    const reduction = reduceTurnEnvelope(state, {
+      id: turn.item.id,
+      sourceMessageId: turn.item.id,
+      seatId: turn.item.seatId,
+      round: turn.item.round,
+      phase,
+      envelope: turn.result.envelope,
+      usage,
+    });
+    if (!reduction.ok) {
+      emit({
+        type: "agent.reduction_error",
+        id: turn.item.id,
+        message: reduction.error.message,
+        envelope: turn.result.envelope,
+        usage,
+      });
+      continue;
+    }
+    state = reduction.state;
+    accepted.push(turn);
+    emit({
+      type: "agent.done",
+      id: turn.item.id,
+      seatId: turn.item.seatId,
+      round: turn.item.round,
+      phase,
+      envelope: turn.result.envelope,
+      usage,
+    });
+  }
+  return { state, accepted };
+}
+
 function requireText(result: ProviderResult, providerName: string) {
   if (!result.text.trim()) throw new Error(`${providerName} returned no text.`);
   return { ...result, text: result.text.trim() };
@@ -806,6 +944,13 @@ function safeErrorMessage(error: unknown) {
     return error.message.slice(0, 600);
   }
   return "The meeting stopped because of an unknown provider error.";
+}
+
+class TurnFormatError extends Error {
+  constructor(message: string) {
+    super(message);
+    this.name = "TurnFormatError";
+  }
 }
 
 function redactSecret(message: string, secret?: string) {

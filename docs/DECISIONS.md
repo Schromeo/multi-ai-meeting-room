@@ -162,3 +162,10 @@ Durable product and architecture choices live here. New entries are append-only.
 - **Date:** 2026-08-03
 - **Decision:** the user selects a maximum round budget, not a required number of rounds. The default is two, the standard range is one to three, and the advanced hard maximum is five. Hard round, turn, token, time, and runnable-seat limits stop automatically. Repetition, drift, premature homogenization, and low novelty are soft Monitor conditions that pause for the Chair or advance Auto mode to synthesis; they never approve a Decision.
 - **Reason:** more deliberation is not automatically better. Explicit hard limits prevent unbounded spend, while reversible soft stops avoid confusing legitimate convergence with a loop or letting a fallible Monitor silently end a valuable debate.
+
+## D-024 - Portable JSON Envelope Before Provider-Specific Structured Output
+
+- **Status:** Accepted
+- **Date:** 2026-08-04
+- **Decision:** M2.8 asks every provider for the same bounded JSON Turn Envelope through its normal text-generation API, then applies one strict application-owned validator. Invalid JSON, unsupported fields, unknown Claim references, or active-state overflow produce explicit failure events and never trigger an automatic extraction or provider retry. Provider-native structured-output modes may be added later behind the adapter only when their capability and streaming differences are measured.
+- **Reason:** one portable contract lets OpenAI, Anthropic, and Gemini participate under identical canonical rules without letting provider APIs own meeting state. Deferring provider-specific modes keeps format behavior inspectable during the first reducer evaluation and prevents a hidden repair call from consuming money or changing the original answer.
