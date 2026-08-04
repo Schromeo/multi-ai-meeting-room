@@ -41,6 +41,7 @@ test("server-renders the real Discuss room", async () => {
   assert.match(html, /Start meeting/i);
   assert.match(html, /What must this room decide/);
   assert.match(html, /Room composition/);
+  assert.match(html, /Meetings/);
   assert.doesNotMatch(html, /Your site is taking shape|Building your site/);
 });
 
@@ -62,6 +63,45 @@ test("provider status endpoint exposes configuration without secrets", async () 
     ["openai", "anthropic", "gemini"],
   );
   assert.doesNotMatch(JSON.stringify(body), /apiKey|OPENAI_API_KEY|ANTHROPIC_API_KEY|GEMINI_API_KEY/);
+});
+
+test("connection verification returns only compatible models and never echoes the key", async () => {
+  const originalFetch = globalThis.fetch;
+  globalThis.fetch = async (input, init) => {
+    const url = typeof input === "string" ? input : input.url;
+    if (url === "https://api.openai.com/v1/models") {
+      assert.match(String(init?.headers?.Authorization), /^Bearer /);
+      return Response.json({
+        data: [
+          { id: "gpt-5-test" },
+          { id: "text-embedding-test" },
+          { id: "whisper-test" },
+        ],
+      });
+    }
+    return originalFetch(input, init);
+  };
+
+  try {
+    const worker = await loadWorker();
+    const response = await worker.fetch(
+      new Request("http://localhost/api/connections/models", {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ provider: "openai", apiKey: "session-model-list-key" }),
+      }),
+      workerEnv(),
+      executionContext(),
+    );
+
+    assert.equal(response.status, 200);
+    const text = await response.text();
+    assert.doesNotMatch(text, /session-model-list-key/);
+    const body = JSON.parse(text);
+    assert.deepEqual(body.models, [{ id: "gpt-5-test", name: "gpt-5-test" }]);
+  } finally {
+    globalThis.fetch = originalFetch;
+  }
 });
 
 test("meeting endpoint rejects an invalid bounded protocol without calling providers", async () => {
@@ -100,6 +140,9 @@ test("session BYOK streams a bounded meeting without exposing credentials", asyn
     if (url.startsWith("https://api.openai.com/")) {
       providerCalls += 1;
       const request = JSON.parse(String(init?.body ?? "{}"));
+      assert.equal(request.model, "gpt-4.1-mini");
+      assert.equal(request.reasoning, undefined);
+      assert.equal(request.text, undefined);
       const text = String(request.input).includes("Create the decision memo")
         ? "# Recommendation\nRun the bounded experiment.\n# Unresolved Disputes\nNone in this fixture."
         : "OpenAI fixture response.";
@@ -139,12 +182,24 @@ test("session BYOK streams a bounded meeting without exposing credentials", asyn
         body: JSON.stringify({
           objective: "Decide whether the bounded meeting protocol is useful.",
           seats: [
-            { provider: "openai", role: "strategist" },
-            { provider: "anthropic", role: "critic" },
+            {
+              id: "seat-1",
+              connectionId: "session-openai",
+              provider: "openai",
+              model: "gpt-4.1-mini",
+              role: "strategist",
+            },
+            {
+              id: "seat-2",
+              connectionId: "session-anthropic",
+              provider: "anthropic",
+              model: "claude-session-test",
+              role: "critic",
+            },
           ],
           connections: {
-            openai: { apiKey: "session-openai-key", model: "gpt-session-test" },
-            anthropic: { apiKey: "session-anthropic-key", model: "claude-session-test" },
+            "session-openai": { provider: "openai", apiKey: "session-openai-key" },
+            "session-anthropic": { provider: "anthropic", apiKey: "session-anthropic-key" },
           },
           iteration: 1,
           priorMemo: "",
@@ -180,15 +235,85 @@ test("session BYOK streams a bounded meeting without exposing credentials", asyn
   }
 });
 
+test("one verified connection can power multiple seats", async () => {
+  const originalFetch = globalThis.fetch;
+  let providerCalls = 0;
+  globalThis.fetch = async (input, init) => {
+    const url = typeof input === "string" ? input : input.url;
+    if (url.startsWith("https://api.openai.com/")) {
+      providerCalls += 1;
+      const request = JSON.parse(String(init?.body ?? "{}"));
+      const text = String(request.input).includes("Create the decision memo")
+        ? "# Recommendation\nReuse the connection.\n# Unresolved Disputes\nNone."
+        : "Reusable OpenAI fixture response.";
+      return sseResponse([
+        { type: "response.output_text.delta", delta: text },
+        { type: "response.completed", response: { usage: { input_tokens: 12, output_tokens: 8 } } },
+      ]);
+    }
+    return originalFetch(input, init);
+  };
+
+  try {
+    const worker = await loadWorker();
+    const response = await worker.fetch(
+      new Request("http://localhost/api/discuss", {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({
+          objective: "Decide whether one connection can support role-diverse seats.",
+          seats: [
+            { id: "seat-1", connectionId: "shared-openai", provider: "openai", model: "gpt-model-a", role: "strategist" },
+            { id: "seat-2", connectionId: "shared-openai", provider: "openai", model: "gpt-model-b", role: "critic" },
+          ],
+          connections: {
+            "shared-openai": { provider: "openai", apiKey: "shared-openai-key" },
+          },
+          iteration: 1,
+          priorMemo: "",
+          requestId: "fixture-room-reuse-0001",
+        }),
+      }),
+      workerEnv(),
+      executionContext(),
+    );
+
+    assert.equal(response.status, 200);
+    const streamText = await response.text();
+    assert.doesNotMatch(streamText, /shared-openai-key/);
+    assert.equal(providerCalls, 5);
+    const events = streamText.trim().split("\n").map((line) => JSON.parse(line));
+    assert.deepEqual(
+      events.filter((event) => event.type === "agent.start" && event.phase === "proposal").map((event) => event.model),
+      ["gpt-model-a", "gpt-model-b"],
+    );
+    assert.ok(events.find((event) => event.type === "room.done"));
+  } finally {
+    globalThis.fetch = originalFetch;
+  }
+});
+
 test("source contains real streaming adapters and no simulated agent timer", async () => {
-  const [page, route, handoff, handoffZh] = await Promise.all([
+  const [page, styles, route, handoff, handoffZh] = await Promise.all([
     readFile(new URL("../app/page.tsx", import.meta.url), "utf8"),
+    readFile(new URL("../app/globals.css", import.meta.url), "utf8"),
     readFile(new URL("../app/api/discuss/route.ts", import.meta.url), "utf8"),
     readFile(new URL("../docs/AI_HANDOFF.md", import.meta.url), "utf8"),
     readFile(new URL("../docs/zh-CN/AI_HANDOFF.md", import.meta.url), "utf8"),
   ]);
 
   assert.doesNotMatch(page, /agentCopy|seedMessages|setTimeout\(\(\) => \{\s*const nextRound/);
+  assert.match(page, /Add new connection/);
+  assert.match(page, /Reload models/);
+  assert.match(page, /Replace key/);
+  assert.match(page, /Use for Seat/);
+  assert.match(page, /multi-ai-meeting-room\.history\.v1/);
+  assert.match(page, /Credentials are excluded/);
+  const meetingRecordType = page.match(/type MeetingRecord = \{[\s\S]*?\n\};/)?.[0] ?? "";
+  assert.ok(meetingRecordType);
+  assert.doesNotMatch(meetingRecordType, /apiKey|connectionId/);
+  assert.match(styles, /\.decision-actions \.approve-button/);
+  assert.match(styles, /\.history-drawer/);
   assert.match(route, /api\.openai\.com\/v1\/responses/);
   assert.match(route, /api\.anthropic\.com\/v1\/messages/);
   assert.match(route, /streamGenerateContent\?alt=sse/);

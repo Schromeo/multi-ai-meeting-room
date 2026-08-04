@@ -34,12 +34,13 @@ type DiscussRequest = {
 };
 
 type SessionConnection = {
+  provider: ProviderId;
   apiKey: string;
-  model?: string;
 };
 
-type AgentWork = SeatRequest & {
+type AgentWork = Omit<SeatRequest, "id"> & {
   id: string;
+  seatId: string;
   config: ProviderConfig;
   text?: string;
 };
@@ -76,8 +77,15 @@ export async function POST(request: Request) {
   const { objective, seats, connections, iteration, priorMemo, requestId } = validation.value;
   const work = seats.map((seat, index): AgentWork => ({
     ...seat,
-    id: `${requestId}-${iteration}-${seat.provider}-${index}`,
-    config: getProviderConfig(seat.provider, connections[seat.provider]),
+    id: `${requestId}-${iteration}-${seat.id}-${index}`,
+    seatId: seat.id,
+    config: getProviderConfig(
+      seat.provider,
+      seat.connectionId === `workspace-${seat.provider}`
+        ? undefined
+        : connections[seat.connectionId],
+      seat.model,
+    ),
   }));
 
   const missing = work.filter((item) => !item.config.configured);
@@ -237,7 +245,7 @@ function validateRequest(body: DiscussRequest):
       value: {
         objective: string;
         seats: SeatRequest[];
-        connections: Partial<Record<ProviderId, SessionConnection>>;
+        connections: Record<string, SessionConnection>;
         iteration: 1 | 2;
         priorMemo: string;
         requestId: string;
@@ -262,19 +270,34 @@ function validateRequest(body: DiscussRequest):
     }
     const provider = (candidate as { provider?: unknown }).provider;
     const role = (candidate as { role?: unknown }).role;
+    const id = (candidate as { id?: unknown }).id;
+    const connectionId = (candidate as { connectionId?: unknown }).connectionId;
+    const model = (candidate as { model?: unknown }).model;
     if (
+      typeof id !== "string" ||
+      !/^[a-zA-Z0-9_-]{1,80}$/.test(id) ||
+      typeof connectionId !== "string" ||
+      !/^[a-zA-Z0-9_-]{1,120}$/.test(connectionId) ||
       typeof provider !== "string" ||
       !providerIds.includes(provider as ProviderId) ||
+      typeof model !== "string" ||
+      !/^[a-zA-Z0-9._:/-]{1,160}$/.test(model.trim()) ||
       typeof role !== "string" ||
       !roleIds.includes(role as RoleId)
     ) {
-      return { ok: false, error: "A participant has an unsupported provider or role." };
+      return { ok: false, error: "A participant has an invalid seat, connection, model, provider, or role." };
     }
-    if (seen.has(provider)) {
-      return { ok: false, error: "Each provider may occupy only one seat in M2." };
+    if (seen.has(id)) {
+      return { ok: false, error: "Each participant must have a unique seat id." };
     }
-    seen.add(provider);
-    seats.push({ provider: provider as ProviderId, role: role as RoleId });
+    seen.add(id);
+    seats.push({
+      id,
+      connectionId,
+      provider: provider as ProviderId,
+      model: model.trim(),
+      role: role as RoleId,
+    });
   }
 
   const connectionResult = validateSessionConnections(body.connections, seats);
@@ -309,25 +332,26 @@ function validateSessionConnections(
   value: unknown,
   seats: SeatRequest[],
 ):
-  | { ok: true; value: Partial<Record<ProviderId, SessionConnection>> }
+  | { ok: true; value: Record<string, SessionConnection> }
   | { ok: false; error: string } {
-  if (value === undefined) return { ok: true, value: {} };
-  if (!value || typeof value !== "object" || Array.isArray(value)) {
+  if (value !== undefined && (!value || typeof value !== "object" || Array.isArray(value))) {
     return { ok: false, error: "Session connections must be a provider-keyed object." };
   }
 
-  const activeProviders = new Set(seats.map((seat) => seat.provider));
-  const connections: Partial<Record<ProviderId, SessionConnection>> = {};
-  for (const [provider, candidate] of Object.entries(value)) {
-    if (!providerIds.includes(provider as ProviderId) || !activeProviders.has(provider as ProviderId)) {
-      return { ok: false, error: "A session connection does not belong to an active provider." };
+  const activeConnectionIds = new Set(seats.map((seat) => seat.connectionId));
+  const connections: Record<string, SessionConnection> = {};
+  for (const [connectionId, candidate] of Object.entries(value ?? {})) {
+    if (!/^[a-zA-Z0-9_-]{1,120}$/.test(connectionId) || !activeConnectionIds.has(connectionId)) {
+      return { ok: false, error: "A session connection does not belong to an active seat." };
     }
     if (!candidate || typeof candidate !== "object" || Array.isArray(candidate)) {
       return { ok: false, error: "A session connection is malformed." };
     }
     const apiKey = (candidate as { apiKey?: unknown }).apiKey;
-    const model = (candidate as { model?: unknown }).model;
+    const provider = (candidate as { provider?: unknown }).provider;
     if (
+      typeof provider !== "string" ||
+      !providerIds.includes(provider as ProviderId) ||
       typeof apiKey !== "string" ||
       apiKey.trim().length < 8 ||
       apiKey.length > 512 ||
@@ -335,17 +359,19 @@ function validateSessionConnections(
     ) {
       return { ok: false, error: "A session API key is invalid." };
     }
-    if (
-      model !== undefined &&
-      (typeof model !== "string" ||
-        !/^[a-zA-Z0-9._:/-]{1,160}$/.test(model.trim()))
-    ) {
-      return { ok: false, error: "A session model id is invalid." };
-    }
-    connections[provider as ProviderId] = {
+    connections[connectionId] = {
+      provider: provider as ProviderId,
       apiKey: apiKey.trim(),
-      model: typeof model === "string" ? model.trim() : undefined,
     };
+  }
+  for (const seat of seats) {
+    const connection = connections[seat.connectionId];
+    if (connection && connection.provider !== seat.provider) {
+      return { ok: false, error: "A seat provider does not match its session connection." };
+    }
+    if (!connection && seat.connectionId !== `workspace-${seat.provider}`) {
+      return { ok: false, error: "A seat references an unavailable connection." };
+    }
   }
   return { ok: true, value: connections };
 }
@@ -362,6 +388,9 @@ async function runAgent(
   emit({
     type: "agent.start",
     id: item.id,
+    seatId: item.seatId,
+    connectionId: item.connectionId,
+    connectionName: item.config.name,
     provider: item.provider,
     role: item.role,
     model: item.config.model,
@@ -437,8 +466,6 @@ async function streamOpenAI(
       input: prompt,
       stream: true,
       max_output_tokens: MAX_OUTPUT_TOKENS,
-      reasoning: { effort: "low" },
-      text: { verbosity: "medium" },
     }),
     signal,
   });
@@ -658,7 +685,7 @@ function buildSynthesisPrompt(
   return `MEETING OBJECTIVE:\n${objective}\n\nITERATION: ${iteration} of 2 maximum\n\n${proposalText}\n\n${reviewText}\n\nCreate the decision memo. Do not force consensus and do not invent evidence. Use exactly these headings:\n\n# Recommendation\n# Agreements\n# Unresolved Disputes\n# Unverified Assumptions\n# Tradeoffs\n# Next Actions\n\nUnder Recommendation, state one clear recommendation or explicitly state that the evidence is insufficient. Preserve important minority objections and identify what requires a human decision.`;
 }
 
-function getProviderConfig(id: ProviderId, session?: SessionConnection): ProviderConfig {
+function getProviderConfig(id: ProviderId, session?: SessionConnection, model?: string): ProviderConfig {
   const values: Record<ProviderId, Omit<ProviderConfig, "configured">> = {
     openai: {
       id,
@@ -689,7 +716,7 @@ function getProviderConfig(id: ProviderId, session?: SessionConnection): Provide
   const resolved = {
     ...value,
     apiKey: session?.apiKey ?? value.apiKey,
-    model: session?.model ?? value.model,
+    model: model ?? value.model,
   };
   return { ...resolved, configured: Boolean(resolved.apiKey) };
 }

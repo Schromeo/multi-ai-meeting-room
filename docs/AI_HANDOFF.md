@@ -1,21 +1,24 @@
 # AI Handoff
 
-Last updated: 2026-08-03
+Last updated: 2026-08-04
 
 ## Current Snapshot
 
-- **Stage:** M2.1 connection and focused workspace implementation complete; live provider verification pending.
+- **Stage:** the v0.6 M2.1 connection flow, reusable-seat core of M2.2, and first browser-local M2.5 archive slice are implemented. M2.6 Meeting Protocol Blueprint v1 is complete as documentation. Live Baseline 001 completed the real OpenAI plus Anthropic path through the Human Gate on 2026-08-04.
 - **Product:** a human-chaired multi-AI meeting room with Discuss, Research, and Execute permission levels.
-- **Implemented:** provider-neutral OpenAI, Anthropic, and Gemini adapters; workspace secrets plus current-page BYOK; per-connection model IDs; token streaming; independent proposals; assigned cross-review; synthesis; one optional revision; human approve/reject gate; usage estimates; stop control; staged Setup/Agenda/Meeting/Decision workspace; focus and overview transcript modes; mocked end-to-end protocol tests.
-- **Not implemented:** configured production provider keys, live provider evaluation, encrypted durable BYOK, duplicate-provider seats, persistent rooms, evidence retrieval, audit data model, execution connector, or comparative evaluation.
-- **Current milestone:** M2.1 connection and cost guardrails.
-- **Next decision:** connect exactly two providers through session BYOK or workspace secrets and run the first live evaluation.
+- **Implemented:** provider-neutral OpenAI, Anthropic, and Gemini adapters; workspace secrets plus current-page BYOK; explicit provider selection with advisory key-prefix detection; credential verification and compatible-model discovery; a unified connection library with naming, transactional key replacement, model reload, usage visibility, and confirmed disconnect; reusable connections; per-seat connection management; duplicate-provider seats with per-seat models and roles; token streaming; independent proposals; assigned cross-review; synthesis; one optional revision; human approve/reject gate; usage estimates; stop control; staged Setup/Agenda/Meeting/Decision workspace; focus and overview transcript modes; a browser-local meeting archive with transcript, memo, decision, usage, participant summary, switching, new-room semantics, and deletion; mocked end-to-end protocol tests.
+- **Approved but not implemented:** RoomStore and IndexedDB Event Store; Turn Envelopes; Canonical Meeting State; Claim and Dispute lineage; Auto, Checkpoints, and Turn-by-turn modes; Raise Hand and Chair Directives; user-selected Observer and Final Synthesizer; Round Briefs; process monitoring; maximum-round and multi-dimensional budgets; targeted debate; Meeting Whiteboard; source-linked Follow-up; versioned Memos; and D1 persistence after identity.
+- **Live evidence:** OpenAI `gpt-5-mini` and Anthropic `claude-haiku-4-5-20251001` completed five provider calls with 2,437 input tokens, 3,424 output tokens, 54 seconds of model time, and a $0.032 advisory estimate. The Human Gate remains pending. The report is `evaluations/2026-08-04-v0.6-live-baseline.md`.
+- **Known live defect:** OpenAI `gpt-4.1-mini` is discoverable but rejects the adapter's unconditional `reasoning.effort` parameter. The bounded room stopped safely after proposals and did not automatically retry.
+- **Other not implemented:** configured production provider keys, encrypted durable BYOK, skill packs, diversity indicators, export, evidence retrieval, execution connector, or broad comparative evaluation.
+- **Current milestone:** close the OpenAI optional-parameter compatibility defect, record a named v0.6 backup, then begin M2.7 Local Event Store.
+- **Next action:** make OpenAI optional generation controls capability-aware or omit them conservatively, add a regression assertion, then create the v0.6 baseline backup before implementing `RoomStore` and IndexedDB.
 - **Live site:** `https://multi-ai-meeting-room.schromeo.chatgpt.site`
 - **Deployment status:** the live URL still serves the prior version. The v0.4 source is pushed and saved, but Sites publication is blocked by its generated `nodejs_compat` flag conflicting with the platform default introduced on 2026-08-04. Do not retry with unchanged inputs.
 
 ## Start-of-Session Checklist
 
-1. Read `PROJECT_CHARTER.md`, this file, `DECISIONS.md`, `ROADMAP.md`, `MODEL_AND_AGENT_BLUEPRINT.md`, and the latest `DEVLOG.md` entry.
+1. Read `PROJECT_CHARTER.md`, this file, `DECISIONS.md`, `ROADMAP.md`, `MEETING_PROTOCOL_BLUEPRINT.md`, `MODEL_AND_AGENT_BLUEPRINT.md`, and the latest `DEVLOG.md` entry.
 2. Inspect the current working tree before editing. Preserve user changes.
 3. State which milestone and exit criterion the proposed work advances.
 4. Confirm the task is not already completed or recorded as rejected.
@@ -77,6 +80,10 @@ Verify the implemented Discuss workflow with real providers:
 6. The human accepts, revises, rejects, or requests one additional bounded round.
 
 M2 does not include web research, coding execution, generic tool plugins, or autonomous loops. Provider secrets and model defaults are documented in `PROVIDER_CONFIGURATION.md`.
+
+## Approved Protocol v1 Target
+
+After the v0.6 live baseline is recorded, implement M2.7 through M2.12 in order. Storage and state contracts precede orchestration; orchestration precedes interface rework. The target separates raw transcript, Canonical Meeting State, and per-agent context; gives the human Chair in-meeting control; adds explicit paid Observer and Final Synthesizer roles; routes later turns only to named disputes; and persists an append-only local event history without credentials. `MEETING_PROTOCOL_BLUEPRINT.md` is canonical for this future design.
 
 ## End-of-Session Handoff
 

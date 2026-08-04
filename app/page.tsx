@@ -30,6 +30,55 @@ type TranscriptItem = {
 type DecisionStatus = "waiting" | "pending" | "approved" | "rejected";
 type WorkspaceStage = "agenda" | "meeting" | "decision";
 type TranscriptMode = "focus" | "overview";
+type ProviderChoice = ProviderId | "auto";
+
+type ModelOption = {
+  id: string;
+  name: string;
+};
+
+type ConnectionRecord = {
+  id: string;
+  provider: ProviderId;
+  name: string;
+  source: "workspace" | "session";
+  models: ModelOption[];
+  apiKey?: string;
+};
+
+type SeatDraft = {
+  id: string;
+  enabled: boolean;
+  connectionId: string;
+  model: string;
+  role: RoleId;
+};
+
+type ParticipantSnapshot = {
+  provider: ProviderId;
+  providerName: string;
+  model: string;
+  role: RoleId;
+};
+
+type MeetingRecord = {
+  version: 1;
+  id: string;
+  objective: string;
+  stage: Exclude<WorkspaceStage, "agenda">;
+  transcript: TranscriptItem[];
+  memo: string;
+  decision: DecisionStatus;
+  usage: UsageSummary;
+  iteration: number;
+  participants: ParticipantSnapshot[];
+  createdAt: string;
+  updatedAt: string;
+};
+
+const meetingHistoryKey = "multi-ai-meeting-room.history.v1";
+const meetingHistoryLimit = 30;
+const defaultObjective = "Decide the narrowest useful version of a multi-AI meeting room";
 
 const providerUi: Record<
   ProviderId,
@@ -58,23 +107,11 @@ const providerUi: Record<
   },
 };
 
-const initialRoles: Record<ProviderId, RoleId> = {
-  openai: "strategist",
-  anthropic: "critic",
-  gemini: "technical",
-};
-
-const initialModels: Record<ProviderId, string> = {
-  openai: "gpt-5.6-luna",
-  anthropic: "claude-sonnet-5",
-  gemini: "gemini-3.6-flash",
-};
-
-const initialDraftKeys: Record<ProviderId, string> = {
-  openai: "",
-  anthropic: "",
-  gemini: "",
-};
+const initialSeatDrafts: SeatDraft[] = [
+  { id: "seat-1", enabled: true, connectionId: "", model: "", role: "strategist" },
+  { id: "seat-2", enabled: true, connectionId: "", model: "", role: "critic" },
+  { id: "seat-3", enabled: false, connectionId: "", model: "", role: "technical" },
+];
 
 const emptyUsage: UsageSummary = {
   inputTokens: 0,
@@ -93,18 +130,30 @@ const milestones = [
 ];
 
 export default function Home() {
-  const [objective, setObjective] = useState(
-    "Decide the narrowest useful version of a multi-AI meeting room",
-  );
+  const [objective, setObjective] = useState(defaultObjective);
   const [providers, setProviders] = useState<ProviderSummary[]>([]);
-  const [activeProviders, setActiveProviders] = useState<ProviderId[]>([]);
-  const [roles, setRoles] = useState<Record<ProviderId, RoleId>>(initialRoles);
-  const [models, setModels] = useState<Record<ProviderId, string>>(initialModels);
-  const [sessionKeys, setSessionKeys] = useState<Partial<Record<ProviderId, string>>>({});
-  const [draftKeys, setDraftKeys] = useState<Record<ProviderId, string>>(initialDraftKeys);
+  const [sessionConnections, setSessionConnections] = useState<ConnectionRecord[]>([]);
+  const [seatDrafts, setSeatDrafts] = useState<SeatDraft[]>(initialSeatDrafts);
+  const [providerChoice, setProviderChoice] = useState<ProviderChoice>("auto");
+  const [draftName, setDraftName] = useState("");
+  const [draftKey, setDraftKey] = useState("");
+  const [discoveringModels, setDiscoveringModels] = useState(false);
+  const [editingConnectionId, setEditingConnectionId] = useState<string | null>(null);
+  const [focusedConnectionId, setFocusedConnectionId] = useState<string | null>(null);
+  const [connectionTargetSeatId, setConnectionTargetSeatId] = useState<string | null>(null);
+  const [loadingConnectionId, setLoadingConnectionId] = useState<string | null>(null);
+  const [pendingDisconnectId, setPendingDisconnectId] = useState<string | null>(null);
   const [configLoading, setConfigLoading] = useState(true);
   const [connectionOpen, setConnectionOpen] = useState(false);
   const [projectOpen, setProjectOpen] = useState(false);
+  const [historyOpen, setHistoryOpen] = useState(false);
+  const [meetingRecords, setMeetingRecords] = useState<MeetingRecord[]>([]);
+  const [historyReady, setHistoryReady] = useState(false);
+  const [historyError, setHistoryError] = useState("");
+  const [pendingDeleteRoomId, setPendingDeleteRoomId] = useState<string | null>(null);
+  const [currentRoomId, setCurrentRoomId] = useState("");
+  const [currentRoomCreatedAt, setCurrentRoomCreatedAt] = useState("");
+  const [currentParticipants, setCurrentParticipants] = useState<ParticipantSnapshot[]>([]);
   const [connectionError, setConnectionError] = useState("");
   const [stage, setStage] = useState<WorkspaceStage>("agenda");
   const [transcriptMode, setTranscriptMode] = useState<TranscriptMode>("focus");
@@ -124,6 +173,20 @@ export default function Home() {
   const abortRef = useRef<AbortController | null>(null);
   const liveTextRef = useRef<HTMLDivElement | null>(null);
   const overviewRef = useRef<HTMLDivElement | null>(null);
+  const meetingRecordsRef = useRef<MeetingRecord[]>([]);
+
+  useEffect(() => {
+    const timer = window.setTimeout(() => {
+      const now = new Date().toISOString();
+      const storedRecords = loadMeetingRecords();
+      meetingRecordsRef.current = storedRecords;
+      setMeetingRecords(storedRecords);
+      setCurrentRoomId(createRoomId());
+      setCurrentRoomCreatedAt(now);
+      setHistoryReady(true);
+    }, 0);
+    return () => window.clearTimeout(timer);
+  }, []);
 
   useEffect(() => {
     let active = true;
@@ -135,18 +198,23 @@ export default function Home() {
       .then((data) => {
         if (!active) return;
         setProviders(data.providers);
-        setModels((current) => {
-          const next = { ...current };
-          data.providers.forEach((provider) => {
-            next[provider.id] = provider.model;
-          });
-          return next;
-        });
-        const configured = data.providers
-          .filter((provider) => provider.configured)
-          .map((provider) => provider.id);
-        setActiveProviders(configured.slice(0, 3));
-        if (configured.length < 2) setConnectionOpen(true);
+        const configured = data.providers.filter((provider) => provider.configured);
+        if (configured.length > 0) {
+          setSeatDrafts((current) =>
+            current.map((seat, index) => {
+              if (!seat.enabled) return seat;
+              const provider = configured[index];
+              if (!provider) return seat;
+              return {
+                ...seat,
+                connectionId: `workspace-${provider.id}`,
+                model: provider.model,
+              };
+            }),
+          );
+        } else {
+          setConnectionOpen(true);
+        }
       })
       .catch((configError) => setError(safeClientError(configError)))
       .finally(() => setConfigLoading(false));
@@ -156,30 +224,64 @@ export default function Home() {
     };
   }, []);
 
-  const isWorkspaceConnected = (provider: ProviderId) =>
-    Boolean(providers.find((item) => item.id === provider)?.configured);
-  const isSessionConnected = (provider: ProviderId) => Boolean(sessionKeys[provider]);
-  const isConnected = (provider: ProviderId) =>
-    isWorkspaceConnected(provider) || isSessionConnected(provider);
-  const connectedCount = providerIds.filter(isConnected).length;
-  const projectedConnectedCount = providerIds.filter(
-    (provider) => isConnected(provider) || draftKeys[provider].trim().length >= 8,
-  ).length;
+  const workspaceConnections = useMemo<ConnectionRecord[]>(
+    () =>
+      providers
+        .filter((provider) => provider.configured)
+        .map((provider) => ({
+          id: `workspace-${provider.id}`,
+          provider: provider.id,
+          name: `${provider.name} workspace`,
+          source: "workspace",
+          models: [{ id: provider.model, name: provider.model }],
+        })),
+    [providers],
+  );
+  const connections = useMemo(
+    () => [...workspaceConnections, ...sessionConnections],
+    [sessionConnections, workspaceConnections],
+  );
+  const connectionById = useMemo(
+    () => new Map(connections.map((connection) => [connection.id, connection])),
+    [connections],
+  );
+  const detectedProvider = inferProvider(draftKey);
+  const effectiveProvider = providerChoice === "auto" ? detectedProvider : providerChoice;
+  const editingConnection = editingConnectionId
+    ? sessionConnections.find((connection) => connection.id === editingConnectionId)
+    : undefined;
 
   const seats = useMemo<SeatRequest[]>(
     () =>
-      activeProviders.map((provider) => ({
-        provider,
-        role: roles[provider],
-      })),
-    [activeProviders, roles],
+      seatDrafts.flatMap((seat) => {
+        if (!seat.enabled || !seat.connectionId || !seat.model) return [];
+        const connection = connectionById.get(seat.connectionId);
+        return connection
+          ? [{
+              id: seat.id,
+              connectionId: connection.id,
+              provider: connection.provider,
+              model: seat.model,
+              role: seat.role,
+            }]
+          : [];
+      }),
+    [connectionById, seatDrafts],
   );
+  const readySeatCount = seats.length;
+  const targetSeatNumber = connectionTargetSeatId
+    ? seatDrafts.findIndex((seat) => seat.id === connectionTargetSeatId) + 1
+    : 0;
   const canStart =
     !configLoading &&
     !running &&
     objective.trim().length >= 8 &&
     seats.length >= 2 &&
     seats.length <= 3;
+  const roomCompositionMatches = useMemo(
+    () => participantsMatchSeats(currentParticipants, seats),
+    [currentParticipants, seats],
+  );
 
   const activeTranscriptItem = useMemo(() => {
     if (pinnedMessageId) {
@@ -202,70 +304,354 @@ export default function Home() {
     }
   }, [activeTranscriptItem?.text, pinnedMessageId, transcript, transcriptMode]);
 
-  function toggleProvider(provider: ProviderId) {
-    if (running || !isConnected(provider)) return;
-    setActiveProviders((current) => {
-      if (current.includes(provider)) return current.filter((item) => item !== provider);
-      return current.length >= 3 ? current : [...current, provider];
-    });
-  }
+  useEffect(() => {
+    if (!historyReady || !currentRoomId || iteration === 0 || transcript.length === 0) return;
 
-  function updateRole(provider: ProviderId, role: RoleId) {
-    if (!running) setRoles((current) => ({ ...current, [provider]: role }));
-  }
+    const record: MeetingRecord = {
+      version: 1,
+      id: currentRoomId,
+      objective: objective.trim() || "Untitled meeting",
+      stage: memo ? "decision" : "meeting",
+      transcript,
+      memo,
+      decision,
+      usage,
+      iteration,
+      participants: currentParticipants,
+      createdAt: currentRoomCreatedAt,
+      updatedAt: new Date().toISOString(),
+    };
 
-  function saveConnections(event: FormEvent<HTMLFormElement>) {
-    event.preventDefault();
-    setConnectionError("");
-    const nextKeys = { ...sessionKeys };
-    for (const provider of providerIds) {
-      const draft = draftKeys[provider].trim();
-      if (!draft) continue;
-      if (draft.length < 8 || /\s/.test(draft)) {
-        setConnectionError(`${providerUi[provider].label} key does not look complete.`);
-        return;
+    const timer = window.setTimeout(() => {
+      const nextRecords = upsertMeetingRecord(meetingRecordsRef.current, record);
+      meetingRecordsRef.current = nextRecords;
+      setMeetingRecords(nextRecords);
+      try {
+        window.localStorage.setItem(meetingHistoryKey, JSON.stringify(nextRecords));
+        setHistoryError("");
+      } catch {
+        setHistoryError("This browser could not save the latest meeting record.");
       }
-      if (!/^[a-zA-Z0-9._:/-]{1,160}$/.test(models[provider].trim())) {
-        setConnectionError(`${providerUi[provider].label} model id is invalid.`);
-        return;
-      }
-      nextKeys[provider] = draft;
-    }
+    }, 350);
 
-    const available = providerIds.filter(
-      (provider) => isWorkspaceConnected(provider) || Boolean(nextKeys[provider]),
+    return () => window.clearTimeout(timer);
+  }, [
+    currentParticipants,
+    currentRoomCreatedAt,
+    currentRoomId,
+    decision,
+    historyReady,
+    iteration,
+    memo,
+    objective,
+    transcript,
+    usage,
+  ]);
+
+  function updateSeat(id: string, update: Partial<SeatDraft>) {
+    if (running) return;
+    setSeatDrafts((current) =>
+      current.map((seat) => (seat.id === id ? { ...seat, ...update } : seat)),
     );
-    if (available.length < 2) {
-      setConnectionError("Connect at least two providers to open a real meeting.");
+  }
+
+  function chooseSeatConnection(seatId: string, connectionId: string) {
+    if (connectionId === "__add__") {
+      openConnectionManager(seatId);
       return;
     }
-    setSessionKeys(nextKeys);
-    setDraftKeys(initialDraftKeys);
-    setActiveProviders((current) => {
-      const retained = current.filter((provider) => available.includes(provider));
-      for (const provider of available) {
-        if (retained.length >= 3) break;
-        if (!retained.includes(provider)) retained.push(provider);
-      }
-      return retained;
+    const connection = connectionById.get(connectionId);
+    updateSeat(seatId, {
+      connectionId,
+      model: connection ? defaultSeatModel(connection) : "",
     });
-    setConnectionOpen(false);
   }
 
-  function removeSessionConnection(provider: ProviderId) {
-    setSessionKeys((current) => {
-      const next = { ...current };
-      delete next[provider];
-      return next;
+  function assignConnectionToTarget(connection: ConnectionRecord) {
+    if (!connectionTargetSeatId) return;
+    setSeatDrafts((current) =>
+      current.map((seat) =>
+        seat.id === connectionTargetSeatId
+          ? {
+              ...seat,
+              enabled: true,
+              connectionId: connection.id,
+              model: defaultSeatModel(connection),
+            }
+          : seat,
+      ),
+    );
+    setFocusedConnectionId(connection.id);
+  }
+
+  function resetConnectionBuilder() {
+    setEditingConnectionId(null);
+    setProviderChoice("auto");
+    setDraftName("");
+    setDraftKey("");
+  }
+
+  function openConnectionManager(seatId?: string, connectionId?: string) {
+    setConnectionTargetSeatId(seatId ?? null);
+    setFocusedConnectionId(connectionId ?? null);
+    setPendingDisconnectId(null);
+    setConnectionError("");
+    resetConnectionBuilder();
+    setConnectionOpen(true);
+  }
+
+  function closeConnectionManager() {
+    setConnectionOpen(false);
+    setConnectionTargetSeatId(null);
+    setFocusedConnectionId(null);
+    setPendingDisconnectId(null);
+    setConnectionError("");
+    resetConnectionBuilder();
+  }
+
+  function beginKeyReplacement(connection: ConnectionRecord) {
+    if (connection.source !== "session") return;
+    setEditingConnectionId(connection.id);
+    setFocusedConnectionId(connection.id);
+    setProviderChoice(connection.provider);
+    setDraftName(connection.name);
+    setDraftKey("");
+    setPendingDisconnectId(null);
+    setConnectionError("");
+  }
+
+  async function verifyConnection(provider: ProviderId, apiKey: string) {
+    const response = await fetch("/api/connections/models", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ provider, apiKey }),
     });
-    if (!isWorkspaceConnected(provider)) {
-      setActiveProviders((current) => current.filter((item) => item !== provider));
+    const body = (await response.json().catch(() => ({}))) as {
+      error?: string;
+      provider?: ProviderId;
+      models?: ModelOption[];
+    };
+    if (!response.ok || body.provider !== provider || !Array.isArray(body.models)) {
+      throw new Error(body.error ?? `Connection verification failed (${response.status}).`);
     }
+    return body.models;
+  }
+
+  function updateConnectionModels(connectionId: string, models: ModelOption[]) {
+    setSessionConnections((current) =>
+      current.map((connection) =>
+        connection.id === connectionId ? { ...connection, models } : connection,
+      ),
+    );
+    setSeatDrafts((current) =>
+      current.map((seat) => {
+        if (seat.connectionId !== connectionId) return seat;
+        const modelStillAvailable = models.some((model) => model.id === seat.model);
+        return modelStillAvailable
+          ? seat
+          : { ...seat, model: models.length === 1 ? models[0].id : "" };
+      }),
+    );
+  }
+
+  async function saveConnection(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    setConnectionError("");
+    const apiKey = draftKey.trim();
+    if (!effectiveProvider) {
+      setConnectionError("This key prefix is ambiguous. Choose its API provider first.");
+      return;
+    }
+    if (apiKey.length < 8 || apiKey.length > 512 || /\s/.test(apiKey)) {
+      setConnectionError("The API key does not look complete.");
+      return;
+    }
+    setDiscoveringModels(true);
+    try {
+      const models = await verifyConnection(effectiveProvider, apiKey);
+      if (editingConnection) {
+        const replacement: ConnectionRecord = {
+          ...editingConnection,
+          name: draftName.trim() || editingConnection.name,
+          apiKey,
+          models,
+        };
+        setSessionConnections((current) =>
+          current.map((connection) =>
+            connection.id === replacement.id ? replacement : connection,
+          ),
+        );
+        setSeatDrafts((current) =>
+          current.map((seat) => {
+            if (seat.connectionId !== replacement.id) return seat;
+            const modelStillAvailable = models.some((model) => model.id === seat.model);
+            return modelStillAvailable
+              ? seat
+              : { ...seat, model: defaultSeatModel(replacement) };
+          }),
+        );
+        resetConnectionBuilder();
+        return;
+      }
+      const ordinal = sessionConnections.filter(
+        (connection) => connection.provider === effectiveProvider,
+      ).length + 1;
+      const connection: ConnectionRecord = {
+        id: createConnectionId(effectiveProvider),
+        provider: effectiveProvider,
+        name: draftName.trim() || `${providerUi[effectiveProvider].label} ${ordinal}`,
+        source: "session",
+        apiKey,
+        models,
+      };
+      setSessionConnections((current) => [...current, connection]);
+      setSeatDrafts((current) => {
+        const firstOpen = current.find((seat) => seat.enabled && !seat.connectionId)?.id;
+        const targetSeatId = connectionTargetSeatId ?? firstOpen;
+        return current.map((seat) =>
+          seat.id === targetSeatId
+            ? {
+                ...seat,
+                enabled: true,
+                connectionId: connection.id,
+                model: defaultSeatModel(connection),
+              }
+            : seat,
+        );
+      });
+      setFocusedConnectionId(connection.id);
+      setConnectionTargetSeatId(null);
+      resetConnectionBuilder();
+    } catch (connectionFailure) {
+      setConnectionError(safeClientError(connectionFailure));
+    } finally {
+      setDiscoveringModels(false);
+    }
+  }
+
+  async function reloadConnectionModels(connection: ConnectionRecord) {
+    if (connection.source !== "session" || !connection.apiKey || loadingConnectionId) return;
+    setConnectionError("");
+    setLoadingConnectionId(connection.id);
+    setFocusedConnectionId(connection.id);
+    try {
+      const models = await verifyConnection(connection.provider, connection.apiKey);
+      updateConnectionModels(connection.id, models);
+    } catch (reloadFailure) {
+      setConnectionError(safeClientError(reloadFailure));
+    } finally {
+      setLoadingConnectionId(null);
+    }
+  }
+
+  function removeSessionConnection(connectionId: string) {
+    setSessionConnections((current) => current.filter((item) => item.id !== connectionId));
+    setSeatDrafts((current) =>
+      current.map((seat) =>
+        seat.connectionId === connectionId ? { ...seat, connectionId: "", model: "" } : seat,
+      ),
+    );
+    if (editingConnectionId === connectionId) resetConnectionBuilder();
+    if (focusedConnectionId === connectionId) setFocusedConnectionId(null);
+    setPendingDisconnectId(null);
+  }
+
+  function replaceMeetingRecords(nextRecords: MeetingRecord[]) {
+    meetingRecordsRef.current = nextRecords;
+    setMeetingRecords(nextRecords);
+    try {
+      window.localStorage.setItem(meetingHistoryKey, JSON.stringify(nextRecords));
+      setHistoryError("");
+    } catch {
+      setHistoryError("This browser could not update meeting history.");
+    }
+  }
+
+  function saveCurrentMeetingNow() {
+    if (!historyReady || !currentRoomId || iteration === 0 || transcript.length === 0) return;
+    replaceMeetingRecords(
+      upsertMeetingRecord(meetingRecordsRef.current, {
+        version: 1,
+        id: currentRoomId,
+        objective: objective.trim() || "Untitled meeting",
+        stage: memo ? "decision" : "meeting",
+        transcript,
+        memo,
+        decision,
+        usage,
+        iteration,
+        participants: currentParticipants,
+        createdAt: currentRoomCreatedAt,
+        updatedAt: new Date().toISOString(),
+      }),
+    );
+  }
+
+  function openMeetingRecord(roomId: string) {
+    if (running) return;
+    saveCurrentMeetingNow();
+    const record = meetingRecordsRef.current.find((item) => item.id === roomId);
+    if (!record) return;
+
+    setCurrentRoomId(record.id);
+    setCurrentRoomCreatedAt(record.createdAt);
+    setCurrentParticipants(record.participants);
+    setObjective(record.objective);
+    setTranscript(record.transcript);
+    setMemo(record.memo);
+    setDecision(record.decision);
+    setUsage(record.usage);
+    setIteration(record.iteration);
+    setPhase(record.memo ? decisionLabel(record.decision) : "Saved meeting");
+    setPhaseKey(latestPhase(record.transcript));
+    setPinnedMessageId(null);
+    setTranscriptMode(record.memo ? "overview" : "focus");
+    setError("");
+    setStage(record.memo ? "decision" : "meeting");
+    setPendingDeleteRoomId(null);
+    setHistoryOpen(false);
+  }
+
+  function deleteMeetingRecord(roomId: string) {
+    if (running && currentRoomId === roomId) return;
+    const nextRecords = meetingRecordsRef.current.filter((item) => item.id !== roomId);
+    replaceMeetingRecords(nextRecords);
+    setPendingDeleteRoomId(null);
+    if (currentRoomId === roomId) createNewMeeting(false);
+  }
+
+  function createNewMeeting(preserveCurrent = true) {
+    if (running) return;
+    if (preserveCurrent) saveCurrentMeetingNow();
+    const now = new Date().toISOString();
+    setCurrentRoomId(createRoomId());
+    setCurrentRoomCreatedAt(now);
+    setCurrentParticipants([]);
+    setObjective("");
+    setTranscript([]);
+    setMemo("");
+    setUsage(emptyUsage);
+    setDecision("waiting");
+    setIteration(0);
+    setPhase("Awaiting agenda");
+    setPhaseKey("agenda");
+    setError("");
+    setPinnedMessageId(null);
+    setTranscriptMode("focus");
+    setStage("agenda");
+    setPendingDeleteRoomId(null);
+    setHistoryOpen(false);
   }
 
   function submitMeeting(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
     if (!canStart) return;
+    if (iteration > 0) {
+      saveCurrentMeetingNow();
+      const now = new Date().toISOString();
+      setCurrentRoomId(createRoomId());
+      setCurrentRoomCreatedAt(now);
+    }
     setTranscript([]);
     setMemo("");
     setUsage(emptyUsage);
@@ -289,6 +675,17 @@ export default function Home() {
     setIteration(nextIteration);
 
     if (nextIteration === 1) {
+      setCurrentParticipants(
+        seats.map((seat) => {
+          const connection = connectionById.get(seat.connectionId);
+          return {
+            provider: seat.provider,
+            providerName: connection?.name ?? providerUi[seat.provider].label,
+            model: seat.model,
+            role: seat.role,
+          };
+        }),
+      );
       setTranscript([
         {
           id: `host-${Date.now()}`,
@@ -305,9 +702,9 @@ export default function Home() {
 
     const connections = Object.fromEntries(
       seats.flatMap((seat) => {
-        const apiKey = sessionKeys[seat.provider];
-        return apiKey
-          ? [[seat.provider, { apiKey, model: models[seat.provider].trim() }]]
+        const connection = connectionById.get(seat.connectionId);
+        return connection?.source === "session" && connection.apiKey
+          ? [[connection.id, { provider: connection.provider, apiKey: connection.apiKey }]]
           : [];
       }),
     );
@@ -355,13 +752,12 @@ export default function Home() {
       return;
     }
     if (event.type === "agent.start") {
-      const providerName = providers.find((provider) => provider.id === event.provider)?.name;
       setTranscript((current) => [
         ...current,
         {
           id: event.id,
           provider: event.provider,
-          providerName: providerName ?? providerUi[event.provider].label,
+          providerName: event.connectionName,
           role: event.role,
           model: event.model,
           phase: event.phase,
@@ -420,6 +816,7 @@ export default function Home() {
 
   function resetRoom() {
     if (running) return;
+    saveCurrentMeetingNow();
     setTranscript([]);
     setMemo("");
     setUsage(emptyUsage);
@@ -451,7 +848,7 @@ export default function Home() {
         </button>
 
         <nav className="stage-nav" aria-label="Meeting stages">
-          <button type="button" className={connectedCount >= 2 ? "complete" : "active"} onClick={() => setConnectionOpen(true)}>
+          <button type="button" className={readySeatCount >= 2 ? "complete" : "active"} onClick={() => openConnectionManager()}>
             <span>1</span> Setup
           </button>
           <button type="button" className={stage === "agenda" ? "active" : transcript.length ? "complete" : ""} onClick={() => !running && setStage("agenda")}>
@@ -466,12 +863,15 @@ export default function Home() {
         </nav>
 
         <div className="header-actions">
-          <button className="quiet-button" type="button" onClick={() => setProjectOpen(true)}>
+          <button className="quiet-button meeting-history-button" type="button" onClick={() => setHistoryOpen(true)}>
+            Meetings <span>{meetingRecords.length}</span>
+          </button>
+          <button className="quiet-button project-button" type="button" onClick={() => setProjectOpen(true)}>
             Project
           </button>
-          <button className="connection-button" type="button" onClick={() => setConnectionOpen(true)}>
-            <span className={connectedCount >= 2 ? "status-dot ready" : "status-dot"} />
-            {connectedCount}/3 connected
+          <button className="connection-button" type="button" onClick={() => openConnectionManager()}>
+            <span className={readySeatCount >= 2 ? "status-dot ready" : "status-dot"} />
+            {connections.length} connection{connections.length === 1 ? "" : "s"}
           </button>
         </div>
       </header>
@@ -500,9 +900,9 @@ export default function Home() {
                 <span>Discuss only</span>
                 <span>2 rounds maximum</span>
               </div>
-              {connectedCount < 2 && !configLoading ? (
-                <button className="connection-callout" type="button" onClick={() => setConnectionOpen(true)}>
-                  Connect at least two models before opening the room
+              {readySeatCount < 2 && !configLoading ? (
+                <button className="connection-callout" type="button" onClick={() => openConnectionManager()}>
+                  Add one connection, then compose at least two model seats
                 </button>
               ) : null}
               {error ? <p className="inline-error">{error}</p> : null}
@@ -512,47 +912,90 @@ export default function Home() {
               <div className="panel-heading">
                 <div>
                   <span className="section-kicker">Room composition</span>
-                  <h2>{seats.length} active seats</h2>
+                  <h2>{seats.length} seats ready</h2>
                 </div>
-                <button type="button" className="text-button" onClick={() => setConnectionOpen(true)}>
+                <button type="button" className="text-button" onClick={() => openConnectionManager()}>
                   Manage
                 </button>
               </div>
 
               <div className="seat-list">
-                {providerIds.map((provider) => {
-                  const ui = providerUi[provider];
-                  const connected = isConnected(provider);
-                  const checked = activeProviders.includes(provider);
+                {seatDrafts.map((seat, index) => {
+                  const connection = connectionById.get(seat.connectionId);
+                  const ui = connection ? providerUi[connection.provider] : null;
                   return (
-                    <article className={`seat-row ${ui.color} ${checked ? "selected" : ""}`} key={provider}>
-                      <button
-                        className="seat-selector"
-                        type="button"
-                        disabled={!connected}
-                        onClick={() => toggleProvider(provider)}
-                        aria-pressed={checked}
-                      >
-                        <span className="avatar">{ui.initial}</span>
+                    <article className={`seat-row ${ui?.color ?? ""} ${seat.enabled ? "selected" : ""}`} key={seat.id}>
+                      <div className="seat-selector">
+                        <span className="avatar">{ui?.initial ?? index + 1}</span>
                         <span className="seat-identity">
-                          <strong>{ui.label}</strong>
-                          <small>{connected ? models[provider] : "Connection required"}</small>
+                          <strong>Seat {index + 1}</strong>
+                          <small>{connection ? `${connection.name} / ${seat.model || "Choose model"}` : "Choose a reusable connection"}</small>
                         </span>
-                        <span className={`seat-check ${checked ? "checked" : ""}`}>{checked ? "On" : "Off"}</span>
-                      </button>
-                      <label>
-                        <span>Role</span>
+                        <button
+                          className={`seat-check ${seat.enabled ? "checked" : ""}`}
+                          type="button"
+                          onClick={() => updateSeat(seat.id, { enabled: !seat.enabled })}
+                          aria-pressed={seat.enabled}
+                          disabled={running}
+                        >
+                          {seat.enabled ? "On" : "Off"}
+                        </button>
+                      </div>
+                      <div className="seat-fields">
+                        <div className="seat-field">
+                          <div className="field-label-row">
+                            <label htmlFor={`${seat.id}-connection`}>Connection</label>
+                            <button
+                              type="button"
+                              onClick={() => openConnectionManager(seat.id, connection?.id)}
+                              disabled={running}
+                            >
+                              Manage
+                            </button>
+                          </div>
+                          <select
+                            id={`${seat.id}-connection`}
+                            value={seat.connectionId}
+                            onChange={(event) => chooseSeatConnection(seat.id, event.target.value)}
+                            disabled={!seat.enabled || running}
+                          >
+                            <option value="">Choose connection</option>
+                            {connections.map((item) => (
+                              <option value={item.id} key={item.id}>
+                                {item.name} · {providerUi[item.provider].label}
+                              </option>
+                            ))}
+                            <option value="__add__">Add new connection…</option>
+                          </select>
+                        </div>
+                        <label>
+                          <span>Model</span>
+                          <select
+                            value={seat.model}
+                            onChange={(event) => updateSeat(seat.id, { model: event.target.value })}
+                            disabled={!seat.enabled || !connection || running}
+                          >
+                            {!connection ? <option value="">Choose connection first</option> : null}
+                            {connection && connection.models.length > 1 ? <option value="">Choose model</option> : null}
+                            {connection?.models.map((model) => (
+                              <option value={model.id} key={model.id}>{modelOptionLabel(model)}</option>
+                            ))}
+                          </select>
+                        </label>
+                        <label>
+                          <span>Role</span>
                         <select
-                          value={roles[provider]}
-                          onChange={(event) => updateRole(provider, event.target.value as RoleId)}
-                          disabled={!checked || running}
+                            value={seat.role}
+                            onChange={(event) => updateSeat(seat.id, { role: event.target.value as RoleId })}
+                            disabled={!seat.enabled || running}
                         >
                           {roleIds.map((role) => (
                             <option value={role} key={role}>{roleLabels[role]}</option>
                           ))}
                         </select>
-                      </label>
-                      <p>{roleBriefs[roles[provider]]}</p>
+                        </label>
+                      </div>
+                      <p>{roleBriefs[seat.role]}</p>
                     </article>
                   );
                 })}
@@ -704,10 +1147,13 @@ export default function Home() {
                 <h2>The room advises. You decide.</h2>
                 <p>Approve the artifact, reject it, or spend the single remaining revision round on named objections.</p>
                 <div className="decision-actions">
-                  <button className="approve-button" type="button" onClick={() => setDecision("approved")} disabled={running || decision !== "pending"}>Approve memo</button>
-                  <button type="button" onClick={() => void runMeeting(2, memo)} disabled={running || decision !== "pending" || iteration !== 1 || !memo}>Request revision</button>
-                  <button className="reject-button" type="button" onClick={() => setDecision("rejected")} disabled={running || decision !== "pending"}>Reject memo</button>
+                  <button className="approve-button" type="button" onClick={() => setDecision("approved")} disabled={running || decision !== "pending"}>{decision === "approved" ? "Memo approved" : "Approve memo"}</button>
+                  <button type="button" onClick={() => void runMeeting(2, memo)} disabled={running || decision !== "pending" || iteration !== 1 || !memo || !roomCompositionMatches}>Request revision</button>
+                  <button className="reject-button" type="button" onClick={() => setDecision("rejected")} disabled={running || decision !== "pending"}>{decision === "rejected" ? "Memo rejected" : "Reject memo"}</button>
                 </div>
+                {decision === "pending" && iteration === 1 && !roomCompositionMatches ? (
+                  <p className="revision-note">Reconnect seats with the original providers, models, and roles to request a revision.</p>
+                ) : null}
               </section>
               <section className="usage-summary">
                 <span className="section-kicker">Room usage</span>
@@ -719,23 +1165,85 @@ export default function Home() {
                 </dl>
                 <p>Estimate only. Provider billing is authoritative.</p>
               </section>
-              <button className="new-meeting-button" type="button" onClick={resetRoom} disabled={running}>New meeting</button>
+              <button className="new-meeting-button" type="button" onClick={() => createNewMeeting()} disabled={running}>New meeting</button>
               {error ? <p className="inline-error">{error}</p> : null}
             </aside>
           </section>
         ) : null}
       </section>
 
-      {connectionOpen ? (
-        <div className="modal-backdrop" role="presentation">
-          <form className="connection-dialog" role="dialog" aria-modal="true" aria-labelledby="connections-title" onSubmit={saveConnections}>
+      {historyOpen ? (
+        <div className="modal-backdrop history-backdrop" role="presentation">
+          <aside className="history-drawer" role="dialog" aria-modal="true" aria-labelledby="meeting-history-title">
             <header className="dialog-header">
               <div>
-                <span className="section-kicker">Setup</span>
-                <h2 id="connections-title">Model connections</h2>
-                <p>Keys entered here live only in this page and are cleared on refresh.</p>
+                <span className="section-kicker">Local meeting archive</span>
+                <h2 id="meeting-history-title">Meetings</h2>
+                <p>Transcripts and decisions saved in this browser.</p>
               </div>
-              <button type="button" className="quiet-button" onClick={() => setConnectionOpen(false)}>Close</button>
+              <button type="button" className="quiet-button" onClick={() => setHistoryOpen(false)}>Close</button>
+            </header>
+            <div className="history-toolbar">
+              <span>{meetingRecords.length} saved</span>
+              <button className="primary-button" type="button" onClick={() => createNewMeeting()} disabled={running}>New meeting</button>
+            </div>
+            <div className="history-list">
+              {meetingRecords.length === 0 ? (
+                <div className="empty-history">
+                  <strong>No meeting records yet</strong>
+                  <span>Your first meeting will appear here as soon as it starts.</span>
+                </div>
+              ) : meetingRecords.map((record) => {
+                const deletePending = pendingDeleteRoomId === record.id;
+                return (
+                  <article className={`history-row ${currentRoomId === record.id ? "active" : ""}`} key={record.id}>
+                    <button
+                      className="history-record-button"
+                      type="button"
+                      onClick={() => openMeetingRecord(record.id)}
+                      disabled={running}
+                      aria-current={currentRoomId === record.id ? "page" : undefined}
+                    >
+                      <span className={`history-status ${record.decision}`} />
+                      <span className="history-record-copy">
+                        <strong>{record.objective}</strong>
+                        <small>{formatRoomDate(record.updatedAt)} · {record.participants.length} seats · {meetingRecordStatus(record)}</small>
+                      </span>
+                    </button>
+                    <div className="history-row-actions">
+                      {deletePending ? (
+                        <>
+                          <span>Delete this record?</span>
+                          <button className="history-delete-confirm" type="button" onClick={() => deleteMeetingRecord(record.id)}>Delete</button>
+                          <button type="button" onClick={() => setPendingDeleteRoomId(null)}>Cancel</button>
+                        </>
+                      ) : (
+                        <button type="button" onClick={() => setPendingDeleteRoomId(record.id)} disabled={running && currentRoomId === record.id}>Delete</button>
+                      )}
+                    </div>
+                  </article>
+                );
+              })}
+            </div>
+            <footer className="history-footer">
+              <strong>Credentials are excluded.</strong>
+              <span>API keys and session connections still clear on refresh. Account sync and cloud recovery are not implemented yet.</span>
+              {historyError ? <em>{historyError}</em> : null}
+            </footer>
+          </aside>
+        </div>
+      ) : null}
+
+      {connectionOpen ? (
+        <div className="modal-backdrop" role="presentation">
+          <section className="connection-dialog" role="dialog" aria-modal="true" aria-labelledby="connections-title">
+            <header className="dialog-header">
+              <div>
+                <span className="section-kicker">Setup / Connection library</span>
+                <h2 id="connections-title">{targetSeatNumber ? `Manage Seat ${targetSeatNumber}` : "API connections"}</h2>
+                <p>{targetSeatNumber ? "Choose an existing connection or add a new one for this seat." : "Add and manage reusable provider connections in one place."}</p>
+              </div>
+              <button type="button" className="quiet-button" onClick={closeConnectionManager}>Close</button>
             </header>
 
             <div className="privacy-note">
@@ -743,53 +1251,125 @@ export default function Home() {
               <span>Sent only to this site&apos;s meeting endpoint for immediate provider calls. Never placed in URLs, transcripts, or browser storage.</span>
             </div>
 
+            <form className="connection-builder" onSubmit={saveConnection}>
+              <label>
+                <span>Connection name</span>
+                <input
+                  type="text"
+                  value={draftName}
+                  onChange={(event) => setDraftName(event.target.value)}
+                  placeholder={editingConnection?.name ?? "Optional nickname"}
+                  maxLength={60}
+                  disabled={discoveringModels}
+                />
+              </label>
+              <label>
+                <span>API provider</span>
+                <select
+                  value={providerChoice}
+                  onChange={(event) => setProviderChoice(event.target.value as ProviderChoice)}
+                  disabled={discoveringModels || Boolean(editingConnection)}
+                >
+                  <option value="auto">Auto-detect when possible</option>
+                  {providerIds.map((provider) => (
+                    <option value={provider} key={provider}>{providerUi[provider].label}</option>
+                  ))}
+                </select>
+              </label>
+              <label className="key-field">
+                <span>{editingConnection ? "Replacement API key" : "API key"}</span>
+                <input
+                  type="password"
+                  value={draftKey}
+                  onChange={(event) => setDraftKey(event.target.value)}
+                  placeholder={effectiveProvider ? providerUi[effectiveProvider].keyHint : "Paste provider API key"}
+                  autoComplete="off"
+                  spellCheck={false}
+                  disabled={discoveringModels}
+                />
+              </label>
+              <div className="connection-builder-actions">
+                <button className="primary-button" type="submit" disabled={discoveringModels || draftKey.trim().length < 8}>
+                  {discoveringModels ? "Loading models..." : editingConnection ? "Verify replacement" : "Verify & add"}
+                </button>
+                {editingConnection ? <button className="text-button" type="button" onClick={resetConnectionBuilder}>Cancel</button> : null}
+              </div>
+              <small className={effectiveProvider ? "detection-note detected" : "detection-note"}>
+                {editingConnection
+                  ? "The current key stays active unless this replacement verifies successfully."
+                  : providerChoice !== "auto"
+                  ? `${providerUi[providerChoice].label} selected manually`
+                  : effectiveProvider
+                    ? `${providerUi[effectiveProvider].label} detected from key format`
+                    : "Unknown formats stay local until you choose a provider"}
+              </small>
+            </form>
+
             <div className="connection-list">
-              {providerIds.map((provider) => {
-                const ui = providerUi[provider];
-                const workspaceConnected = isWorkspaceConnected(provider);
-                const sessionConnected = isSessionConnected(provider);
+              {connections.length === 0 ? (
+                <div className="empty-connections">
+                  <strong>No verified connections yet</strong>
+                  <span>One connection can power several seats and models.</span>
+                </div>
+              ) : connections.map((connection) => {
+                const ui = providerUi[connection.provider];
+                const usedSeats = seatDrafts.flatMap((seat, index) =>
+                  seat.connectionId === connection.id ? [`Seat ${index + 1}`] : [],
+                );
+                const disconnectPending = pendingDisconnectId === connection.id;
                 return (
-                  <section className={`connection-row ${ui.color}`} key={provider}>
+                  <section className={`connection-row ${ui.color} ${focusedConnectionId === connection.id ? "focused" : ""}`} key={connection.id}>
                     <div className="connection-identity">
                       <span className="avatar">{ui.initial}</span>
                       <span>
-                        <strong>{ui.label}</strong>
-                        <small>{sessionConnected ? "Connected for this page" : workspaceConnected ? "Managed by workspace" : "Not connected"}</small>
+                        <strong>{connection.name}</strong>
+                        <small>{connection.source === "session" ? "Verified for this page" : "Managed by workspace"}</small>
                       </span>
                     </div>
-                    <label>
-                      <span>API key</span>
-                      <input
-                        type="password"
-                        value={draftKeys[provider]}
-                        onChange={(event) => setDraftKeys((current) => ({ ...current, [provider]: event.target.value }))}
-                        placeholder={sessionConnected ? "Enter a new key to replace it" : workspaceConnected ? "Workspace key is active" : ui.keyHint}
-                        autoComplete="off"
-                        spellCheck={false}
-                        disabled={workspaceConnected && !sessionConnected}
-                      />
-                    </label>
-                    <label>
-                      <span>Model id</span>
-                      <input
-                        type="text"
-                        value={models[provider]}
-                        onChange={(event) => setModels((current) => ({ ...current, [provider]: event.target.value }))}
-                        spellCheck={false}
-                        disabled={workspaceConnected && !sessionConnected}
-                      />
-                    </label>
-                    {sessionConnected ? <button className="disconnect-button" type="button" onClick={() => removeSessionConnection(provider)}>Disconnect</button> : <span className="billing-owner">Billed by {ui.label}</span>}
+                    <div className="connection-model-summary">
+                      <strong>{connection.models.length}</strong>
+                      <span>available model{connection.models.length === 1 ? "" : "s"}</span>
+                      <small>{usedSeats.length ? `Used by ${usedSeats.join(", ")}` : "Not assigned to a seat"}</small>
+                    </div>
+                    <span className="billing-owner">Billed by {ui.label}</span>
+                    {disconnectPending ? (
+                      <div className="disconnect-confirm">
+                        <span>{usedSeats.length ? `Unassign ${usedSeats.join(", ")}?` : "Remove this connection?"}</span>
+                        <button className="disconnect-button" type="button" onClick={() => removeSessionConnection(connection.id)}>Confirm</button>
+                        <button className="text-button" type="button" onClick={() => setPendingDisconnectId(null)}>Cancel</button>
+                      </div>
+                    ) : (
+                      <div className="connection-actions">
+                        {targetSeatNumber ? (
+                          <button
+                            type="button"
+                            onClick={() => assignConnectionToTarget(connection)}
+                            disabled={seatDrafts[targetSeatNumber - 1]?.connectionId === connection.id}
+                          >
+                            {seatDrafts[targetSeatNumber - 1]?.connectionId === connection.id ? "Selected" : `Use for Seat ${targetSeatNumber}`}
+                          </button>
+                        ) : null}
+                        {connection.source === "session" ? (
+                          <>
+                            <button type="button" onClick={() => void reloadConnectionModels(connection)} disabled={Boolean(loadingConnectionId)}>
+                              {loadingConnectionId === connection.id ? "Reloading…" : "Reload models"}
+                            </button>
+                            <button type="button" onClick={() => beginKeyReplacement(connection)}>Replace key</button>
+                            <button className="disconnect-button" type="button" onClick={() => setPendingDisconnectId(connection.id)}>Disconnect</button>
+                          </>
+                        ) : <span className="managed-label">Workspace managed</span>}
+                      </div>
+                    )}
                   </section>
                 );
               })}
             </div>
             {connectionError ? <p className="inline-error">{connectionError}</p> : null}
             <footer className="dialog-footer">
-              <span>{projectedConnectedCount}/3 available after saving</span>
-              <button className="primary-button" type="submit" disabled={projectedConnectedCount < 2}>Save connections</button>
+              <span>{readySeatCount}/3 seats ready · keys clear on refresh</span>
+              <button className="primary-button" type="button" onClick={closeConnectionManager}>Done</button>
             </footer>
-          </form>
+          </section>
         </div>
       ) : null}
 
@@ -797,13 +1377,13 @@ export default function Home() {
         <div className="modal-backdrop project-backdrop" role="presentation">
           <aside className="project-drawer" role="dialog" aria-modal="true" aria-labelledby="project-title">
             <header className="dialog-header">
-              <div><span className="section-kicker">Project truth / v0.4</span><h2 id="project-title">Build the protocol, not a model carousel</h2></div>
+              <div><span className="section-kicker">Project truth / v0.6</span><h2 id="project-title">Build the protocol, not a model carousel</h2></div>
               <button type="button" className="quiet-button" onClick={() => setProjectOpen(false)}>Close</button>
             </header>
-            <p className="project-thesis">The current room can stream independent proposals, assigned reviews, and a bounded memo. Persistence, evidence verification, durable BYOK, custom endpoints, and execution remain future work.</p>
+            <p className="project-thesis">The room verifies session connections, reuses them across provider-neutral seats, and keeps a local archive of completed meeting content. Account sync, evidence verification, durable BYOK, custom endpoints, and execution remain future work.</p>
             <div className="milestone-stack">
               {milestones.map(([id, title, detail], index) => (
-                <article className={index === 1 ? "current" : ""} key={id}>
+                <article className={index === 1 || index === 3 ? "current" : ""} key={id}>
                   <span>{id}</span><div><strong>{title}</strong><p>{detail}</p></div>
                 </article>
               ))}
@@ -835,6 +1415,111 @@ async function readEvents(stream: ReadableStream<Uint8Array>, onEvent: (event: D
 function createRequestId() {
   if (typeof crypto.randomUUID === "function") return crypto.randomUUID();
   return `room-${Date.now()}-${Math.random().toString(36).slice(2, 12)}`;
+}
+
+function createRoomId() {
+  return `meeting-${createRequestId()}`;
+}
+
+function loadMeetingRecords(): MeetingRecord[] {
+  if (typeof window === "undefined") return [];
+  try {
+    const value = window.localStorage.getItem(meetingHistoryKey);
+    if (!value) return [];
+    const parsed: unknown = JSON.parse(value);
+    if (!Array.isArray(parsed)) return [];
+    return parsed
+      .filter(isMeetingRecord)
+      .map((record) => ({
+        ...record,
+        transcript: record.transcript.map((item) =>
+          item.status === "streaming" ? { ...item, status: "error" as const } : item,
+        ),
+      }))
+      .sort((a, b) => b.updatedAt.localeCompare(a.updatedAt))
+      .slice(0, meetingHistoryLimit);
+  } catch {
+    return [];
+  }
+}
+
+function isMeetingRecord(value: unknown): value is MeetingRecord {
+  if (!value || typeof value !== "object") return false;
+  const record = value as Partial<MeetingRecord>;
+  return (
+    record.version === 1 &&
+    typeof record.id === "string" &&
+    typeof record.objective === "string" &&
+    Array.isArray(record.transcript) &&
+    typeof record.memo === "string" &&
+    typeof record.iteration === "number" &&
+    Array.isArray(record.participants) &&
+    typeof record.createdAt === "string" &&
+    typeof record.updatedAt === "string" &&
+    Boolean(record.usage && typeof record.usage.inputTokens === "number")
+  );
+}
+
+function upsertMeetingRecord(records: MeetingRecord[], record: MeetingRecord) {
+  return [record, ...records.filter((item) => item.id !== record.id)]
+    .sort((a, b) => b.updatedAt.localeCompare(a.updatedAt))
+    .slice(0, meetingHistoryLimit);
+}
+
+function participantsMatchSeats(participants: ParticipantSnapshot[], seats: SeatRequest[]) {
+  if (participants.length < 2 || participants.length !== seats.length) return false;
+  const participantKeys = participants
+    .map((item) => `${item.provider}\u0000${item.model}\u0000${item.role}`)
+    .sort();
+  const seatKeys = seats
+    .map((item) => `${item.provider}\u0000${item.model}\u0000${item.role}`)
+    .sort();
+  return participantKeys.every((key, index) => key === seatKeys[index]);
+}
+
+function latestPhase(transcript: TranscriptItem[]) {
+  return transcript.at(-1)?.phase ?? "agenda";
+}
+
+function formatRoomDate(value: string) {
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return "Saved meeting";
+  return new Intl.DateTimeFormat("en-US", {
+    month: "short",
+    day: "numeric",
+    hour: "numeric",
+    minute: "2-digit",
+  }).format(date);
+}
+
+function meetingRecordStatus(record: MeetingRecord) {
+  if (record.decision === "approved") return "Approved";
+  if (record.decision === "rejected") return "Rejected";
+  if (record.memo) return "Decision pending";
+  return "Meeting saved";
+}
+
+function createConnectionId(provider: ProviderId) {
+  const suffix = typeof crypto.randomUUID === "function"
+    ? crypto.randomUUID()
+    : `${Date.now()}-${Math.random().toString(36).slice(2, 12)}`;
+  return `session-${provider}-${suffix}`;
+}
+
+function inferProvider(apiKey: string): ProviderId | null {
+  const value = apiKey.trim();
+  if (/^sk-ant-/i.test(value)) return "anthropic";
+  if (/^AIza/.test(value)) return "gemini";
+  if (/^sk-(?:proj-|svcacct-|admin-|[a-zA-Z0-9])/i.test(value)) return "openai";
+  return null;
+}
+
+function defaultSeatModel(connection: ConnectionRecord) {
+  return connection.models.length === 1 ? connection.models[0].id : "";
+}
+
+function modelOptionLabel(model: ModelOption) {
+  return model.name === model.id ? model.id : `${model.name} · ${model.id}`;
 }
 
 function mergeUsage(a: UsageSummary, b: UsageSummary): UsageSummary {

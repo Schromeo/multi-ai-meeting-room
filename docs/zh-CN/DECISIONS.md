@@ -59,3 +59,35 @@ Connection 管理凭证与供应商设置，Model 是连接提供的引擎，Rol
 ## D-015 大型前端修改前建立命名备份 - 已接受
 
 每次大型界面重构前创建 Git 备份标签，并在开发日志中记录恢复点，允许持续探索而不丢失已经验证的版本。
+
+## D-016 模型发现前必须显式验证 - 已接受
+
+会话连接只能使用用户明确选择的供应商，或高置信度的本地 Key 前缀提示，然后由用户触发一次服务端模型列表请求。无法判断的 Key 不得发给多家供应商试探。这样可以让凭证去向可检查，避免不必要的第三方披露，并确保席位只选择该连接实际返回的模型 ID。
+
+## D-017 一个连接库，席位只保存引用 - 已接受
+
+Setup 维护唯一的可复用 Connection Library。Seat 选择命名 Connection、该连接发现的一个 Model 和一个 Role；逐席 Manage 进入同一个连接库，不能复制第二套凭证编辑器。已保存的 Key 不回显、不原地编辑，只能在新 Key 验证成功后事务式替换。这样可以支持重复供应商和共享 Key，同时避免复制 Secret 或把复用连接误认为多枚凭证。
+
+## D-018 会议内容与凭证使用不同生命周期 - 已接受
+
+把浏览器本地的有限会议记录作为 M2.5 连续性切片，保存目标、发言、memo、决定、用量和供应商/模型/角色摘要；绝不保存 API Key、Connection ID 或包含凭证的连接记录。从恢复记录发起修订前，当前可用席位的供应商、模型和角色必须与原会议匹配。用户需要在新建会议后仍能查看旧推理，但会话 BYOK 仍必须在刷新时清除；将长期产物与临时权限分开，可以避免历史恢复偷偷恢复凭证，或用无关席位继续旧会议。
+
+## D-019 Human Chair 权限贯穿整个房间 - 已接受
+
+Discuss 房间支持 Auto、Checkpoints、Turn by turn 和 Raise Hand 暂停请求。人类输入追加为有范围、可审计的 Chair Directive，不能重写目标或旧消息；默认模式为 Checkpoints。只有最终批准按钮并不等于由人主持，用户需要在有限边界内添加约束、纠正、优先级、问题或 veto，同时不能为每条指令强制所有参与者付费回复“收到”。
+
+## D-020 Canonical State 与 Transcript、模型上下文分离 - 已接受
+
+公开原始回复供人和审计保存；确定性应用代码拥有有限 Canonical Meeting State；每个 agent 只接收相关状态和来源片段。模型只能提交经过验证的 Turn Envelope 与状态变更建议，不能直接拥有 canonical state。这样可以避免不断重放 transcript 带来的费用、延迟、重复和上下文退化，同时通过来源链保留 Claim、Dispute、假设、立场变化和人工选择。
+
+## D-021 系统角色显式且计费可见 - 已接受
+
+Participant Seat 负责实质贡献；Observer / Recorder 和 Final Synthesizer 是不占参与席位数量的独立系统角色，各自由用户选择 Connection 与 Model。Observer 只报告流程并创建 Round Brief，不能修改状态；Final Synthesizer 只组织版本化 Memo，不能删除分歧或批准 Memo。这样行政模型工作不会吞掉一个参与视角，也不会隐藏费用、供应商偏差和责任。
+
+## D-022 本地优先的 Append-only Room Store - 已接受
+
+用供应商无关 RoomStore 替换当前有限 localStorage 档案，第一实现使用浏览器 IndexedDB，保存 Room metadata、参与者快照、append-only Event、Canonical State Snapshot、Artifact 与 Usage。只有具备身份、房间所有权、删除、加密和同步策略后才加入 D1 Server Store。可恢复协议需要事务、schema version、事件恢复、来源链和产物版本；直接启用共享匿名服务端数据库会制造所有权与隐私问题。
+
+## D-023 最大轮数是边界，不是工作配额 - 已接受
+
+用户选择最大轮数而不是必须跑满的轮数。默认 2，普通范围 1～3，Advanced 硬上限 5。round、turn、token、time 和可运行席位等硬限制自动停止；重复、偏题、过早同质化和低 novelty 是 Monitor 软条件，在人工模式暂停，Auto 模式进入综合，但永远不能批准 Decision。这样既防止无限消耗，又避免一个可能出错的 Monitor 把正常收敛误判为循环并静默结束会议。

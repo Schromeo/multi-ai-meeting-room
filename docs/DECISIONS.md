@@ -106,3 +106,59 @@ Durable product and architecture choices live here. New entries are append-only.
 - **Date:** 2026-08-03
 - **Decision:** create a named Git backup tag before any major interface rewrite and record it in the development log.
 - **Reason:** frontend exploration is iterative; a clear restoration point protects validated behavior without freezing experimentation.
+
+## D-016 - Explicit Verification Before Model Discovery
+
+- **Status:** Accepted
+- **Date:** 2026-08-03
+- **Decision:** session connections use an explicitly selected provider or a high-confidence local key-prefix suggestion, followed by one user-triggered server-side model-list request. Ambiguous keys are never sent to multiple providers for detection.
+- **Reason:** provider inference is convenient but not an authentication standard. Explicit verification keeps credential routing inspectable, prevents unnecessary third-party disclosure, and gives seats only model IDs actually returned for that connection.
+
+## D-017 - One Connection Library, Seat-Level References
+
+- **Status:** Accepted
+- **Date:** 2026-08-03
+- **Decision:** Setup owns one reusable Connection Library. Seats select a named Connection, one of its discovered Models, and a Role; seat-level Manage opens the same library instead of creating a second credential editor. Stored keys are never displayed or edited in place, only transactionally replaced after verification.
+- **Reason:** credentials belong to billing and provider connections, not meeting participants. One source of truth supports repeated providers and shared keys without duplicating secrets or confusing a reused connection with multiple credentials.
+
+## D-018 - Meeting Content and Credentials Have Separate Lifecycles
+
+- **Status:** Accepted
+- **Date:** 2026-08-03
+- **Decision:** persist bounded meeting records in browser-local storage as an M2.5 continuity slice, including the objective, transcript, memo, decision, usage, and provider/model/role summaries. Never include API keys, connection IDs, or credential-bearing connection records. Revisions from a restored room require a currently available provider/model/role composition matching the saved room.
+- **Reason:** users need to open a new meeting without losing prior reasoning, while session BYOK must still clear on refresh. Separating durable artifacts from ephemeral authority prevents history recovery from silently restoring credentials or running an old room with unrelated seats.
+
+## D-019 - Human Chair Authority Exists Throughout the Room
+
+- **Status:** Accepted
+- **Date:** 2026-08-03
+- **Decision:** Discuss rooms support Auto, Checkpoints, and Turn-by-turn control modes plus a Raise Hand pause request. Human input is appended as scoped, auditable Chair Directives rather than rewriting the objective or prior messages. The default mode is Checkpoints.
+- **Reason:** a final approval button alone does not make the room human-chaired. The user needs bounded opportunities to add constraints, corrections, priorities, questions, or vetoes without forcing every participant to acknowledge each instruction in a new paid call.
+
+## D-020 - Canonical State Is Separate From Transcript and Model Context
+
+- **Status:** Accepted
+- **Date:** 2026-08-03
+- **Decision:** preserve raw published responses for people and audit, maintain a bounded Canonical Meeting State owned by deterministic application code, and build each agent request from only the relevant state and source excerpts. Models submit validated Turn Envelopes and proposed deltas; they never directly own canonical state.
+- **Reason:** replaying a growing transcript creates unnecessary cost, latency, repetition, and context degradation. A source-linked structured state preserves Claims, Disputes, assumptions, position changes, and human choices without erasing the original record.
+
+## D-021 - System Roles Are Explicit and Billable
+
+- **Status:** Accepted
+- **Date:** 2026-08-03
+- **Decision:** Participant Seats remain substantive contributors. Observer / Recorder and Final Synthesizer are separate system roles outside the participant Seat count, each with a user-selected Connection and Model. The Observer reports on process and creates a Round Brief but cannot mutate state; the Final Synthesizer organizes a versioned Memo but cannot remove disputes or approve it.
+- **Reason:** administrative model work must not consume a participant perspective or hide its cost. Explicit system roles keep responsibility, provider bias, and billing visible.
+
+## D-022 - Local-First Append-Only Room Store
+
+- **Status:** Accepted
+- **Date:** 2026-08-03
+- **Decision:** replace the current bounded localStorage archive with a provider-independent RoomStore backed first by browser IndexedDB. Persist Room metadata, participant snapshots, append-only Events, Canonical State Snapshots, Artifacts, and Usage entries. Add a D1-backed server store only after identity, room ownership, deletion, encryption, and synchronization policies exist.
+- **Reason:** the new resumable protocol requires transactions, schema versions, event recovery, source lineage, and artifact versions that a flat localStorage record cannot safely provide. Enabling a shared unauthenticated server database would create an ownership and privacy failure.
+
+## D-023 - Maximum Rounds Are Bounds, Not Work Quotas
+
+- **Status:** Accepted
+- **Date:** 2026-08-03
+- **Decision:** the user selects a maximum round budget, not a required number of rounds. The default is two, the standard range is one to three, and the advanced hard maximum is five. Hard round, turn, token, time, and runnable-seat limits stop automatically. Repetition, drift, premature homogenization, and low novelty are soft Monitor conditions that pause for the Chair or advance Auto mode to synthesis; they never approve a Decision.
+- **Reason:** more deliberation is not automatically better. Explicit hard limits prevent unbounded spend, while reversible soft stops avoid confusing legitimate convergence with a loop or letting a fallible Monitor silently end a valuable debate.

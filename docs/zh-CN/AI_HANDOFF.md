@@ -1,20 +1,23 @@
 # AI 交接说明
 
-最后更新：2026-08-03
+最后更新：2026-08-04
 
 ## 当前状态
 
-- 阶段：M2.1 连接与聚焦工作台已实现，等待真实供应商验收。
-- 已完成：三家统一适配；工作区 Secret 与当前页面 BYOK；逐连接模型 ID；token 流式输出；独立提案；交叉审阅；综合；一次追加修订；人工决定；用量估算；停止控制；设置/议题/会议/决定四阶段界面；发言聚焦与缩略总览；模拟端到端测试。
-- 未完成：生产 API Key、真实模型评测、加密永久 BYOK、重复供应商席位、持久化、证据系统、审计数据模型、执行连接器和比较评测。
-- 当前里程碑：M2.1 连接与费用护栏。
-- 下一决定：通过会话 BYOK 或工作区 Secret 连接两家供应商并完成第一次真实评测。
+- 阶段：v0.6 已实现 M2.1 连接流程、M2.2 可复用席位核心和 M2.5 第一个浏览器本地档案切片。M2.6 会议协议蓝图 v1 已完成文档。2026-08-04，真实基线 001 已用 OpenAI + Anthropic 走到 Human Gate。
+- 已完成：三家统一适配；工作区 Secret 与当前页面 BYOK；显式供应商选择和本地 Key 前缀提示；凭证验证和兼容模型发现；带命名、事务式 Key 替换、模型刷新、席位占用显示和确认断开的统一连接库；可复用连接；逐席连接管理；重复供应商席位与逐席模型/角色；token 流式输出；独立提案；交叉审阅；综合；一次追加修订；人工决定；用量估算；停止控制；四阶段界面；发言聚焦与缩略总览；保存发言、memo、决定、用量和席位摘要并支持切换、新建、删除的浏览器本地会议档案；模拟端到端测试。
+- 已批准但未实现：RoomStore 与 IndexedDB Event Store、Turn Envelope、Canonical Meeting State、Claim/Dispute 来源链、Auto/Checkpoints/Turn by turn、Raise Hand 与 Chair Directive、用户选择 Observer 与 Final Synthesizer、Round Brief、流程监测、最大轮数与多维预算、定向辩论、Meeting Whiteboard、带来源 Follow-up、版本化 Memo，以及身份完成后的 D1 持久化。
+- 真实证据：OpenAI `gpt-5-mini` 与 Anthropic `claude-haiku-4-5-20251001` 完成 5 次供应商调用，共 2,437 input tokens、3,424 output tokens、54 秒模型时间和 $0.032 提示性估算。Human Gate 仍待用户决定；报告见 `evaluations/2026-08-04-v0.6-live-baseline.md`。
+- 已知真实缺陷：OpenAI `gpt-4.1-mini` 能被发现，但拒绝适配器无条件发送的 `reasoning.effort`。房间在提案后安全停止，没有自动重试。
+- 其他未完成：生产 API Key、加密永久 BYOK、Skill 包、多样性指标、导出、证据系统、执行连接器和广泛比较评测。
+- 当前里程碑：关闭 OpenAI 可选参数兼容缺陷，记录命名 v0.6 备份，然后开始 M2.7 本地 Event Store。
+- 下一动作：让 OpenAI 可选生成参数具备能力判断或保守省略，增加回归断言，然后创建 v0.6 基线备份并实现 `RoomStore` 与 IndexedDB。
 - 线上地址：`https://multi-ai-meeting-room.schromeo.chatgpt.site`
 - 发布状态：线上仍为上一版本。v0.4 源码已推送并保存，但 Sites 自动生成的 `nodejs_compat` 标记与 2026-08-04 生效的平台默认值冲突；输入不变时不要重复部署。
 
 ## 每次开始工作前
 
-1. 阅读项目章程、本文件、决策记录、路线图、模型与代理蓝图和最新开发日志。
+1. 阅读项目章程、本文件、决策记录、路线图、会议协议蓝图、模型与代理蓝图和最新开发日志。
 2. 修改前检查工作区，保留用户已有改动。
 3. 说明本次工作推进哪个里程碑和完成条件。
 4. 确认该任务没有已经完成或被明确否决。
@@ -55,6 +58,10 @@
 验证已经实现的 Discuss 流程：用户提交目标，2–3 个模型独立流式提案，互相审阅指定主张，系统展示共识、分歧和未验证假设，最后生成保留异议的 memo，由人接受、修改、拒绝或批准额外一轮。
 
 M2 不包括联网研究、代码执行、通用插件或自治循环。密钥和默认模型见 `PROVIDER_CONFIGURATION.md`。
+
+## 已批准 Protocol v1 目标
+
+记录 v0.6 真实基线后，按顺序实现 M2.7～M2.12。先存储与状态契约，再编排器，最后重做界面。目标架构分离 Raw Transcript、Canonical Meeting State 和逐代理上下文；让人类 Chair 在会议中持续控制；加入显式付费 Observer 与 Final Synthesizer；后续 turn 只路由到明确分歧；并保存不含凭证的 append-only 本地事件历史。未来设计以 `MEETING_PROTOCOL_BLUEPRINT.md` 为准。
 
 ## 每次结束工作前
 

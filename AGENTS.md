@@ -6,7 +6,9 @@ This repository is the Multi-AI Meeting Room project. Before planning or changin
 2. `docs/AI_HANDOFF.md`
 3. `docs/DECISIONS.md`
 4. `docs/ROADMAP.md`
-5. The latest entries in `docs/DEVLOG.md`
+5. `docs/MEETING_PROTOCOL_BLUEPRINT.md`
+6. `docs/MODEL_AND_AGENT_BLUEPRINT.md`
+7. The latest entries in `docs/DEVLOG.md`
 
 Chinese quick-read mirrors live in `docs/zh-CN/`. English files are canonical if the two versions disagree, but any material documentation change must update both languages in the same change.
 

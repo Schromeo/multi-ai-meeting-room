@@ -1,5 +1,7 @@
 # Model and Agent Blueprint
 
+Meeting orchestration, structured state, context selection, budgets, persistence, and follow-up behavior are defined in [MEETING_PROTOCOL_BLUEPRINT.md](MEETING_PROTOCOL_BLUEPRINT.md). This document remains canonical for how connections, models, roles, skills, and seats compose.
+
 ## Product Principle
 
 The room orchestrates accountable perspectives, not vendor logos. Provider access, model engines, expert behavior, and meeting state must remain separate so the protocol can evolve without becoming a model marketplace.

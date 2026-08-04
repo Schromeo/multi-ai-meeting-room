@@ -14,13 +14,17 @@ The model defaults can be overridden with `OPENAI_MODEL`, `ANTHROPIC_MODEL`, and
 
 ## In-Product Session Connections
 
-The Connections dialog accepts a provider API key and model ID. This is an evaluation bridge, not durable secret storage:
+The Connections dialog accepts a provider and API key, verifies the credential through a server-side read-only model-list request, and returns compatible model IDs without returning the key. A recognized key prefix may suggest a provider locally, but ambiguous keys require explicit selection; the application never probes multiple providers to guess. This is an evaluation bridge, not durable secret storage:
 
 - the browser keeps the key only in React page memory;
 - the key is sent over the same-origin meeting request only for active seats;
 - the server uses it for immediate provider calls and does not persist or echo it;
 - refreshing or closing the page clears it;
 - durable BYOK is blocked on authentication, encrypted storage, ownership checks, rotation, and deletion.
+
+A verified Connection can be reused by multiple Seats. Each Seat independently selects one discovered Model and one provider-neutral Role. Model-list endpoints do not provide authoritative pricing, so the existing provider-level cost values remain rough display estimates.
+
+Setup is the single Connection Library. Seats reference named connections and never own or display raw keys. Seat-level Manage opens the same library scoped to that seat. A session connection can reload models, replace its key only after the replacement verifies successfully, or disconnect after confirming which seats will be unassigned.
 
 ## Cost Estimate Values
 

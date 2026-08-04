@@ -30,7 +30,10 @@ export const roleBriefs: Record<RoleId, string> = {
 };
 
 export type SeatRequest = {
+  id: string;
+  connectionId: string;
   provider: ProviderId;
+  model: string;
   role: RoleId;
 };
 
@@ -63,6 +66,9 @@ export type DiscussEvent =
   | {
       type: "agent.start";
       id: string;
+      seatId: string;
+      connectionId: string;
+      connectionName: string;
       provider: ProviderId;
       role: RoleId;
       model: string;
