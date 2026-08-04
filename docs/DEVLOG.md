@@ -29,7 +29,7 @@ This chronological log records shipped work, validation, limitations, and the ne
 - During generation, the existing live transcript may briefly show raw JSON until `agent.done` replaces it with the validated statement. Card-first streaming belongs to M2.11 interface work.
 - The current one-shot route now publishes bounded Canonical State and Claim IDs to review and synthesis prompts, but it still sends every accepted proposal/review statement within the request. M2.9 will split phases at safe boundaries; M2.10 will route later turns only to named Disputes.
 - Chair Directive, Human Choice, and Follow-up records are defined and validated, but their runtime workflows begin in M2.9 and M2.11.
-- Five duplicate copies of the English baseline room were created in this browser by the pre-fix development hot-reload behavior. They remain visible alongside the three original records because destructive archive cleanup requires explicit human confirmation.
+- After explicit human approval, the five duplicate English baseline rooms created by the pre-fix hot-reload behavior were deleted from the local archive. The latest English baseline and the two original Chinese meetings remain, restoring the archive to three records.
 - Repository-wide `tsc --noEmit` still requires the pre-existing Cloudflare ambient types; changed files pass the focused strict check.
 
 ### Next Action

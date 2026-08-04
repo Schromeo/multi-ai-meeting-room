@@ -27,7 +27,7 @@
 - 生成期间，现有实时 transcript 可能短暂显示原始 JSON，直到 `agent.done` 用经过验证的 statement 替换。Card-first 流式界面属于 M2.11。
 - 当前一次性 route 已把有限 Canonical State 与 Claim ID 发布给 review 和 synthesis prompt，但仍会在同一请求中发送所有已接受的 proposal/review statement。M2.9 会在安全边界拆分 phase；M2.10 再把后续 turn 只路由给明确 Dispute。
 - Chair Directive、Human Choice 与 Follow-up record 已定义并验证，但运行时流程分别从 M2.9 与 M2.11 开始。
-- 修复前的开发热更新在当前浏览器里创建了 5 条英文基线房间副本。它们与最初 3 条记录一起保留，因为清理档案属于破坏性操作，需要人类明确确认。
+- 获得人类明确批准后，修复前热更新创建的 5 条英文基线房间副本已从本地档案删除。最新一条英文基线和原有两条中文会议均保留，档案恢复为 3 条记录。
 - 仓库级 `tsc --noEmit` 仍需要既有的 Cloudflare ambient type；本次修改文件通过聚焦严格检查。
 
 ### 下一步
