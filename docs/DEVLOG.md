@@ -2,6 +2,35 @@
 
 This chronological log records shipped work, validation, limitations, and the next decision. It is not a place for uncommitted feature ideas; those belong in the roadmap or decision record.
 
+## 2026-08-04 - v0.7 - IndexedDB Local Event Store
+
+### Completed
+
+- Removed unconditional OpenAI `reasoning.effort` and `text.verbosity` request fields; the session-BYOK regression case now uses `gpt-4.1-mini` and asserts that neither optional field is sent.
+- Preserved the pre-storage baseline in commit `3298d40` and tag `backup/v0.6-live-baseline-2026-08-04` before changing persistence.
+- Added a strict credential-free `MeetingRecord` parser and provider-independent `RoomStore` backed by IndexedDB schema version 1.
+- Created `rooms`, `participants`, `events`, `stateSnapshots`, `artifacts`, `usage`, and `metadata` stores. Completed and failed turns become append-only events; state snapshots, versioned memo artifacts, usage, and participant snapshots are updated transactionally.
+- Migrated validated `multi-ai-meeting-room.history.v1` localStorage records exactly once and removed the legacy key only after the IndexedDB transaction committed.
+- Moved room loading, saving, deletion, and bounded 30-room pruning to the asynchronous store. API keys and credential-bearing Connection records remain session-only.
+
+### Validation
+
+- Production build, all seven automated tests, ESLint, the focused strict TypeScript check, and `git diff --check` passed with the bundled Node 22 runtime.
+- Browser migration recovered three existing meetings. The newest room reopened with its Decision Memo and exact 2,437 input / 3,424 output / $0.032 / 54-second usage summary intact across two reloads.
+- After reload, zero provider connections were restored and the browser console contained no warnings or errors.
+- The repository-wide `tsc --noEmit` remains blocked only by pre-existing missing Cloudflare ambient types in `db/index.ts` and `worker/index.ts`; the changed frontend and storage files pass the focused strict check.
+
+### Current Limitations
+
+- Persistence is local to one browser profile. Export, account ownership, server synchronization, conflict handling, and cross-device recovery are not implemented.
+- Events currently preserve raw agenda and completed/failed transcript turns; M2.8 has not yet introduced validated Turn Envelopes, Claims, Disputes, or the deterministic Canonical Reducer.
+- In-flight streaming deltas remain memory-only. A crash can discard an active partial turn, but cannot promote it to a completed event.
+- Transactional deletion is covered by implementation and source checks; browser migration testing intentionally preserved the user's three real records instead of deleting one.
+
+### Next Action
+
+Implement M2.8 Structured Meeting State: Turn Envelope validation, bounded cards, source-linked records, and a deterministic Canonical Reducer over the M2.7 event stream. Do not begin the larger interface redesign yet.
+
 ## 2026-08-04 - Evidence Baseline - First Live Two-Provider Room
 
 ### Completed

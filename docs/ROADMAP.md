@@ -4,12 +4,12 @@ Statuses: `Complete`, `Current`, `Planned`, `Deferred`.
 
 ## Current Position
 
-- **Local product version:** v0.6.
-- **Working baseline:** real streaming Discuss protocol, reusable model Seats, session BYOK, human decision gate, and browser-local meeting history.
+- **Local product version:** v0.7.
+- **Working baseline:** real streaming Discuss protocol, reusable model Seats, session BYOK, human decision gate, and a credential-free IndexedDB Event Store.
 - **Live evidence gate:** completed on 2026-08-04 with OpenAI `gpt-5-mini` plus Anthropic `claude-haiku-4-5-20251001`; see [Live Baseline 001](evaluations/2026-08-04-v0.6-live-baseline.md).
-- **Immediate implementation gate:** fix model-specific OpenAI optional parameters, create a named v0.6 backup, then begin M2.7.
-- **Approved next architecture:** Meeting Protocol Blueprint v1. It is documented but not implemented.
-- **Critical path:** live baseline -> local Event Store -> Canonical Meeting State -> resumable Chair-controlled orchestrator -> Observer and targeted debate -> whiteboard and Follow-up -> comparative evaluation.
+- **Immediate implementation gate:** M2.7 is complete; implement M2.8 Turn Envelope validation and Canonical Meeting State next.
+- **Approved next architecture:** Meeting Protocol Blueprint v1. Its M2.7 persistence foundation is implemented; the structured protocol remains planned.
+- **Critical path:** live baseline -> local Event Store (complete) -> Canonical Meeting State -> resumable Chair-controlled orchestrator -> Observer and targeted debate -> whiteboard and Follow-up -> comparative evaluation.
 
 The protocol refactor must not begin with a large interface rewrite. Storage and state contracts come first; a named backup is required before major frontend work.
 
@@ -47,9 +47,9 @@ The protocol refactor must not begin with a large interface rewrite. Storage and
 
 **Exit criteria:** one objective can complete the full Discuss protocol without simulated agent text, duplicate calls, or manual database repair.
 
-**Implementation progress:** all listed product and protocol surfaces are implemented and covered by a mocked end-to-end stream test. A real OpenAI plus Anthropic room completed proposal, cross-review, synthesis, usage reporting, persistence, and the Human Gate on 2026-08-04. M2 remains current while the OpenAI adapter's model-specific optional parameters are made capability-aware and the comparison evidence is broadened.
+**Implementation progress:** all listed product and protocol surfaces are implemented and covered by a mocked end-to-end stream test. A real OpenAI plus Anthropic room completed proposal, cross-review, synthesis, usage reporting, persistence, and the Human Gate on 2026-08-04. The OpenAI adapter now omits unsupported optional generation controls, and room history uses IndexedDB. M2 remains current while the comparison evidence is broadened and the approved structured protocol is implemented.
 
-## M2.1 - Connection and Cost Guardrails - Current
+## M2.1 - Connection and Cost Guardrails - Complete
 
 **Deliverables:** in-product session BYOK, workspace-managed connection status, a unified connection library, explicit provider selection, advisory provider detection, credential verification, compatible-model discovery, connection naming, transactional key replacement, model reload, confirmed disconnect, connection-source labels, preflight call counts, and explicit non-persistence language.
 
@@ -81,7 +81,7 @@ The protocol refactor must not begin with a large interface rewrite. Storage and
 
 **Exit criteria:** a room can be resumed after a new browser session with its audit history intact.
 
-**Implementation progress:** meeting transcripts, memos, human decisions, usage, and participant summaries now persist in a bounded browser-local archive. Users can create a new room without deleting prior records, reopen saved records, and delete them explicitly. Credentials are excluded. Account ownership, server sync, durable event storage, export, and cross-device recovery remain.
+**Implementation progress:** meeting transcripts, memos, human decisions, usage, participant snapshots, append-only completed/failed turn events, state snapshots, and memo artifacts now persist in a bounded browser-local IndexedDB archive. Users can create a new room without deleting prior records, reopen saved records, and delete them transactionally. Credentials are excluded. Account ownership, server sync, export, and cross-device recovery remain.
 
 ## M2.6 - Meeting Protocol Blueprint v1 - Complete
 
@@ -91,7 +91,7 @@ The protocol refactor must not begin with a large interface rewrite. Storage and
 
 **Exit criteria met:** English and Chinese blueprints distinguish implemented behavior from approved future behavior and identify remaining open decisions.
 
-## M2.7 - Local Event Store - Planned
+## M2.7 - Local Event Store - Complete
 
 **Depends on:** current v0.6 history and the approved protocol blueprint.
 
@@ -99,7 +99,7 @@ The protocol refactor must not begin with a large interface rewrite. Storage and
 
 **Security boundary:** API keys, authorization headers, and credential-bearing Connection records never enter the store. Persisted system-role and Seat records keep provider/model/role snapshots only.
 
-**Exit criteria:** a completed or interrupted room can be reconstructed from local events and the latest valid snapshot after refresh, without restoring any credential.
+**Exit criteria met:** `RoomStore` initializes a versioned seven-store IndexedDB database, migrates validated legacy localStorage records transactionally, persists only completed or failed turns, reconstructs rooms after refresh, prunes the archive to 30 rooms, and never restores credentials. Browser verification migrated and reopened three existing rooms with their memo and usage intact across two reloads.
 
 ## M2.8 - Structured Meeting State - Planned
 

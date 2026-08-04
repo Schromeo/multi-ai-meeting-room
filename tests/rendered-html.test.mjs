@@ -293,11 +293,13 @@ test("one verified connection can power multiple seats", async () => {
   }
 });
 
-test("source contains real streaming adapters and no simulated agent timer", async () => {
-  const [page, styles, route, handoff, handoffZh] = await Promise.all([
+test("source contains real streaming adapters and credential-free IndexedDB rooms", async () => {
+  const [page, styles, route, meetingRecord, roomStore, handoff, handoffZh] = await Promise.all([
     readFile(new URL("../app/page.tsx", import.meta.url), "utf8"),
     readFile(new URL("../app/globals.css", import.meta.url), "utf8"),
     readFile(new URL("../app/api/discuss/route.ts", import.meta.url), "utf8"),
+    readFile(new URL("../lib/meeting-record.ts", import.meta.url), "utf8"),
+    readFile(new URL("../lib/room-store.ts", import.meta.url), "utf8"),
     readFile(new URL("../docs/AI_HANDOFF.md", import.meta.url), "utf8"),
     readFile(new URL("../docs/zh-CN/AI_HANDOFF.md", import.meta.url), "utf8"),
   ]);
@@ -307,11 +309,19 @@ test("source contains real streaming adapters and no simulated agent timer", asy
   assert.match(page, /Reload models/);
   assert.match(page, /Replace key/);
   assert.match(page, /Use for Seat/);
-  assert.match(page, /multi-ai-meeting-room\.history\.v1/);
+  assert.match(page, /createBrowserRoomStore/);
   assert.match(page, /Credentials are excluded/);
-  const meetingRecordType = page.match(/type MeetingRecord = \{[\s\S]*?\n\};/)?.[0] ?? "";
+  const meetingRecordType = meetingRecord.match(/export type MeetingRecord = \{[\s\S]*?\n\};/)?.[0] ?? "";
   assert.ok(meetingRecordType);
   assert.doesNotMatch(meetingRecordType, /apiKey|connectionId/);
+  assert.match(roomStore, /indexedDB\.open\(databaseName, databaseVersion\)/);
+  assert.match(roomStore, /multi-ai-meeting-room\.history\.v1|legacyMeetingHistoryKey/);
+  assert.match(roomStore, /localStorage\.removeItem\(legacyMeetingHistoryKey\)/);
+  assert.match(roomStore, /participantStore\.delete/);
+  assert.match(page, /This turn was interrupted before completion\./);
+  for (const objectStore of ["rooms", "participants", "events", "stateSnapshots", "artifacts", "usage", "metadata"]) {
+    assert.match(roomStore, new RegExp(`["]${objectStore}["]`));
+  }
   assert.match(styles, /\.decision-actions \.approve-button/);
   assert.match(styles, /\.history-drawer/);
   assert.match(route, /api\.openai\.com\/v1\/responses/);

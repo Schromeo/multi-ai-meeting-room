@@ -1,11 +1,11 @@
 # Meeting Protocol Blueprint v1
 
-Status: Approved design, not yet implemented  
+Status: Approved design; M2.7 persistence foundation implemented
 Date: 2026-08-03
 
 ## Purpose
 
-This blueprint defines the next Discuss-room architecture after the current v0.6 baseline. It turns a bounded sequence of model calls into a human-chaired, resumable, cost-aware decision protocol without treating a growing transcript as shared model memory.
+This blueprint defines the next Discuss-room architecture after the v0.7 persistence foundation. It turns a bounded sequence of model calls into a human-chaired, resumable, cost-aware decision protocol without treating a growing transcript as shared model memory.
 
 The design must preserve this chain:
 
@@ -15,7 +15,7 @@ The raw transcript remains available for people and audit. Models receive only t
 
 ## Product Truth
 
-### Implemented in v0.6
+### Implemented through v0.7
 
 - Direct streaming adapters for OpenAI, Anthropic, and Gemini.
 - Session-only BYOK plus workspace-managed credentials.
@@ -26,7 +26,7 @@ The raw transcript remains available for people and audit. Models receive only t
 - Human approve, reject, and request-revision gate.
 - Stop control and per-room token, latency, and estimated-cost reporting.
 - Focus and overview transcript views.
-- Browser-local meeting history for transcripts, memos, decisions, usage, and participant summaries.
+- Credential-free browser-local `RoomStore` with versioned IndexedDB stores for rooms, participant snapshots, append-only completed/failed turn events, state snapshots, memo artifacts, usage, and migration metadata.
 - Seven passing automated tests and a passing production build.
 
 ### Approved here but not implemented
@@ -39,7 +39,6 @@ The raw transcript remains available for people and audit. Models receive only t
 - Process monitoring for repetition, drift, premature homogenization, and loops.
 - Per-round Round Briefs and targeted debate instead of full-room reruns.
 - Claim-level follow-up and versioned Decision Memos.
-- IndexedDB event storage behind a RoomStore abstraction.
 - Account-backed D1 persistence, synchronization, and collaboration.
 
 ## Core Invariants
@@ -390,4 +389,3 @@ The protocol is not complete merely because it runs. It must demonstrate:
 - Token ceilings after the first real-provider measurements.
 - Whether the Observer extraction fallback is enabled by default or only by Chair approval.
 - Export format and migration path from IndexedDB to account-backed storage.
-

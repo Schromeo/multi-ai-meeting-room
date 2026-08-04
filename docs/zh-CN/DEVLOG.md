@@ -1,5 +1,34 @@
 # 开发日志
 
+## 2026-08-04 - v0.7 - IndexedDB 本地 Event Store
+
+### 已完成
+
+- 移除 OpenAI 请求里无条件发送的 `reasoning.effort` 与 `text.verbosity`；会话 BYOK 回归用例改用 `gpt-4.1-mini`，并断言不会发送这两个可选字段。
+- 在改变持久化之前，用 commit `3298d40` 和 tag `backup/v0.6-live-baseline-2026-08-04` 保存 v0.6 真实基线。
+- 新增严格且不含凭证的 `MeetingRecord` 解析器，以及由 IndexedDB schema version 1 支撑、供应商无关的 `RoomStore`。
+- 创建 `rooms`、`participants`、`events`、`stateSnapshots`、`artifacts`、`usage` 和 `metadata` store。已完成和失败的 turn 成为只追加事件；状态快照、版本化 memo artifact、用量和参与者快照通过事务更新。
+- 对通过验证的 `multi-ai-meeting-room.history.v1` localStorage 记录执行一次性迁移；只有 IndexedDB 事务提交后才删除旧 key。
+- 将房间加载、保存、删除与实际 30 房间上限裁剪迁入异步 store。API Key 和带凭证的 Connection record 仍只存在于当前页面会话。
+
+### 验证
+
+- 使用内置 Node 22 runtime，生产构建、全部七项自动测试、ESLint、聚焦严格 TypeScript 检查和 `git diff --check` 均通过。
+- 浏览器迁移恢复了 3 场旧会议。最新房间的 Decision Memo 和精确的 2,437 input / 3,424 output / $0.032 / 54 秒用量在两次刷新后仍完整。
+- 刷新后没有恢复任何供应商连接，浏览器控制台也没有 warning 或 error。
+- 仓库级 `tsc --noEmit` 仍只被 `db/index.ts` 与 `worker/index.ts` 中既有的 Cloudflare ambient type 缺失阻挡；本次修改的前端与存储文件通过聚焦严格检查。
+
+### 当前限制
+
+- 持久化只属于当前浏览器 profile；导出、账号归属、服务端同步、冲突处理和跨设备恢复尚未实现。
+- 当前事件保存 agenda 与完成/失败的原始 transcript turn；M2.8 尚未加入经过验证的 Turn Envelope、Claim、Dispute 和确定性 Canonical Reducer。
+- 流式生成中的 delta 只在内存中。崩溃可能丢失正在生成的半句，但不会把它冒充成已完成事件。
+- 事务式删除已有实现与源码断言；浏览器迁移测试为了保留用户的 3 条真实记录，没有实际删除其中一条。
+
+### 下一步
+
+实现 M2.8 结构化 Meeting State：Turn Envelope 验证、有限 card、带来源 record，以及运行在 M2.7 事件流上的确定性 Canonical Reducer。暂不开始大型界面重做。
+
 ## 2026-08-04 - 证据基线 - 第一次真实双供应商会议
 
 ### 已完成

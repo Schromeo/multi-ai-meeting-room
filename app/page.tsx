@@ -13,21 +13,16 @@ import {
   SeatRequest,
   UsageSummary,
 } from "../lib/discuss-protocol";
+import {
+  DecisionStatus,
+  emptyUsage,
+  MeetingRecord,
+  ParticipantSnapshot,
+  TranscriptItem,
+  upsertMeetingRecord,
+} from "../lib/meeting-record";
+import { createBrowserRoomStore, RoomStore } from "../lib/room-store";
 
-type TranscriptItem = {
-  id: string;
-  provider: ProviderId | "host";
-  providerName: string;
-  role: RoleId | "host";
-  model: string;
-  phase: "agenda" | "proposal" | "review" | "synthesis";
-  target?: string;
-  text: string;
-  status: "streaming" | "done" | "error";
-  usage?: UsageSummary;
-};
-
-type DecisionStatus = "waiting" | "pending" | "approved" | "rejected";
 type WorkspaceStage = "agenda" | "meeting" | "decision";
 type TranscriptMode = "focus" | "overview";
 type ProviderChoice = ProviderId | "auto";
@@ -54,30 +49,6 @@ type SeatDraft = {
   role: RoleId;
 };
 
-type ParticipantSnapshot = {
-  provider: ProviderId;
-  providerName: string;
-  model: string;
-  role: RoleId;
-};
-
-type MeetingRecord = {
-  version: 1;
-  id: string;
-  objective: string;
-  stage: Exclude<WorkspaceStage, "agenda">;
-  transcript: TranscriptItem[];
-  memo: string;
-  decision: DecisionStatus;
-  usage: UsageSummary;
-  iteration: number;
-  participants: ParticipantSnapshot[];
-  createdAt: string;
-  updatedAt: string;
-};
-
-const meetingHistoryKey = "multi-ai-meeting-room.history.v1";
-const meetingHistoryLimit = 30;
 const defaultObjective = "Decide the narrowest useful version of a multi-AI meeting room";
 
 const providerUi: Record<
@@ -113,18 +84,11 @@ const initialSeatDrafts: SeatDraft[] = [
   { id: "seat-3", enabled: false, connectionId: "", model: "", role: "technical" },
 ];
 
-const emptyUsage: UsageSummary = {
-  inputTokens: 0,
-  outputTokens: 0,
-  estimatedUsd: 0,
-  latencyMs: 0,
-};
-
 const milestones = [
-  ["M2", "Real Discuss", "Live protocol implemented; provider evaluation remains."],
+  ["M2", "Real Discuss", "Live two-provider path verified; protocol refinement remains."],
   ["M2.1", "Connections", "Session BYOK, model choice, and cost guardrails."],
   ["M2.2", "Composable seats", "Separate connections, models, roles, skills, and seats."],
-  ["M2.5", "Durable rooms", "Recovery, history, artifacts, and export."],
+  ["M2.7", "Local Event Store", "IndexedDB events, snapshots, artifacts, usage, and migration."],
   ["M3.5", "Research", "Sources, evidence checks, and freshness."],
   ["M4.5", "Execute", "Bounded tools, coding agents, and independent review."],
 ];
@@ -174,18 +138,34 @@ export default function Home() {
   const liveTextRef = useRef<HTMLDivElement | null>(null);
   const overviewRef = useRef<HTMLDivElement | null>(null);
   const meetingRecordsRef = useRef<MeetingRecord[]>([]);
+  const roomStoreRef = useRef<RoomStore | null>(null);
 
   useEffect(() => {
-    const timer = window.setTimeout(() => {
-      const now = new Date().toISOString();
-      const storedRecords = loadMeetingRecords();
-      meetingRecordsRef.current = storedRecords;
-      setMeetingRecords(storedRecords);
-      setCurrentRoomId(createRoomId());
-      setCurrentRoomCreatedAt(now);
-      setHistoryReady(true);
-    }, 0);
-    return () => window.clearTimeout(timer);
+    let active = true;
+    const store = createBrowserRoomStore();
+    roomStoreRef.current = store;
+    void store.initialize()
+      .then(({ records }) => {
+        if (!active) return;
+        const now = new Date().toISOString();
+        meetingRecordsRef.current = records;
+        setMeetingRecords(records);
+        setCurrentRoomId(createRoomId());
+        setCurrentRoomCreatedAt(now);
+        setHistoryError("");
+        setHistoryReady(true);
+      })
+      .catch((storeError) => {
+        if (!active) return;
+        const now = new Date().toISOString();
+        setCurrentRoomId(createRoomId());
+        setCurrentRoomCreatedAt(now);
+        setHistoryError(safeClientError(storeError));
+        setHistoryReady(true);
+      });
+    return () => {
+      active = false;
+    };
   }, []);
 
   useEffect(() => {
@@ -326,12 +306,14 @@ export default function Home() {
       const nextRecords = upsertMeetingRecord(meetingRecordsRef.current, record);
       meetingRecordsRef.current = nextRecords;
       setMeetingRecords(nextRecords);
-      try {
-        window.localStorage.setItem(meetingHistoryKey, JSON.stringify(nextRecords));
-        setHistoryError("");
-      } catch {
-        setHistoryError("This browser could not save the latest meeting record.");
+      const store = roomStoreRef.current;
+      if (!store) {
+        setHistoryError("The local meeting database is unavailable.");
+        return;
       }
+      void store.putRoom(record)
+        .then(() => setHistoryError(""))
+        .catch(() => setHistoryError("This browser could not save the latest meeting record."));
     }, 350);
 
     return () => window.clearTimeout(timer);
@@ -556,40 +538,44 @@ export default function Home() {
     setPendingDisconnectId(null);
   }
 
-  function replaceMeetingRecords(nextRecords: MeetingRecord[]) {
+  async function persistMeetingRecord(record: MeetingRecord) {
+    const nextRecords = upsertMeetingRecord(meetingRecordsRef.current, record);
     meetingRecordsRef.current = nextRecords;
     setMeetingRecords(nextRecords);
+    const store = roomStoreRef.current;
+    if (!store) {
+      setHistoryError("The local meeting database is unavailable.");
+      return;
+    }
     try {
-      window.localStorage.setItem(meetingHistoryKey, JSON.stringify(nextRecords));
+      await store.putRoom(record);
       setHistoryError("");
     } catch {
       setHistoryError("This browser could not update meeting history.");
     }
   }
 
-  function saveCurrentMeetingNow() {
+  async function saveCurrentMeetingNow() {
     if (!historyReady || !currentRoomId || iteration === 0 || transcript.length === 0) return;
-    replaceMeetingRecords(
-      upsertMeetingRecord(meetingRecordsRef.current, {
-        version: 1,
-        id: currentRoomId,
-        objective: objective.trim() || "Untitled meeting",
-        stage: memo ? "decision" : "meeting",
-        transcript,
-        memo,
-        decision,
-        usage,
-        iteration,
-        participants: currentParticipants,
-        createdAt: currentRoomCreatedAt,
-        updatedAt: new Date().toISOString(),
-      }),
-    );
+    await persistMeetingRecord({
+      version: 1,
+      id: currentRoomId,
+      objective: objective.trim() || "Untitled meeting",
+      stage: memo ? "decision" : "meeting",
+      transcript,
+      memo,
+      decision,
+      usage,
+      iteration,
+      participants: currentParticipants,
+      createdAt: currentRoomCreatedAt,
+      updatedAt: new Date().toISOString(),
+    });
   }
 
-  function openMeetingRecord(roomId: string) {
+  async function openMeetingRecord(roomId: string) {
     if (running) return;
-    saveCurrentMeetingNow();
+    await saveCurrentMeetingNow();
     const record = meetingRecordsRef.current.find((item) => item.id === roomId);
     if (!record) return;
 
@@ -612,17 +598,29 @@ export default function Home() {
     setHistoryOpen(false);
   }
 
-  function deleteMeetingRecord(roomId: string) {
+  async function deleteMeetingRecord(roomId: string) {
     if (running && currentRoomId === roomId) return;
-    const nextRecords = meetingRecordsRef.current.filter((item) => item.id !== roomId);
-    replaceMeetingRecords(nextRecords);
-    setPendingDeleteRoomId(null);
-    if (currentRoomId === roomId) createNewMeeting(false);
+    const store = roomStoreRef.current;
+    if (!store) {
+      setHistoryError("The local meeting database is unavailable.");
+      return;
+    }
+    try {
+      await store.deleteRoom(roomId);
+      const nextRecords = meetingRecordsRef.current.filter((item) => item.id !== roomId);
+      meetingRecordsRef.current = nextRecords;
+      setMeetingRecords(nextRecords);
+      setHistoryError("");
+      setPendingDeleteRoomId(null);
+      if (currentRoomId === roomId) await createNewMeeting(false);
+    } catch {
+      setHistoryError("This browser could not delete the meeting record.");
+    }
   }
 
-  function createNewMeeting(preserveCurrent = true) {
+  async function createNewMeeting(preserveCurrent = true) {
     if (running) return;
-    if (preserveCurrent) saveCurrentMeetingNow();
+    if (preserveCurrent) await saveCurrentMeetingNow();
     const now = new Date().toISOString();
     setCurrentRoomId(createRoomId());
     setCurrentRoomCreatedAt(now);
@@ -643,11 +641,11 @@ export default function Home() {
     setHistoryOpen(false);
   }
 
-  function submitMeeting(event: FormEvent<HTMLFormElement>) {
+  async function submitMeeting(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
     if (!canStart) return;
     if (iteration > 0) {
-      saveCurrentMeetingNow();
+      await saveCurrentMeetingNow();
       const now = new Date().toISOString();
       setCurrentRoomId(createRoomId());
       setCurrentRoomCreatedAt(now);
@@ -731,6 +729,20 @@ export default function Home() {
       if (!response.body) throw new Error("The meeting stream did not open.");
       await readEvents(response.body, handleEvent);
     } catch (meetingError) {
+      const interruptionMessage = controller.signal.aborted
+        ? "This turn was stopped by the Human Chair."
+        : "This turn was interrupted before completion.";
+      setTranscript((current) =>
+        current.map((item) =>
+          item.status === "streaming"
+            ? {
+                ...item,
+                status: "error",
+                text: item.text || interruptionMessage,
+              }
+            : item,
+        ),
+      );
       if (controller.signal.aborted) {
         setError("Meeting stopped by the host. No automatic retry was started.");
         setPhase("Stopped");
@@ -814,9 +826,9 @@ export default function Home() {
     }
   }
 
-  function resetRoom() {
+  async function resetRoom() {
     if (running) return;
-    saveCurrentMeetingNow();
+    await saveCurrentMeetingNow();
     setTranscript([]);
     setMemo("");
     setUsage(emptyUsage);
@@ -1179,7 +1191,7 @@ export default function Home() {
               <div>
                 <span className="section-kicker">Local meeting archive</span>
                 <h2 id="meeting-history-title">Meetings</h2>
-                <p>Transcripts and decisions saved in this browser.</p>
+                <p>Rooms and audit events saved in this browser.</p>
               </div>
               <button type="button" className="quiet-button" onClick={() => setHistoryOpen(false)}>Close</button>
             </header>
@@ -1227,7 +1239,7 @@ export default function Home() {
             </div>
             <footer className="history-footer">
               <strong>Credentials are excluded.</strong>
-              <span>API keys and session connections still clear on refresh. Account sync and cloud recovery are not implemented yet.</span>
+              <span>API keys and session connections still clear on refresh. Account sync, export, and cloud recovery are not implemented yet.</span>
               {historyError ? <em>{historyError}</em> : null}
             </footer>
           </aside>
@@ -1419,51 +1431,6 @@ function createRequestId() {
 
 function createRoomId() {
   return `meeting-${createRequestId()}`;
-}
-
-function loadMeetingRecords(): MeetingRecord[] {
-  if (typeof window === "undefined") return [];
-  try {
-    const value = window.localStorage.getItem(meetingHistoryKey);
-    if (!value) return [];
-    const parsed: unknown = JSON.parse(value);
-    if (!Array.isArray(parsed)) return [];
-    return parsed
-      .filter(isMeetingRecord)
-      .map((record) => ({
-        ...record,
-        transcript: record.transcript.map((item) =>
-          item.status === "streaming" ? { ...item, status: "error" as const } : item,
-        ),
-      }))
-      .sort((a, b) => b.updatedAt.localeCompare(a.updatedAt))
-      .slice(0, meetingHistoryLimit);
-  } catch {
-    return [];
-  }
-}
-
-function isMeetingRecord(value: unknown): value is MeetingRecord {
-  if (!value || typeof value !== "object") return false;
-  const record = value as Partial<MeetingRecord>;
-  return (
-    record.version === 1 &&
-    typeof record.id === "string" &&
-    typeof record.objective === "string" &&
-    Array.isArray(record.transcript) &&
-    typeof record.memo === "string" &&
-    typeof record.iteration === "number" &&
-    Array.isArray(record.participants) &&
-    typeof record.createdAt === "string" &&
-    typeof record.updatedAt === "string" &&
-    Boolean(record.usage && typeof record.usage.inputTokens === "number")
-  );
-}
-
-function upsertMeetingRecord(records: MeetingRecord[], record: MeetingRecord) {
-  return [record, ...records.filter((item) => item.id !== record.id)]
-    .sort((a, b) => b.updatedAt.localeCompare(a.updatedAt))
-    .slice(0, meetingHistoryLimit);
 }
 
 function participantsMatchSeats(participants: ParticipantSnapshot[], seats: SeatRequest[]) {
