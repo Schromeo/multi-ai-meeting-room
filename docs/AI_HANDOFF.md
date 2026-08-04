@@ -11,6 +11,7 @@ Last updated: 2026-08-03
 - **Current milestone:** M2.1 connection and cost guardrails.
 - **Next decision:** connect exactly two providers through session BYOK or workspace secrets and run the first live evaluation.
 - **Live site:** `https://multi-ai-meeting-room.schromeo.chatgpt.site`
+- **Deployment status:** the live URL still serves the prior version. The v0.4 source is pushed and saved, but Sites publication is blocked by its generated `nodejs_compat` flag conflicting with the platform default introduced on 2026-08-04. Do not retry with unchanged inputs.
 
 ## Start-of-Session Checklist
 

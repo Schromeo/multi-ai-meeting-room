@@ -21,6 +21,7 @@ This chronological log records shipped work, validation, limitations, and the ne
 
 ### Current Limitations
 
+- The v0.4 source is pushed and a deployable version is saved, but production publication is blocked by a Sites runtime transition that rejects its generated `nodejs_compat` flag after that flag became a platform default. The previous production version remains live; do not repeat deployment without a platform or deployment-input change.
 - Session keys disappear on refresh by design; durable BYOK still requires identity and encrypted storage.
 - One provider may still occupy only one seat; duplicate-provider and per-seat model composition is M2.2.
 - Real provider output quality, latency, token accounting, and errors remain unverified.

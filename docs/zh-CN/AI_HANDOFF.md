@@ -10,6 +10,7 @@
 - 当前里程碑：M2.1 连接与费用护栏。
 - 下一决定：通过会话 BYOK 或工作区 Secret 连接两家供应商并完成第一次真实评测。
 - 线上地址：`https://multi-ai-meeting-room.schromeo.chatgpt.site`
+- 发布状态：线上仍为上一版本。v0.4 源码已推送并保存，但 Sites 自动生成的 `nodejs_compat` 标记与 2026-08-04 生效的平台默认值冲突；输入不变时不要重复部署。
 
 ## 每次开始工作前
 
