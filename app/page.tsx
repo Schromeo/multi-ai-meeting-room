@@ -6,6 +6,7 @@ import {
   providerIds,
   ProviderId,
   ProviderSummary,
+  roleBriefs,
   roleIds,
   roleLabels,
   RoleId,
@@ -27,28 +28,33 @@ type TranscriptItem = {
 };
 
 type DecisionStatus = "waiting" | "pending" | "approved" | "rejected";
+type WorkspaceStage = "agenda" | "meeting" | "decision";
+type TranscriptMode = "focus" | "overview";
 
 const providerUi: Record<
   ProviderId,
-  { label: string; initial: string; color: string; defaultRole: RoleId }
+  { label: string; initial: string; color: string; defaultRole: RoleId; keyHint: string }
 > = {
   openai: {
     label: "OpenAI",
     initial: "O",
     color: "mint",
     defaultRole: "strategist",
+    keyHint: "sk-...",
   },
   anthropic: {
     label: "Anthropic",
     initial: "A",
     color: "coral",
     defaultRole: "critic",
+    keyHint: "sk-ant-...",
   },
   gemini: {
-    label: "Google",
+    label: "Google Gemini",
     initial: "G",
     color: "blue",
     defaultRole: "technical",
+    keyHint: "AI...",
   },
 };
 
@@ -56,6 +62,18 @@ const initialRoles: Record<ProviderId, RoleId> = {
   openai: "strategist",
   anthropic: "critic",
   gemini: "technical",
+};
+
+const initialModels: Record<ProviderId, string> = {
+  openai: "gpt-5.6-luna",
+  anthropic: "claude-sonnet-5",
+  gemini: "gemini-3.6-flash",
+};
+
+const initialDraftKeys: Record<ProviderId, string> = {
+  openai: "",
+  anthropic: "",
+  gemini: "",
 };
 
 const emptyUsage: UsageSummary = {
@@ -66,51 +84,12 @@ const emptyUsage: UsageSummary = {
 };
 
 const milestones = [
-  {
-    id: "M1",
-    title: "Interaction prototype",
-    status: "Complete",
-    detail: "Meeting controls, bounded rounds, roles, and decision artifacts.",
-  },
-  {
-    id: "M1.2",
-    title: "Project continuity",
-    status: "Complete",
-    detail: "Bilingual charter, handoff, roadmap, decisions, and loop guardrails.",
-  },
-  {
-    id: "M2",
-    title: "Real Discuss room",
-    status: "Current",
-    detail: "Streaming provider adapters, cross-review, memo, metrics, and human gate.",
-  },
-  {
-    id: "M2.5",
-    title: "Durable rooms",
-    status: "Planned",
-    detail: "Persistence, transcript recovery, artifacts, history, and export.",
-  },
-  {
-    id: "M3.5",
-    title: "Research room",
-    status: "Planned",
-    detail: "Retrieval, sources, claim verification, and freshness metadata.",
-  },
-  {
-    id: "M4.5",
-    title: "Execute room",
-    status: "Planned",
-    detail: "Local execution connector, approval gates, review, and deterministic checks.",
-  },
-];
-
-const developmentLoop = [
-  "Hypothesis",
-  "Build",
-  "Critique",
-  "Human decision",
-  "Evaluate",
-  "Log",
+  ["M2", "Real Discuss", "Live protocol implemented; provider evaluation remains."],
+  ["M2.1", "Connections", "Session BYOK, model choice, and cost guardrails."],
+  ["M2.2", "Composable seats", "Separate connections, models, roles, skills, and seats."],
+  ["M2.5", "Durable rooms", "Recovery, history, artifacts, and export."],
+  ["M3.5", "Research", "Sources, evidence checks, and freshness."],
+  ["M4.5", "Execute", "Bounded tools, coding agents, and independent review."],
 ];
 
 export default function Home() {
@@ -120,9 +99,21 @@ export default function Home() {
   const [providers, setProviders] = useState<ProviderSummary[]>([]);
   const [activeProviders, setActiveProviders] = useState<ProviderId[]>([]);
   const [roles, setRoles] = useState<Record<ProviderId, RoleId>>(initialRoles);
+  const [models, setModels] = useState<Record<ProviderId, string>>(initialModels);
+  const [sessionKeys, setSessionKeys] = useState<Partial<Record<ProviderId, string>>>({});
+  const [draftKeys, setDraftKeys] = useState<Record<ProviderId, string>>(initialDraftKeys);
   const [configLoading, setConfigLoading] = useState(true);
+  const [connectionOpen, setConnectionOpen] = useState(false);
+  const [projectOpen, setProjectOpen] = useState(false);
+  const [connectionError, setConnectionError] = useState("");
+  const [stage, setStage] = useState<WorkspaceStage>("agenda");
+  const [transcriptMode, setTranscriptMode] = useState<TranscriptMode>("focus");
+  const [pinnedMessageId, setPinnedMessageId] = useState<string | null>(null);
   const [transcript, setTranscript] = useState<TranscriptItem[]>([]);
   const [phase, setPhase] = useState("Awaiting agenda");
+  const [phaseKey, setPhaseKey] = useState<"agenda" | "proposal" | "review" | "synthesis">(
+    "agenda",
+  );
   const [iteration, setIteration] = useState(0);
   const [running, setRunning] = useState(false);
   const [memo, setMemo] = useState("");
@@ -131,6 +122,8 @@ export default function Home() {
   const [error, setError] = useState("");
   const [copied, setCopied] = useState(false);
   const abortRef = useRef<AbortController | null>(null);
+  const liveTextRef = useRef<HTMLDivElement | null>(null);
+  const overviewRef = useRef<HTMLDivElement | null>(null);
 
   useEffect(() => {
     let active = true;
@@ -142,23 +135,37 @@ export default function Home() {
       .then((data) => {
         if (!active) return;
         setProviders(data.providers);
-        setActiveProviders(
-          data.providers.filter((provider) => provider.configured).map((provider) => provider.id),
-        );
+        setModels((current) => {
+          const next = { ...current };
+          data.providers.forEach((provider) => {
+            next[provider.id] = provider.model;
+          });
+          return next;
+        });
+        const configured = data.providers
+          .filter((provider) => provider.configured)
+          .map((provider) => provider.id);
+        setActiveProviders(configured.slice(0, 3));
+        if (configured.length < 2) setConnectionOpen(true);
       })
-      .catch((configError) => {
-        if (active) setError(safeClientError(configError));
-      })
-      .finally(() => {
-        if (active) setConfigLoading(false);
-      });
+      .catch((configError) => setError(safeClientError(configError)))
+      .finally(() => setConfigLoading(false));
     return () => {
       active = false;
       abortRef.current?.abort();
     };
   }, []);
 
-  const configuredCount = providers.filter((provider) => provider.configured).length;
+  const isWorkspaceConnected = (provider: ProviderId) =>
+    Boolean(providers.find((item) => item.id === provider)?.configured);
+  const isSessionConnected = (provider: ProviderId) => Boolean(sessionKeys[provider]);
+  const isConnected = (provider: ProviderId) =>
+    isWorkspaceConnected(provider) || isSessionConnected(provider);
+  const connectedCount = providerIds.filter(isConnected).length;
+  const projectedConnectedCount = providerIds.filter(
+    (provider) => isConnected(provider) || draftKeys[provider].trim().length >= 8,
+  ).length;
+
   const seats = useMemo<SeatRequest[]>(
     () =>
       activeProviders.map((provider) => ({
@@ -174,19 +181,86 @@ export default function Home() {
     seats.length >= 2 &&
     seats.length <= 3;
 
+  const activeTranscriptItem = useMemo(() => {
+    if (pinnedMessageId) {
+      const pinned = transcript.find((item) => item.id === pinnedMessageId);
+      if (pinned) return pinned;
+    }
+    return (
+      transcript.find((item) => item.status === "streaming") ??
+      [...transcript].reverse().find((item) => item.provider !== "host") ??
+      transcript[0]
+    );
+  }, [pinnedMessageId, transcript]);
+
+  useEffect(() => {
+    if (liveTextRef.current && !pinnedMessageId) {
+      liveTextRef.current.scrollTop = liveTextRef.current.scrollHeight;
+    }
+    if (overviewRef.current && transcriptMode === "overview") {
+      overviewRef.current.scrollTop = overviewRef.current.scrollHeight;
+    }
+  }, [activeTranscriptItem?.text, pinnedMessageId, transcript, transcriptMode]);
+
   function toggleProvider(provider: ProviderId) {
-    if (running || !providers.find((item) => item.id === provider)?.configured) return;
+    if (running || !isConnected(provider)) return;
     setActiveProviders((current) => {
-      if (current.includes(provider)) {
-        return current.length <= 2 ? current : current.filter((item) => item !== provider);
-      }
+      if (current.includes(provider)) return current.filter((item) => item !== provider);
       return current.length >= 3 ? current : [...current, provider];
     });
   }
 
   function updateRole(provider: ProviderId, role: RoleId) {
-    if (running) return;
-    setRoles((current) => ({ ...current, [provider]: role }));
+    if (!running) setRoles((current) => ({ ...current, [provider]: role }));
+  }
+
+  function saveConnections(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    setConnectionError("");
+    const nextKeys = { ...sessionKeys };
+    for (const provider of providerIds) {
+      const draft = draftKeys[provider].trim();
+      if (!draft) continue;
+      if (draft.length < 8 || /\s/.test(draft)) {
+        setConnectionError(`${providerUi[provider].label} key does not look complete.`);
+        return;
+      }
+      if (!/^[a-zA-Z0-9._:/-]{1,160}$/.test(models[provider].trim())) {
+        setConnectionError(`${providerUi[provider].label} model id is invalid.`);
+        return;
+      }
+      nextKeys[provider] = draft;
+    }
+
+    const available = providerIds.filter(
+      (provider) => isWorkspaceConnected(provider) || Boolean(nextKeys[provider]),
+    );
+    if (available.length < 2) {
+      setConnectionError("Connect at least two providers to open a real meeting.");
+      return;
+    }
+    setSessionKeys(nextKeys);
+    setDraftKeys(initialDraftKeys);
+    setActiveProviders((current) => {
+      const retained = current.filter((provider) => available.includes(provider));
+      for (const provider of available) {
+        if (retained.length >= 3) break;
+        if (!retained.includes(provider)) retained.push(provider);
+      }
+      return retained;
+    });
+    setConnectionOpen(false);
+  }
+
+  function removeSessionConnection(provider: ProviderId) {
+    setSessionKeys((current) => {
+      const next = { ...current };
+      delete next[provider];
+      return next;
+    });
+    if (!isWorkspaceConnected(provider)) {
+      setActiveProviders((current) => current.filter((item) => item !== provider));
+    }
   }
 
   function submitMeeting(event: FormEvent<HTMLFormElement>) {
@@ -196,6 +270,8 @@ export default function Home() {
     setMemo("");
     setUsage(emptyUsage);
     setDecision("waiting");
+    setPinnedMessageId(null);
+    setTranscriptMode("focus");
     void runMeeting(1, "");
   }
 
@@ -204,9 +280,11 @@ export default function Home() {
     const controller = new AbortController();
     abortRef.current = controller;
     setRunning(true);
+    setStage("meeting");
     setError("");
     setCopied(false);
     setPhase(nextIteration === 1 ? "Opening room" : "Opening revision round");
+    setPhaseKey("agenda");
     setDecision("waiting");
     setIteration(nextIteration);
 
@@ -225,17 +303,26 @@ export default function Home() {
       ]);
     }
 
+    const connections = Object.fromEntries(
+      seats.flatMap((seat) => {
+        const apiKey = sessionKeys[seat.provider];
+        return apiKey
+          ? [[seat.provider, { apiKey, model: models[seat.provider].trim() }]]
+          : [];
+      }),
+    );
+
     try {
-      const requestId = createRequestId();
       const response = await fetch("/api/discuss", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           objective: objective.trim(),
           seats,
+          connections,
           iteration: nextIteration,
           priorMemo,
-          requestId,
+          requestId: createRequestId(),
         }),
         signal: controller.signal,
       });
@@ -245,7 +332,6 @@ export default function Home() {
         throw new Error(body.error ?? `Meeting request failed (${response.status}).`);
       }
       if (!response.body) throw new Error("The meeting stream did not open.");
-
       await readEvents(response.body, handleEvent);
     } catch (meetingError) {
       if (controller.signal.aborted) {
@@ -264,6 +350,8 @@ export default function Home() {
   function handleEvent(event: DiscussEvent) {
     if (event.type === "phase.start") {
       setPhase(event.label);
+      setPhaseKey(event.phase);
+      setPinnedMessageId(null);
       return;
     }
     if (event.type === "agent.start") {
@@ -321,16 +409,13 @@ export default function Home() {
       );
       setDecision("pending");
       setPhase("Human decision required");
+      setStage("decision");
       return;
     }
     if (event.type === "room.error") {
       setError(event.message);
       setPhase("Needs attention");
     }
-  }
-
-  function stopMeeting() {
-    abortRef.current?.abort();
   }
 
   function resetRoom() {
@@ -341,7 +426,10 @@ export default function Home() {
     setDecision("waiting");
     setIteration(0);
     setPhase("Awaiting agenda");
+    setPhaseKey("agenda");
     setError("");
+    setPinnedMessageId(null);
+    setStage("agenda");
   }
 
   async function copyMemo() {
@@ -352,341 +440,383 @@ export default function Home() {
   }
 
   return (
-    <main className="app-shell">
-      <section className="workspace">
-        <header className="topbar">
-          <div>
-            <p className="eyebrow">Human-chaired AI deliberation</p>
-            <h1>Multi-AI Meeting Room</h1>
-          </div>
-          <div className="topbar-actions">
-            <a className="devlog-link" href="#development-log">
-              Development Log
-            </a>
-            <div className="room-stats" aria-label="Room status">
-              <span>{seats.length} seats</span>
-              <span>{iteration === 0 ? "No round" : `Round ${iteration}/2`}</span>
-              <span>Discuss</span>
-            </div>
-          </div>
-        </header>
+    <main className="meeting-app">
+      <header className="app-header">
+        <button className="brand" type="button" onClick={() => !running && setStage("agenda")}>
+          <span className="brand-mark">M</span>
+          <span>
+            <strong>Meeting Room</strong>
+            <small>Human-chaired AI deliberation</small>
+          </span>
+        </button>
 
-        <div className="capability-strip" aria-label="Room permissions">
-          <div className="capability active">
-            <strong>Discuss</strong>
-            <span>Active</span>
-          </div>
-          <div className="capability locked">
-            <strong>Research</strong>
-            <span>M3.5</span>
-          </div>
-          <div className="capability locked">
-            <strong>Execute</strong>
-            <span>M4.5</span>
-          </div>
+        <nav className="stage-nav" aria-label="Meeting stages">
+          <button type="button" className={connectedCount >= 2 ? "complete" : "active"} onClick={() => setConnectionOpen(true)}>
+            <span>1</span> Setup
+          </button>
+          <button type="button" className={stage === "agenda" ? "active" : transcript.length ? "complete" : ""} onClick={() => !running && setStage("agenda")}>
+            <span>2</span> Agenda
+          </button>
+          <button type="button" className={stage === "meeting" ? "active" : memo ? "complete" : ""} disabled={!transcript.length} onClick={() => setStage("meeting")}>
+            <span>3</span> Meeting
+          </button>
+          <button type="button" className={stage === "decision" ? "active" : decision === "approved" ? "complete" : ""} disabled={!memo} onClick={() => setStage("decision")}>
+            <span>4</span> Decision
+          </button>
+        </nav>
+
+        <div className="header-actions">
+          <button className="quiet-button" type="button" onClick={() => setProjectOpen(true)}>
+            Project
+          </button>
+          <button className="connection-button" type="button" onClick={() => setConnectionOpen(true)}>
+            <span className={connectedCount >= 2 ? "status-dot ready" : "status-dot"} />
+            {connectedCount}/3 connected
+          </button>
         </div>
+      </header>
 
-        <form className="agenda" onSubmit={submitMeeting}>
-          <label htmlFor="objective">Meeting objective</label>
-          <div className="agenda-row">
-            <textarea
-              id="objective"
-              value={objective}
-              onChange={(event) => setObjective(event.target.value)}
-              placeholder="What must this room decide?"
-              maxLength={4_000}
-              rows={2}
-              disabled={running}
-            />
-            <button type="submit" disabled={!canStart}>
-              Start Meeting
-            </button>
-          </div>
-          <div className="agenda-meta">
-            <span>{objective.length}/4,000</span>
-            <span>2 rounds maximum</span>
-            <span>{configuredCount}/3 providers configured</span>
-          </div>
-        </form>
+      <section className="workspace-frame">
+        {stage === "agenda" ? (
+          <form className="agenda-workspace" onSubmit={submitMeeting}>
+            <section className="objective-panel">
+              <div className="section-kicker">Meeting objective</div>
+              <h1>What must this room decide?</h1>
+              <p className="supporting-copy">
+                Give the participants a decision, not a broad topic. The human chair keeps final authority.
+              </p>
+              <textarea
+                id="objective"
+                value={objective}
+                onChange={(event) => setObjective(event.target.value)}
+                placeholder="Define the decision and its constraints..."
+                maxLength={4_000}
+                rows={7}
+                disabled={running}
+                autoFocus
+              />
+              <div className="objective-footer">
+                <span>{objective.length}/4,000</span>
+                <span>Discuss only</span>
+                <span>2 rounds maximum</span>
+              </div>
+              {connectedCount < 2 && !configLoading ? (
+                <button className="connection-callout" type="button" onClick={() => setConnectionOpen(true)}>
+                  Connect at least two models before opening the room
+                </button>
+              ) : null}
+              {error ? <p className="inline-error">{error}</p> : null}
+            </section>
 
-        {configuredCount < 2 && !configLoading ? (
-          <div className="configuration-notice" role="status">
-            <strong>Provider configuration required</strong>
-            <span>
-              Add at least two server-side API keys before a real meeting can begin.
-            </span>
-          </div>
+            <aside className="seat-composer">
+              <div className="panel-heading">
+                <div>
+                  <span className="section-kicker">Room composition</span>
+                  <h2>{seats.length} active seats</h2>
+                </div>
+                <button type="button" className="text-button" onClick={() => setConnectionOpen(true)}>
+                  Manage
+                </button>
+              </div>
+
+              <div className="seat-list">
+                {providerIds.map((provider) => {
+                  const ui = providerUi[provider];
+                  const connected = isConnected(provider);
+                  const checked = activeProviders.includes(provider);
+                  return (
+                    <article className={`seat-row ${ui.color} ${checked ? "selected" : ""}`} key={provider}>
+                      <button
+                        className="seat-selector"
+                        type="button"
+                        disabled={!connected}
+                        onClick={() => toggleProvider(provider)}
+                        aria-pressed={checked}
+                      >
+                        <span className="avatar">{ui.initial}</span>
+                        <span className="seat-identity">
+                          <strong>{ui.label}</strong>
+                          <small>{connected ? models[provider] : "Connection required"}</small>
+                        </span>
+                        <span className={`seat-check ${checked ? "checked" : ""}`}>{checked ? "On" : "Off"}</span>
+                      </button>
+                      <label>
+                        <span>Role</span>
+                        <select
+                          value={roles[provider]}
+                          onChange={(event) => updateRole(provider, event.target.value as RoleId)}
+                          disabled={!checked || running}
+                        >
+                          {roleIds.map((role) => (
+                            <option value={role} key={role}>{roleLabels[role]}</option>
+                          ))}
+                        </select>
+                      </label>
+                      <p>{roleBriefs[roles[provider]]}</p>
+                    </article>
+                  );
+                })}
+              </div>
+
+              <div className="launch-zone">
+                <div>
+                  <strong>{seats.length >= 2 ? "Room is composed" : "Choose two or three seats"}</strong>
+                  <span>{seats.length === 3 ? "7 calls per round" : seats.length === 2 ? "5 calls per round" : "Bounded at two rounds"}</span>
+                </div>
+                <button className="primary-button" type="submit" disabled={!canStart}>
+                  Start meeting
+                </button>
+              </div>
+            </aside>
+          </form>
         ) : null}
 
-        <section className="meeting-grid" aria-label="Discuss room">
-          <aside className="agent-rail" aria-label="Participant seats">
-            <div className="rail-heading">
-              <p className="eyebrow">Participants</p>
-              <h2>Model seats</h2>
-            </div>
-            {providerIds.map((providerId) => {
-              const config = providers.find((item) => item.id === providerId);
-              const ui = providerUi[providerId];
-              const configured = Boolean(config?.configured);
-              const checked = activeProviders.includes(providerId);
-              return (
-                <article className={`agent-seat ${ui.color}`} key={providerId}>
-                  <div className="agent-seat-head">
-                    <span className="avatar">{ui.initial}</span>
-                    <span className="agent-identity">
-                      <strong>{config?.name ?? ui.label}</strong>
-                      <small>{configLoading ? "Checking configuration" : config?.model}</small>
-                    </span>
-                    <label className="seat-toggle">
-                      <input
-                        type="checkbox"
-                        checked={checked}
-                        onChange={() => toggleProvider(providerId)}
-                        disabled={!configured || running}
-                        aria-label={`Use ${ui.label} in this room`}
-                      />
-                      <span>{configured ? "Ready" : "No key"}</span>
-                    </label>
-                  </div>
-                  <label className="role-field">
-                    <span>Assigned role</span>
-                    <select
-                      value={roles[providerId]}
-                      onChange={(event) =>
-                        updateRole(providerId, event.target.value as RoleId)
-                      }
-                      disabled={!checked || running}
-                    >
-                      {roleIds.map((role) => (
-                        <option value={role} key={role}>
-                          {roleLabels[role]}
-                        </option>
-                      ))}
-                    </select>
-                  </label>
-                </article>
-              );
-            })}
-          </aside>
-
-          <section className="transcript" aria-label="Meeting transcript">
-            <div className="transcript-head">
-              <div>
-                <p className="eyebrow">Live room</p>
-                <h2>{phase}</h2>
-              </div>
-              <div className={running ? "pulse on" : "pulse"}>
-                {running ? "streaming" : decision === "pending" ? "awaiting chair" : "ready"}
-              </div>
-            </div>
-
-            <div className="messages" aria-live="polite">
-              {transcript.length === 0 ? (
-                <div className="empty-room">
-                  <span>DISCUSS / M2</span>
-                  <strong>No active transcript</strong>
-                </div>
-              ) : (
-                transcript.map((item) => (
-                  <article
-                    className={`message ${item.provider} ${item.status}`}
-                    key={item.id}
-                  >
-                    <div className="message-meta">
-                      <span>
-                        <strong>
-                          {item.role === "host" ? "Human Chair" : roleLabels[item.role]}
-                        </strong>
-                        {item.provider !== "host" ? ` · ${item.providerName}` : ""}
-                      </span>
-                      <span className="phase-tag">{item.phase}</span>
-                    </div>
-                    {item.target ? <p className="review-target">Reviews {item.target}</p> : null}
-                    <p className="message-text">
-                      {item.text || (item.status === "streaming" ? "Waiting for first token…" : "")}
-                    </p>
-                    {item.usage ? (
-                      <div className="message-usage">
-                        <span>{formatTokens(item.usage.outputTokens)} out</span>
-                        <span>{formatDuration(item.usage.latencyMs)}</span>
-                        <span>{formatMoney(item.usage.estimatedUsd)}</span>
-                      </div>
-                    ) : null}
-                  </article>
-                ))
-              )}
-            </div>
-
-            <div className="controls" aria-label="Meeting controls">
-              {running ? (
-                <button className="stop-button" type="button" onClick={stopMeeting}>
-                  Stop Meeting
-                </button>
-              ) : (
-                <button type="button" onClick={resetRoom} disabled={transcript.length === 0}>
-                  Clear Room
-                </button>
-              )}
-              <button
-                type="button"
-                onClick={() => void runMeeting(2, memo)}
-                disabled={running || decision !== "pending" || iteration !== 1 || !memo}
-              >
-                Request One Revision
-              </button>
-              <button
-                type="button"
-                onClick={() => setDecision("approved")}
-                disabled={running || decision !== "pending" || !memo}
-              >
-                Approve Memo
-              </button>
-            </div>
-          </section>
-
-          <aside className="insights" aria-label="Decision surface">
-            <section>
-              <p className="eyebrow">Artifact</p>
-              <h2>Decision Surface</h2>
-            </section>
-
-            <div className="artifact-block status-block">
-              <span className={`decision-state ${decision}`}>{decisionLabel(decision)}</span>
-              <dl>
-                <div>
-                  <dt>Permission</dt>
-                  <dd>Discuss only</dd>
-                </div>
-                <div>
-                  <dt>Round budget</dt>
-                  <dd>{iteration}/2</dd>
-                </div>
-                <div>
-                  <dt>Providers</dt>
-                  <dd>{seats.length}</dd>
-                </div>
-              </dl>
-            </div>
-
-            <div className="artifact-block metric-grid">
-              <div>
-                <span>Input</span>
-                <strong>{formatTokens(usage.inputTokens)}</strong>
-              </div>
-              <div>
-                <span>Output</span>
-                <strong>{formatTokens(usage.outputTokens)}</strong>
-              </div>
-              <div>
-                <span>Est. cost</span>
-                <strong>{formatMoney(usage.estimatedUsd)}</strong>
-              </div>
-              <div>
-                <span>Model time</span>
-                <strong>{formatDuration(usage.latencyMs)}</strong>
-              </div>
-            </div>
-
-            <div className="artifact-block memo-block">
-              <div className="artifact-title">
-                <h3>Decision memo</h3>
-                <button type="button" onClick={() => void copyMemo()} disabled={!memo}>
-                  {copied ? "Copied" : "Copy"}
-                </button>
-              </div>
-              <pre>{memo || "The synthesized memo will appear after proposal and review phases."}</pre>
-            </div>
-
-            {decision === "pending" ? (
-              <button
-                className="reject-button"
-                type="button"
-                onClick={() => setDecision("rejected")}
-              >
-                Reject Memo
-              </button>
-            ) : null}
-            {error ? <p className="room-error">{error}</p> : null}
-          </aside>
-        </section>
-
-        <section className="devlog" id="development-log" aria-labelledby="devlog-title">
-          <div className="devlog-heading">
-            <div>
-              <p className="eyebrow">Development Log / v0.3</p>
-              <h2 id="devlog-title">M2 real Discuss room</h2>
-            </div>
-            <div className="stage-marker">
-              <span>Current stage</span>
-              <strong>Provider configuration and live evaluation</strong>
-            </div>
-          </div>
-
-          <div className="truth-strip" aria-label="Current product truth">
-            <strong>What is real now</strong>
-            <p>
-              The room uses provider-neutral server adapters, token streaming,
-              independent proposals, assigned cross-review, bounded revision, a human
-              decision gate, and usage estimates. It still has no persistence,
-              retrieval, evidence verification, or execution tools.
-            </p>
-          </div>
-
-          <div className="milestone-list" aria-label="Product milestones">
-            {milestones.map((milestone) => (
-              <article className="milestone" key={milestone.id}>
-                <div className="milestone-id">{milestone.id}</div>
-                <div>
-                  <div className="milestone-title">
-                    <h3>{milestone.title}</h3>
-                    <span className={`milestone-status ${milestone.status.toLowerCase()}`}>
-                      {milestone.status}
-                    </span>
-                  </div>
-                  <p>{milestone.detail}</p>
-                </div>
-              </article>
-            ))}
-          </div>
-
-          <div className="devlog-lower">
-            <section className="product-hypothesis">
-              <p className="eyebrow">M2 evaluation question</p>
-              <h3>Does structured disagreement improve the decision?</h3>
-              <p>
-                The experiment is successful only when the room surfaces useful
-                objections or produces a more defensible memo than a single strong
-                model at acceptable time and cost.
-              </p>
-              <p className="hypothesis-caution">
-                Provider diversity is not treated as evidence. Research remains a
-                separate permission level and milestone.
-              </p>
-            </section>
-
-            <section className="development-loop">
-              <p className="eyebrow">Every development round</p>
-              <ol>
-                {developmentLoop.map((step) => (
-                  <li key={step}>{step}</li>
+        {stage === "meeting" ? (
+          <section className="meeting-workspace">
+            <header className="meeting-toolbar">
+              <div className="phase-progress" aria-label="Protocol progress">
+                {(["proposal", "review", "synthesis"] as const).map((item, index) => (
+                  <span className={phaseState(item, phaseKey)} key={item}>
+                    <i>{index + 1}</i>{phaseLabel(item)}
+                  </span>
                 ))}
-              </ol>
-              <p className="next-gate">
-                <strong>Next gate:</strong> configure two provider keys and complete one
-                live end-to-end meeting without duplicate calls.
-              </p>
-            </section>
-          </div>
-        </section>
+              </div>
+              <div className="meeting-status">
+                <span className={running ? "live-indicator on" : "live-indicator"}>
+                  {running ? "Live" : phase}
+                </span>
+                <div className="segmented-control" aria-label="Transcript view">
+                  <button type="button" className={transcriptMode === "focus" ? "active" : ""} onClick={() => setTranscriptMode("focus")}>Focus</button>
+                  <button type="button" className={transcriptMode === "overview" ? "active" : ""} onClick={() => setTranscriptMode("overview")}>Overview</button>
+                </div>
+              </div>
+            </header>
+
+            {transcriptMode === "focus" ? (
+              <div className="focus-layout">
+                <article className={`speaker-stage ${activeTranscriptItem?.provider ?? "host"}`}>
+                  {activeTranscriptItem ? (
+                    <>
+                      <header className="speaker-header">
+                        <span className="speaker-avatar">
+                          {activeTranscriptItem.provider === "host" ? "H" : providerUi[activeTranscriptItem.provider].initial}
+                        </span>
+                        <div>
+                          <span className="section-kicker">{activeTranscriptItem.phase}</span>
+                          <h2>{activeTranscriptItem.role === "host" ? "Human Chair" : roleLabels[activeTranscriptItem.role]}</h2>
+                          <p>{activeTranscriptItem.providerName}{activeTranscriptItem.model ? ` / ${activeTranscriptItem.model}` : ""}</p>
+                        </div>
+                        <span className={`speaker-state ${activeTranscriptItem.status}`}>
+                          {activeTranscriptItem.status === "streaming" ? "Speaking" : activeTranscriptItem.status}
+                        </span>
+                      </header>
+                      {activeTranscriptItem.target ? <div className="reviewing">Reviewing {activeTranscriptItem.target}</div> : null}
+                      <div className="live-text" ref={liveTextRef} aria-live="polite">
+                        {activeTranscriptItem.text || (activeTranscriptItem.status === "streaming" ? "Waiting for the first token..." : "")}
+                        {activeTranscriptItem.status === "streaming" ? <span className="stream-caret" /> : null}
+                      </div>
+                      {activeTranscriptItem.usage ? (
+                        <footer className="speaker-metrics">
+                          <span>{formatTokens(activeTranscriptItem.usage.outputTokens)} output tokens</span>
+                          <span>{formatDuration(activeTranscriptItem.usage.latencyMs)}</span>
+                          <span>{formatMoney(activeTranscriptItem.usage.estimatedUsd)}</span>
+                        </footer>
+                      ) : null}
+                    </>
+                  ) : (
+                    <div className="empty-stage"><strong>Opening the room</strong><span>The first participant will appear here.</span></div>
+                  )}
+                </article>
+
+                <aside className="room-timeline">
+                  <div className="panel-heading compact">
+                    <div><span className="section-kicker">Room timeline</span><h2>{phase}</h2></div>
+                    {pinnedMessageId ? <button type="button" className="text-button" onClick={() => setPinnedMessageId(null)}>Follow live</button> : null}
+                  </div>
+                  <div className="timeline-list">
+                    {transcript.map((item) => (
+                      <button
+                        type="button"
+                        className={`timeline-item ${activeTranscriptItem?.id === item.id ? "active" : ""}`}
+                        key={item.id}
+                        onClick={() => setPinnedMessageId(item.id)}
+                      >
+                        <span className={`timeline-dot ${item.status}`} />
+                        <span>
+                          <strong>{item.role === "host" ? "Agenda" : roleLabels[item.role]}</strong>
+                          <small>{item.providerName} / {item.phase}</small>
+                        </span>
+                      </button>
+                    ))}
+                  </div>
+                </aside>
+              </div>
+            ) : (
+              <div className="overview-grid" ref={overviewRef} aria-live="polite">
+                {transcript.map((item) => (
+                  <article className={`overview-message ${item.provider}`} key={item.id}>
+                    <header>
+                      <span>{item.role === "host" ? "Human Chair" : roleLabels[item.role]}</span>
+                      <small>{item.providerName} / {item.phase}</small>
+                    </header>
+                    {item.target ? <p className="reviewing">Reviews {item.target}</p> : null}
+                    <div>{item.text || "Waiting..."}</div>
+                  </article>
+                ))}
+              </div>
+            )}
+
+            <footer className="meeting-controls">
+              <div>
+                <strong>Round {iteration}/2</strong>
+                <span>{seats.length} seats / {transcript.filter((item) => item.status === "done").length} turns complete</span>
+              </div>
+              {error ? <p className="control-error">{error}</p> : null}
+              <div className="control-actions">
+                {running ? <button className="danger-button" type="button" onClick={() => abortRef.current?.abort()}>Stop meeting</button> : null}
+                {!running && memo ? <button type="button" onClick={() => setStage("decision")}>Open decision</button> : null}
+                {!running && !memo ? <button type="button" onClick={resetRoom}>Return to agenda</button> : null}
+              </div>
+            </footer>
+          </section>
+        ) : null}
+
+        {stage === "decision" ? (
+          <section className="decision-workspace">
+            <article className="memo-surface">
+              <header>
+                <div>
+                  <span className="section-kicker">Decision artifact / Round {iteration}</span>
+                  <h1>Decision memo</h1>
+                </div>
+                <span className={`decision-pill ${decision}`}>{decisionLabel(decision)}</span>
+              </header>
+              <pre>{memo || "The room has not produced a decision memo."}</pre>
+              <footer>
+                <button type="button" onClick={() => { setTranscriptMode("overview"); setStage("meeting"); }}>Review transcript</button>
+                <button type="button" onClick={() => void copyMemo()} disabled={!memo}>{copied ? "Copied" : "Copy memo"}</button>
+              </footer>
+            </article>
+
+            <aside className="decision-rail">
+              <section>
+                <span className="section-kicker">Human gate</span>
+                <h2>The room advises. You decide.</h2>
+                <p>Approve the artifact, reject it, or spend the single remaining revision round on named objections.</p>
+                <div className="decision-actions">
+                  <button className="approve-button" type="button" onClick={() => setDecision("approved")} disabled={running || decision !== "pending"}>Approve memo</button>
+                  <button type="button" onClick={() => void runMeeting(2, memo)} disabled={running || decision !== "pending" || iteration !== 1 || !memo}>Request revision</button>
+                  <button className="reject-button" type="button" onClick={() => setDecision("rejected")} disabled={running || decision !== "pending"}>Reject memo</button>
+                </div>
+              </section>
+              <section className="usage-summary">
+                <span className="section-kicker">Room usage</span>
+                <dl>
+                  <div><dt>Input</dt><dd>{formatTokens(usage.inputTokens)}</dd></div>
+                  <div><dt>Output</dt><dd>{formatTokens(usage.outputTokens)}</dd></div>
+                  <div><dt>Estimated cost</dt><dd>{formatMoney(usage.estimatedUsd)}</dd></div>
+                  <div><dt>Model time</dt><dd>{formatDuration(usage.latencyMs)}</dd></div>
+                </dl>
+                <p>Estimate only. Provider billing is authoritative.</p>
+              </section>
+              <button className="new-meeting-button" type="button" onClick={resetRoom} disabled={running}>New meeting</button>
+              {error ? <p className="inline-error">{error}</p> : null}
+            </aside>
+          </section>
+        ) : null}
       </section>
+
+      {connectionOpen ? (
+        <div className="modal-backdrop" role="presentation">
+          <form className="connection-dialog" role="dialog" aria-modal="true" aria-labelledby="connections-title" onSubmit={saveConnections}>
+            <header className="dialog-header">
+              <div>
+                <span className="section-kicker">Setup</span>
+                <h2 id="connections-title">Model connections</h2>
+                <p>Keys entered here live only in this page and are cleared on refresh.</p>
+              </div>
+              <button type="button" className="quiet-button" onClick={() => setConnectionOpen(false)}>Close</button>
+            </header>
+
+            <div className="privacy-note">
+              <strong>Session-only BYOK</strong>
+              <span>Sent only to this site&apos;s meeting endpoint for immediate provider calls. Never placed in URLs, transcripts, or browser storage.</span>
+            </div>
+
+            <div className="connection-list">
+              {providerIds.map((provider) => {
+                const ui = providerUi[provider];
+                const workspaceConnected = isWorkspaceConnected(provider);
+                const sessionConnected = isSessionConnected(provider);
+                return (
+                  <section className={`connection-row ${ui.color}`} key={provider}>
+                    <div className="connection-identity">
+                      <span className="avatar">{ui.initial}</span>
+                      <span>
+                        <strong>{ui.label}</strong>
+                        <small>{sessionConnected ? "Connected for this page" : workspaceConnected ? "Managed by workspace" : "Not connected"}</small>
+                      </span>
+                    </div>
+                    <label>
+                      <span>API key</span>
+                      <input
+                        type="password"
+                        value={draftKeys[provider]}
+                        onChange={(event) => setDraftKeys((current) => ({ ...current, [provider]: event.target.value }))}
+                        placeholder={sessionConnected ? "Enter a new key to replace it" : workspaceConnected ? "Workspace key is active" : ui.keyHint}
+                        autoComplete="off"
+                        spellCheck={false}
+                        disabled={workspaceConnected && !sessionConnected}
+                      />
+                    </label>
+                    <label>
+                      <span>Model id</span>
+                      <input
+                        type="text"
+                        value={models[provider]}
+                        onChange={(event) => setModels((current) => ({ ...current, [provider]: event.target.value }))}
+                        spellCheck={false}
+                        disabled={workspaceConnected && !sessionConnected}
+                      />
+                    </label>
+                    {sessionConnected ? <button className="disconnect-button" type="button" onClick={() => removeSessionConnection(provider)}>Disconnect</button> : <span className="billing-owner">Billed by {ui.label}</span>}
+                  </section>
+                );
+              })}
+            </div>
+            {connectionError ? <p className="inline-error">{connectionError}</p> : null}
+            <footer className="dialog-footer">
+              <span>{projectedConnectedCount}/3 available after saving</span>
+              <button className="primary-button" type="submit" disabled={projectedConnectedCount < 2}>Save connections</button>
+            </footer>
+          </form>
+        </div>
+      ) : null}
+
+      {projectOpen ? (
+        <div className="modal-backdrop project-backdrop" role="presentation">
+          <aside className="project-drawer" role="dialog" aria-modal="true" aria-labelledby="project-title">
+            <header className="dialog-header">
+              <div><span className="section-kicker">Project truth / v0.4</span><h2 id="project-title">Build the protocol, not a model carousel</h2></div>
+              <button type="button" className="quiet-button" onClick={() => setProjectOpen(false)}>Close</button>
+            </header>
+            <p className="project-thesis">The current room can stream independent proposals, assigned reviews, and a bounded memo. Persistence, evidence verification, durable BYOK, custom endpoints, and execution remain future work.</p>
+            <div className="milestone-stack">
+              {milestones.map(([id, title, detail], index) => (
+                <article className={index === 1 ? "current" : ""} key={id}>
+                  <span>{id}</span><div><strong>{title}</strong><p>{detail}</p></div>
+                </article>
+              ))}
+            </div>
+            <footer>Current gate: connect two providers and complete one live evaluation without duplicate calls.</footer>
+          </aside>
+        </div>
+      ) : null}
     </main>
   );
 }
 
-async function readEvents(
-  stream: ReadableStream<Uint8Array>,
-  onEvent: (event: DiscussEvent) => void,
-) {
+async function readEvents(stream: ReadableStream<Uint8Array>, onEvent: (event: DiscussEvent) => void) {
   const reader = stream.getReader();
   const decoder = new TextDecoder();
   let buffer = "";
@@ -696,9 +826,7 @@ async function readEvents(
     buffer += decoder.decode(value, { stream: true });
     const lines = buffer.split("\n");
     buffer = lines.pop() ?? "";
-    for (const line of lines) {
-      if (line.trim()) onEvent(JSON.parse(line) as DiscussEvent);
-    }
+    for (const line of lines) if (line.trim()) onEvent(JSON.parse(line) as DiscussEvent);
   }
   buffer += decoder.decode();
   if (buffer.trim()) onEvent(JSON.parse(buffer) as DiscussEvent);
@@ -719,9 +847,7 @@ function mergeUsage(a: UsageSummary, b: UsageSummary): UsageSummary {
 }
 
 function formatTokens(value: number) {
-  return new Intl.NumberFormat("en", { notation: value >= 10_000 ? "compact" : "standard" }).format(
-    value,
-  );
+  return new Intl.NumberFormat("en", { notation: value >= 10_000 ? "compact" : "standard" }).format(value);
 }
 
 function formatMoney(value: number) {
@@ -740,10 +866,23 @@ function formatDuration(value: number) {
 }
 
 function decisionLabel(status: DecisionStatus) {
-  if (status === "pending") return "Chair decision required";
-  if (status === "approved") return "Memo approved";
-  if (status === "rejected") return "Memo rejected";
-  return "No decision memo";
+  if (status === "pending") return "Decision required";
+  if (status === "approved") return "Approved";
+  if (status === "rejected") return "Rejected";
+  return "Waiting";
+}
+
+function phaseLabel(phase: "proposal" | "review" | "synthesis") {
+  if (phase === "proposal") return "Proposals";
+  if (phase === "review") return "Cross-review";
+  return "Memo";
+}
+
+function phaseState(phase: "proposal" | "review" | "synthesis", current: "agenda" | "proposal" | "review" | "synthesis") {
+  const order = { agenda: 0, proposal: 1, review: 2, synthesis: 3 };
+  if (order[phase] < order[current]) return "complete";
+  if (phase === current) return "active";
+  return "";
 }
 
 function safeClientError(error: unknown) {

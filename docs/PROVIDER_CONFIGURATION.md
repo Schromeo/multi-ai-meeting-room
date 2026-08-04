@@ -1,6 +1,6 @@
 # Provider Configuration
 
-M2 requires at least two configured providers. All secrets are server-side runtime values and must never be committed or returned to the browser.
+M2 requires at least two configured providers. Workspace credentials remain server runtime secrets. A user may also enter a session BYOK credential in the product; it is held only in current-page memory, sent in the same-origin meeting request, and cleared on refresh. No credential may be committed, written to browser storage, logged, added to a URL or transcript, or returned by an API response.
 
 ## Required Secret Keys
 
@@ -11,6 +11,16 @@ M2 requires at least two configured providers. All secrets are server-side runti
 | Google | `GEMINI_API_KEY` | `gemini-3.6-flash` |
 
 The model defaults can be overridden with `OPENAI_MODEL`, `ANTHROPIC_MODEL`, and `GEMINI_MODEL` without changing role assignments.
+
+## In-Product Session Connections
+
+The Connections dialog accepts a provider API key and model ID. This is an evaluation bridge, not durable secret storage:
+
+- the browser keeps the key only in React page memory;
+- the key is sent over the same-origin meeting request only for active seats;
+- the server uses it for immediate provider calls and does not persist or echo it;
+- refreshing or closing the page clears it;
+- durable BYOK is blocked on authentication, encrypted storage, ownership checks, rotation, and deletion.
 
 ## Cost Estimate Values
 
@@ -27,7 +37,7 @@ Refresh these values when pricing or the configured model changes. They are esti
 - Copy the names from `.env.example` into an ignored `.env.local` for local work.
 - Store hosted values through Sites environment configuration and mark API keys as secrets.
 - Deploy again after hosted values change so the new environment revision applies.
-- Use the provider-status endpoint or the seat labels to confirm configuration; it returns only booleans and model IDs, never key values.
+- Use the provider-status endpoint or the connection labels to confirm workspace configuration; it returns only booleans and model IDs, never key values.
 
 ## First Live Evaluation
 

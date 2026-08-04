@@ -4,6 +4,7 @@ import {
   ProviderId,
   ProviderSummary,
   roleIds,
+  roleBriefs,
   roleLabels,
   RoleId,
   SeatRequest,
@@ -26,9 +27,15 @@ type ProviderResult = {
 type DiscussRequest = {
   objective?: unknown;
   seats?: unknown;
+  connections?: unknown;
   iteration?: unknown;
   priorMemo?: unknown;
   requestId?: unknown;
+};
+
+type SessionConnection = {
+  apiKey: string;
+  model?: string;
 };
 
 type AgentWork = SeatRequest & {
@@ -66,18 +73,18 @@ export async function POST(request: Request) {
     return Response.json({ error: validation.error }, { status: 400 });
   }
 
-  const { objective, seats, iteration, priorMemo, requestId } = validation.value;
+  const { objective, seats, connections, iteration, priorMemo, requestId } = validation.value;
   const work = seats.map((seat, index): AgentWork => ({
     ...seat,
     id: `${requestId}-${iteration}-${seat.provider}-${index}`,
-    config: getProviderConfig(seat.provider),
+    config: getProviderConfig(seat.provider, connections[seat.provider]),
   }));
 
   const missing = work.filter((item) => !item.config.configured);
   if (missing.length > 0) {
     return Response.json(
       {
-        error: `Missing server API keys for: ${missing
+        error: `Missing API connections for: ${missing
           .map((item) => item.config.name)
           .join(", ")}.`,
       },
@@ -200,9 +207,13 @@ export async function POST(request: Request) {
           usage: totalUsage(allResults),
         });
       } catch (error) {
-        const message = request.signal.aborted
+        const rawMessage = request.signal.aborted
           ? "The meeting was stopped by the host."
           : safeErrorMessage(error);
+        const message = work.reduce(
+          (current, item) => redactSecret(current, item.config.apiKey),
+          rawMessage,
+        );
         emit({ type: "room.error", requestId, message });
       } finally {
         close();
@@ -226,6 +237,7 @@ function validateRequest(body: DiscussRequest):
       value: {
         objective: string;
         seats: SeatRequest[];
+        connections: Partial<Record<ProviderId, SessionConnection>>;
         iteration: 1 | 2;
         priorMemo: string;
         requestId: string;
@@ -265,6 +277,9 @@ function validateRequest(body: DiscussRequest):
     seats.push({ provider: provider as ProviderId, role: role as RoleId });
   }
 
+  const connectionResult = validateSessionConnections(body.connections, seats);
+  if (!connectionResult.ok) return connectionResult;
+
   const iteration = body.iteration === 2 ? 2 : 1;
   const priorMemo = typeof body.priorMemo === "string" ? body.priorMemo : "";
   if (iteration === 2 && priorMemo.trim().length === 0) {
@@ -282,11 +297,57 @@ function validateRequest(body: DiscussRequest):
     value: {
       objective: body.objective.trim(),
       seats,
+      connections: connectionResult.value,
       iteration,
       priorMemo: priorMemo.trim(),
       requestId: body.requestId,
     },
   };
+}
+
+function validateSessionConnections(
+  value: unknown,
+  seats: SeatRequest[],
+):
+  | { ok: true; value: Partial<Record<ProviderId, SessionConnection>> }
+  | { ok: false; error: string } {
+  if (value === undefined) return { ok: true, value: {} };
+  if (!value || typeof value !== "object" || Array.isArray(value)) {
+    return { ok: false, error: "Session connections must be a provider-keyed object." };
+  }
+
+  const activeProviders = new Set(seats.map((seat) => seat.provider));
+  const connections: Partial<Record<ProviderId, SessionConnection>> = {};
+  for (const [provider, candidate] of Object.entries(value)) {
+    if (!providerIds.includes(provider as ProviderId) || !activeProviders.has(provider as ProviderId)) {
+      return { ok: false, error: "A session connection does not belong to an active provider." };
+    }
+    if (!candidate || typeof candidate !== "object" || Array.isArray(candidate)) {
+      return { ok: false, error: "A session connection is malformed." };
+    }
+    const apiKey = (candidate as { apiKey?: unknown }).apiKey;
+    const model = (candidate as { model?: unknown }).model;
+    if (
+      typeof apiKey !== "string" ||
+      apiKey.trim().length < 8 ||
+      apiKey.length > 512 ||
+      /\s/.test(apiKey)
+    ) {
+      return { ok: false, error: "A session API key is invalid." };
+    }
+    if (
+      model !== undefined &&
+      (typeof model !== "string" ||
+        !/^[a-zA-Z0-9._:/-]{1,160}$/.test(model.trim()))
+    ) {
+      return { ok: false, error: "A session model id is invalid." };
+    }
+    connections[provider as ProviderId] = {
+      apiKey: apiKey.trim(),
+      model: typeof model === "string" ? model.trim() : undefined,
+    };
+  }
+  return { ok: true, value: connections };
 }
 
 async function runAgent(
@@ -319,7 +380,11 @@ async function runAgent(
     });
     return result;
   } catch (error) {
-    emit({ type: "agent.error", id: item.id, message: safeErrorMessage(error) });
+    emit({
+      type: "agent.error",
+      id: item.id,
+      message: redactSecret(safeErrorMessage(error), item.config.apiKey),
+    });
     throw error;
   }
 }
@@ -545,6 +610,7 @@ function buildSystemPrompt(role: RoleId) {
   return [
     "You are a participant in a human-chaired multi-AI deliberation room.",
     `Your assigned role is ${roleLabels[role]}.`,
+    `Your role mandate is: ${roleBriefs[role]}`,
     "Produce decision-useful work, not conversational filler.",
     "Separate factual claims from assumptions and value judgments.",
     "Do not claim to have searched or verified external sources; Research mode is disabled.",
@@ -592,7 +658,7 @@ function buildSynthesisPrompt(
   return `MEETING OBJECTIVE:\n${objective}\n\nITERATION: ${iteration} of 2 maximum\n\n${proposalText}\n\n${reviewText}\n\nCreate the decision memo. Do not force consensus and do not invent evidence. Use exactly these headings:\n\n# Recommendation\n# Agreements\n# Unresolved Disputes\n# Unverified Assumptions\n# Tradeoffs\n# Next Actions\n\nUnder Recommendation, state one clear recommendation or explicitly state that the evidence is insufficient. Preserve important minority objections and identify what requires a human decision.`;
 }
 
-function getProviderConfig(id: ProviderId): ProviderConfig {
+function getProviderConfig(id: ProviderId, session?: SessionConnection): ProviderConfig {
   const values: Record<ProviderId, Omit<ProviderConfig, "configured">> = {
     openai: {
       id,
@@ -620,7 +686,12 @@ function getProviderConfig(id: ProviderId): ProviderConfig {
     },
   };
   const value = values[id];
-  return { ...value, configured: Boolean(value.apiKey) };
+  const resolved = {
+    ...value,
+    apiKey: session?.apiKey ?? value.apiKey,
+    model: session?.model ?? value.model,
+  };
+  return { ...resolved, configured: Boolean(resolved.apiKey) };
 }
 
 function readRuntimeValue(key: string): string | undefined {
@@ -708,4 +779,8 @@ function safeErrorMessage(error: unknown) {
     return error.message.slice(0, 600);
   }
   return "The meeting stopped because of an unknown provider error.";
+}
+
+function redactSecret(message: string, secret?: string) {
+  return secret ? message.split(secret).join("[redacted]") : message;
 }

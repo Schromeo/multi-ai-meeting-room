@@ -38,9 +38,9 @@ test("server-renders the real Discuss room", async () => {
   const html = await response.text();
   assert.match(html, /<title>Multi-AI Meeting Room<\/title>/i);
   assert.match(html, /Multi-AI Meeting Room/);
-  assert.match(html, /Start Meeting/);
-  assert.match(html, /Decision Surface/);
-  assert.match(html, /M2 real Discuss room/);
+  assert.match(html, /Start meeting/i);
+  assert.match(html, /What must this room decide/);
+  assert.match(html, /Room composition/);
   assert.doesNotMatch(html, /Your site is taking shape|Building your site/);
 });
 
@@ -86,14 +86,14 @@ test("meeting endpoint rejects an invalid bounded protocol without calling provi
   assert.match(body.error, /objective/i);
 });
 
-test("bounded meeting protocol streams proposals, reviews, and a memo with mocked providers", async () => {
+test("session BYOK streams a bounded meeting without exposing credentials", async () => {
   const originalFetch = globalThis.fetch;
   const originalOpenAIKey = process.env.OPENAI_API_KEY;
   const originalAnthropicKey = process.env.ANTHROPIC_API_KEY;
   let providerCalls = 0;
 
-  process.env.OPENAI_API_KEY = "test-openai-key";
-  process.env.ANTHROPIC_API_KEY = "test-anthropic-key";
+  delete process.env.OPENAI_API_KEY;
+  delete process.env.ANTHROPIC_API_KEY;
 
   globalThis.fetch = async (input, init) => {
     const url = typeof input === "string" ? input : input.url;
@@ -142,6 +142,10 @@ test("bounded meeting protocol streams proposals, reviews, and a memo with mocke
             { provider: "openai", role: "strategist" },
             { provider: "anthropic", role: "critic" },
           ],
+          connections: {
+            openai: { apiKey: "session-openai-key", model: "gpt-session-test" },
+            anthropic: { apiKey: "session-anthropic-key", model: "claude-session-test" },
+          },
           iteration: 1,
           priorMemo: "",
           requestId: "fixture-room-0001",
@@ -152,7 +156,9 @@ test("bounded meeting protocol streams proposals, reviews, and a memo with mocke
     );
 
     assert.equal(response.status, 200);
-    const events = (await response.text())
+    const streamText = await response.text();
+    assert.doesNotMatch(streamText, /session-openai-key|session-anthropic-key/);
+    const events = streamText
       .trim()
       .split("\n")
       .map((line) => JSON.parse(line));

@@ -38,6 +38,30 @@ Statuses: `Complete`, `Current`, `Planned`, `Deferred`.
 
 **Implementation progress:** all listed product and protocol surfaces are implemented and covered by a mocked end-to-end stream test. Remaining exit work is production secret configuration and at least one live two-provider evaluation.
 
+## M2.1 - Connection and Cost Guardrails - Current
+
+**Deliverables:** in-product session BYOK, workspace-managed connection status, per-connection model IDs, connection-source labels, preflight call counts, and explicit non-persistence language.
+
+**Exit criteria:** a user can connect two providers without editing code, understand who pays, run a bounded room, and refresh the page without any user credential having been persisted.
+
+## M2.2 - Composable Model Seats - Planned
+
+**Deliverables:** separate Connection, Model, Role, Skill, and Seat records; duplicate-provider seats; per-seat models; explicit synthesizer selection; and provider/model/role diversity indicators.
+
+**Exit criteria:** one room can intentionally compare three roles on one model, three models from one provider, or models from multiple providers without misrepresenting the kind of diversity present.
+
+## M2.3 - Role and Skill Library - Planned
+
+**Deliverables:** bounded role constitutions, reusable skill packs, room-specific working state, visible position changes, and human-approved promotion of any learning to durable memory.
+
+**Exit criteria:** a seat can adapt to criticism inside the room while its original mandate and every accepted change remain inspectable.
+
+## M2.4 - Custom Connections - Planned
+
+**Deliverables:** OpenAI-compatible and local connection types, HTTPS and host policy, SSRF protection, auth-header configuration, capability probing, and unknown-price fallbacks.
+
+**Exit criteria:** a custom endpoint can participate without gaining arbitrary network access or producing a false cost/diversity claim.
+
 ## M2.5 - Durable Rooms - Planned
 
 **Deliverables:** room persistence, transcript recovery, artifacts, event history, and export.
@@ -76,4 +100,4 @@ Statuses: `Complete`, `Current`, `Planned`, `Deferred`.
 
 ## Deferred Until Evidence Supports Them
 
-Multi-user collaboration, billing, model marketplace, mobile clients, unattended autonomy, broad external integrations, and cloud execution infrastructure.
+Multi-user collaboration, platform-paid billing, model marketplace, mobile clients, unattended autonomy, broad external integrations, and cloud execution infrastructure.

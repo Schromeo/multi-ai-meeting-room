@@ -4,17 +4,17 @@ Last updated: 2026-08-03
 
 ## Current Snapshot
 
-- **Stage:** M2 real Discuss implementation complete; live provider verification pending.
+- **Stage:** M2.1 connection and focused workspace implementation complete; live provider verification pending.
 - **Product:** a human-chaired multi-AI meeting room with Discuss, Research, and Execute permission levels.
-- **Implemented:** provider-neutral OpenAI, Anthropic, and Gemini adapters; server-side secrets; token streaming; independent proposals; assigned cross-review; synthesis; one optional revision; human approve/reject gate; usage estimates; stop control; mocked end-to-end protocol tests.
-- **Not implemented:** configured production provider keys, live provider evaluation, persistence, evidence retrieval, audit data model, execution connector, or comparative evaluation.
-- **Current milestone:** M2 real Discuss room.
-- **Next decision:** configure at least two provider secrets and run the first live evaluation.
+- **Implemented:** provider-neutral OpenAI, Anthropic, and Gemini adapters; workspace secrets plus current-page BYOK; per-connection model IDs; token streaming; independent proposals; assigned cross-review; synthesis; one optional revision; human approve/reject gate; usage estimates; stop control; staged Setup/Agenda/Meeting/Decision workspace; focus and overview transcript modes; mocked end-to-end protocol tests.
+- **Not implemented:** configured production provider keys, live provider evaluation, encrypted durable BYOK, duplicate-provider seats, persistent rooms, evidence retrieval, audit data model, execution connector, or comparative evaluation.
+- **Current milestone:** M2.1 connection and cost guardrails.
+- **Next decision:** connect exactly two providers through session BYOK or workspace secrets and run the first live evaluation.
 - **Live site:** `https://multi-ai-meeting-room.schromeo.chatgpt.site`
 
 ## Start-of-Session Checklist
 
-1. Read `PROJECT_CHARTER.md`, this file, `DECISIONS.md`, `ROADMAP.md`, and the latest `DEVLOG.md` entry.
+1. Read `PROJECT_CHARTER.md`, this file, `DECISIONS.md`, `ROADMAP.md`, `MODEL_AND_AGENT_BLUEPRINT.md`, and the latest `DEVLOG.md` entry.
 2. Inspect the current working tree before editing. Preserve user changes.
 3. State which milestone and exit criterion the proposed work advances.
 4. Confirm the task is not already completed or recorded as rejected.

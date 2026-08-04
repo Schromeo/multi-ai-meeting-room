@@ -20,6 +20,15 @@ export const roleLabels: Record<RoleId, string> = {
   synthesizer: "Synthesizer",
 };
 
+export const roleBriefs: Record<RoleId, string> = {
+  strategist: "Frame the decision, compare paths, and make the tradeoff explicit.",
+  critic: "Stress-test assumptions, find consequential weaknesses, and demand a concrete revision.",
+  product: "Protect user value, scope, adoption, and the narrowest useful outcome.",
+  technical: "Test feasibility, dependencies, failure modes, and implementation sequence.",
+  skeptic: "Look for counterexamples, unsupported certainty, and reasons the room may be wrong.",
+  synthesizer: "Preserve agreement and dissent while producing a decision-ready memo.",
+};
+
 export type SeatRequest = {
   provider: ProviderId;
   role: RoleId;

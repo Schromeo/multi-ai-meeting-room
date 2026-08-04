@@ -2,6 +2,34 @@
 
 This chronological log records shipped work, validation, limitations, and the next decision. It is not a place for uncommitted feature ideas; those belong in the roadmap or decision record.
 
+## 2026-08-03 - v0.4 - Focused Meeting Workspace and Session BYOK
+
+### Completed
+
+- Created backup tag `backup/pre-live-workspace-redesign-2026-08-03` at the last validated v0.3 commit.
+- Replaced the scrolling all-in-one page with Setup, Agenda, Meeting, and Decision stages inside a fixed-height workspace.
+- Added a live speaker focus surface, protocol progress, compact room timeline, full transcript overview, and a human decision surface.
+- Added an in-product Connections dialog for session-only OpenAI, Anthropic, and Gemini keys plus model IDs.
+- Added server handling for immediate session credentials without persistence, response echo, browser storage, or automatic retry.
+- Added role mandates and the bilingual model/agent blueprint separating Connection, Model, Role, Skill, Seat, and Room.
+
+### Validation
+
+- Production build and lint pass.
+- Five automated tests pass, including a complete session-BYOK meeting fixture and an assertion that credential values never appear in the event stream.
+- The existing workspace-secret path remains available.
+
+### Current Limitations
+
+- Session keys disappear on refresh by design; durable BYOK still requires identity and encrypted storage.
+- One provider may still occupy only one seat; duplicate-provider and per-seat model composition is M2.2.
+- Real provider output quality, latency, token accounting, and errors remain unverified.
+- Cost reporting remains an estimate and there is not yet a durable daily or per-user budget.
+
+### Next Decision
+
+Connect exactly two providers, run one representative live room without revision, and compare its objections and memo against a saved single-model baseline.
+
 ## 2026-08-03 - v0.3 - Real Discuss Implementation
 
 ### Completed
