@@ -1,4 +1,5 @@
 import {
+  AgentProgress,
   providerIds,
   ProviderId,
   roleIds,
@@ -11,9 +12,16 @@ import {
   parseTurnEnvelope,
   TurnEnvelope,
 } from "./meeting-state";
+import {
+  MeetingProtocolState,
+  parseMeetingProtocolState,
+  recoverProtocolAfterReload,
+} from "./meeting-orchestrator";
 
 export type TranscriptItem = {
   id: string;
+  seatId?: string;
+  round?: number;
   provider: ProviderId | "host";
   providerName: string;
   role: RoleId | "host";
@@ -22,6 +30,7 @@ export type TranscriptItem = {
   target?: string;
   text: string;
   status: "streaming" | "done" | "error";
+  progress?: AgentProgress;
   usage?: UsageSummary;
   envelope?: TurnEnvelope;
   formatError?: string;
@@ -37,6 +46,12 @@ export type ParticipantSnapshot = {
   role: RoleId;
 };
 
+export type ObserverSnapshot = {
+  provider: ProviderId;
+  providerName: string;
+  model: string;
+};
+
 export type MeetingRecord = {
   version: 1;
   id: string;
@@ -48,7 +63,9 @@ export type MeetingRecord = {
   usage: UsageSummary;
   iteration: number;
   participants: ParticipantSnapshot[];
+  observer?: ObserverSnapshot;
   meetingState?: MeetingState;
+  protocolState?: MeetingProtocolState;
   createdAt: string;
   updatedAt: string;
 };
@@ -68,9 +85,14 @@ export function parseMeetingRecord(value: unknown): MeetingRecord | null {
   const record = value as Record<string, unknown>;
   const transcript = parseTranscript(record.transcript);
   const participants = parseParticipants(record.participants);
+  const observer = record.observer === undefined ? undefined : parseObserver(record.observer);
   const usage = parseUsage(record.usage);
   const meetingState =
     record.meetingState === undefined ? undefined : parseMeetingState(record.meetingState);
+  const protocolState =
+    record.protocolState === undefined
+      ? undefined
+      : parseMeetingProtocolState(record.protocolState);
 
   if (
     record.version !== 1 ||
@@ -86,7 +108,9 @@ export function parseMeetingRecord(value: unknown): MeetingRecord | null {
     Number(record.iteration) < 1 ||
     Number(record.iteration) > 100 ||
     participants === null ||
+    (record.observer !== undefined && !observer) ||
     (record.meetingState !== undefined && !meetingState) ||
+    (record.protocolState !== undefined && !protocolState) ||
     !isIsoDate(record.createdAt) ||
     !isIsoDate(record.updatedAt)
   ) {
@@ -104,7 +128,9 @@ export function parseMeetingRecord(value: unknown): MeetingRecord | null {
     usage,
     iteration: Number(record.iteration),
     participants,
+    ...(observer ? { observer } : {}),
     ...(meetingState ? { meetingState } : {}),
+    ...(protocolState ? { protocolState } : {}),
     createdAt: record.createdAt,
     updatedAt: record.updatedAt,
   };
@@ -131,6 +157,9 @@ function parseTranscript(value: unknown): TranscriptItem[] | null {
         : parseTurnEnvelope(item.envelope, item.phase);
     if (
       !isBoundedString(item.id, 1, 240) ||
+      (item.seatId !== undefined && !isIdentifier(item.seatId)) ||
+      (item.round !== undefined &&
+        (!Number.isInteger(item.round) || Number(item.round) < 1 || Number(item.round) > 5)) ||
       (provider !== "host" && !providerIds.includes(provider as ProviderId)) ||
       !isBoundedString(item.providerName, 1, 160) ||
       (role !== "host" && !roleIds.includes(role as RoleId)) ||
@@ -141,6 +170,7 @@ function parseTranscript(value: unknown): TranscriptItem[] | null {
       typeof item.text !== "string" ||
       item.text.length > 500_000 ||
       !isTranscriptStatus(item.status) ||
+      (item.progress !== undefined && !isAgentProgress(item.progress)) ||
       usage === null ||
       (item.envelope !== undefined && (!envelope || !envelope.ok)) ||
       (item.formatError !== undefined && !isBoundedString(item.formatError, 1, 1_000)) ||
@@ -150,6 +180,8 @@ function parseTranscript(value: unknown): TranscriptItem[] | null {
     }
     items.push({
       id: item.id,
+      ...(typeof item.seatId === "string" ? { seatId: item.seatId } : {}),
+      ...(typeof item.round === "number" ? { round: item.round } : {}),
       provider: provider as ProviderId | "host",
       providerName: item.providerName,
       role: role as RoleId | "host",
@@ -158,6 +190,7 @@ function parseTranscript(value: unknown): TranscriptItem[] | null {
       ...(typeof item.target === "string" ? { target: item.target } : {}),
       text: item.text,
       status: item.status,
+      ...(isAgentProgress(item.progress) ? { progress: item.progress } : {}),
       ...(usage ? { usage } : {}),
       ...(envelope?.ok ? { envelope: envelope.value } : {}),
       ...(typeof item.formatError === "string" ? { formatError: item.formatError } : {}),
@@ -173,6 +206,9 @@ export function finalizeInterruptedTurns(record: MeetingRecord): MeetingRecord {
     transcript: record.transcript.map((item) =>
       item.status === "streaming" ? { ...item, status: "error" as const } : item,
     ),
+    ...(record.protocolState
+      ? { protocolState: recoverProtocolAfterReload(record.protocolState) }
+      : {}),
   };
 }
 
@@ -200,6 +236,21 @@ function parseParticipants(value: unknown): ParticipantSnapshot[] | null {
   return participants;
 }
 
+function parseObserver(value: unknown): ObserverSnapshot | null {
+  if (!value || typeof value !== "object" || Array.isArray(value)) return null;
+  const observer = value as Record<string, unknown>;
+  if (
+    !providerIds.includes(observer.provider as ProviderId) ||
+    !isBoundedString(observer.providerName, 1, 160) ||
+    !isBoundedString(observer.model, 1, 200)
+  ) return null;
+  return {
+    provider: observer.provider as ProviderId,
+    providerName: observer.providerName,
+    model: observer.model,
+  };
+}
+
 function parseUsage(value: unknown): UsageSummary | null {
   if (!value || typeof value !== "object" || Array.isArray(value)) return null;
   const usage = value as Record<string, unknown>;
@@ -224,6 +275,10 @@ function isBoundedString(value: unknown, minimum: number, maximum: number): valu
   return typeof value === "string" && value.length >= minimum && value.length <= maximum;
 }
 
+function isIdentifier(value: unknown): value is string {
+  return typeof value === "string" && /^[a-zA-Z0-9_.:-]{1,240}$/.test(value);
+}
+
 function isIsoDate(value: unknown): value is string {
   return typeof value === "string" && !Number.isNaN(Date.parse(value));
 }
@@ -242,4 +297,8 @@ function isTurnPhase(value: unknown): value is "proposal" | "review" | "synthesi
 
 function isTranscriptStatus(value: unknown): value is TranscriptItem["status"] {
   return value === "streaming" || value === "done" || value === "error";
+}
+
+function isAgentProgress(value: unknown): value is AgentProgress {
+  return value === "thinking" || value === "generating" || value === "validating";
 }

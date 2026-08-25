@@ -4,14 +4,14 @@ Statuses: `Complete`, `Current`, `Planned`, `Deferred`.
 
 ## Current Position
 
-- **Local product version:** v0.8.
-- **Working baseline:** real streaming Discuss protocol, reusable model Seats, session BYOK, human decision gate, credential-free IndexedDB Event Store, and deterministic Canonical Meeting State.
+- **Local product version:** v0.10c.
+- **Working baseline:** real streaming Discuss protocol, reusable model Seats, session BYOK, human decision gate, credential-free IndexedDB Event Store, deterministic Canonical Meeting State, and a persisted human-chaired resumable orchestrator.
 - **Live evidence gate:** completed on 2026-08-04 with OpenAI `gpt-5-mini` plus Anthropic `claude-haiku-4-5-20251001`; see [Live Baseline 001](evaluations/2026-08-04-v0.6-live-baseline.md).
-- **Immediate implementation gate:** M2.8 is complete; implement the M2.9 resumable Chair-controlled state machine next.
-- **Approved next architecture:** Meeting Protocol Blueprint v1. Its persistence and structured-state foundations are implemented; orchestration and later protocol stages remain planned.
-- **Critical path:** live baseline -> local Event Store (complete) -> Canonical Meeting State (complete) -> resumable Chair-controlled orchestrator -> Observer and targeted debate -> whiteboard and Follow-up -> comparative evaluation.
+- **Immediate evidence gate:** M2.10c Chair-selected Dispute routing is complete under deterministic fixtures; next run one bounded real-provider Observer plus targeted-debate smoke evaluation, then stop expanding the generic orchestrator.
+- **Approved product direction:** one Shared Core grows through validated vertical Task Packs. Review is the first artifact-centered product line; see [Product Direction](PRODUCT_DIRECTION.md).
+- **Critical path:** bounded v0.10c live check -> Review Task Pack -> three-case comparison -> Decide / Plan Pack -> Shared Core consolidation -> evidence-led expansion.
 
-The protocol refactor must not begin with a large interface rewrite. Storage and state contracts come first; a named backup is required before major frontend work.
+The current foundation is sufficient for the first product slice. No further generic protocol, Observer, routing, agent-autonomy, or broad interface infrastructure work begins without a named Task Pack need. A named backup remains required before major frontend work.
 
 ## M0 - Opportunity and Product Thesis - Complete
 
@@ -47,7 +47,7 @@ The protocol refactor must not begin with a large interface rewrite. Storage and
 
 **Exit criteria:** one objective can complete the full Discuss protocol without simulated agent text, duplicate calls, or manual database repair.
 
-**Implementation progress:** all listed product and protocol surfaces are implemented and covered by a mocked end-to-end stream test. A real OpenAI plus Anthropic room completed proposal, cross-review, synthesis, usage reporting, persistence, and the Human Gate on 2026-08-04. The OpenAI adapter omits unsupported optional generation controls, room history uses IndexedDB, and validated Turn Envelopes now feed a bounded Canonical Reducer. M2 remains current while the comparison evidence is broadened and the resumable protocol is implemented.
+**Implementation progress:** all listed product and protocol surfaces are implemented and covered by a mocked end-to-end stream test. A real OpenAI plus Anthropic room completed proposal, cross-review, synthesis, usage reporting, persistence, and the Human Gate on 2026-08-04. The OpenAI adapter omits unsupported optional generation controls, room history uses IndexedDB, validated Turn Envelopes feed a bounded Canonical Reducer, and the resumable Chair protocol is implemented. M2 remains current only through the bounded v0.10c live check and transition into the first Review product slice.
 
 ## M2.1 - Connection and Cost Guardrails - Complete
 
@@ -81,7 +81,7 @@ The protocol refactor must not begin with a large interface rewrite. Storage and
 
 **Exit criteria:** a room can be resumed after a new browser session with its audit history intact.
 
-**Implementation progress:** meeting transcripts, memos, human decisions, usage, participant snapshots, append-only completed/failed turn events, state snapshots, and memo artifacts now persist in a bounded browser-local IndexedDB archive. Users can create a new room without deleting prior records, reopen saved records, and delete them transactionally. Credentials are excluded. Account ownership, server sync, export, and cross-device recovery remain.
+**Implementation progress:** meeting transcripts, memos, human decisions, usage, participant and Observer snapshots, append-only completed/failed turn, protocol-transition, Chair-Directive, Process-Report, and Round-Brief events, state/protocol snapshots, and Memo/Round-Brief artifacts now persist in a bounded browser-local IndexedDB archive. Users can create a new room without deleting prior records, reopen saved records, recover paused or interrupted protocol state, and delete rooms transactionally. Credentials are excluded. Account ownership, server sync, export, and cross-device recovery remain.
 
 ## M2.6 - Meeting Protocol Blueprint v1 - Complete
 
@@ -109,15 +109,15 @@ The protocol refactor must not begin with a large interface rewrite. Storage and
 
 **Exit criteria met:** all provider turns must parse as strict bounded JSON Turn Envelopes before emitting `agent.done`; malformed output emits `agent.format_error`, is stored as `turn.format_failed`, and receives no automatic retry. The deterministic Reducer rejects unknown references and state overflow atomically, assigns stable source-linked record IDs, ignores duplicate turn IDs, versions every successful reduction, and renders valid JSON working context within a 6,000-character cap. Canonical snapshots persist in IndexedDB while old rooms without state remain readable.
 
-## M2.9 - Human-Chaired Resumable Orchestrator - Planned
+## M2.9 - Human-Chaired Resumable Orchestrator - Complete
 
 **Depends on:** M2.8.
 
 **Deliverables:** explicit room state machine; Auto, Checkpoints, and Turn-by-turn modes; Raise Hand; append-only Chair Directives; safe-boundary pause and resume; user-selected maximum rounds; targeted extra turns; idempotent transition IDs; and interruption recovery.
 
-**Exit criteria:** the Chair can pause after a safe boundary, add a scoped instruction, resume without duplicate provider calls, and recover the same protocol state after refresh.
+**Exit criteria met:** the client now persists an explicit protocol state before every provider phase, runs proposal/review/synthesis as separate requests, defaults to Checkpoints, supports Auto and Turn-by-turn, pauses Raise Hand at the next safe boundary, appends scoped Chair Directives to Canonical State and the Event Store, enforces user-selected maximum rounds, and records idempotent transition IDs. A completed transition is rejected before provider calls when its turn IDs already exist; a running transition recovered after refresh becomes interrupted and requires explicit human resume. In-flight provider billing remains inherently ambiguous and is disclosed before resume. Deterministic phase fixtures and recovery tests pass; bounded real-provider verification is the first M2.10 gate.
 
-## M2.10 - Observer, Budgets, and Targeted Debate - Planned
+## M2.10 - Observer, Budgets, and Targeted Debate - Current
 
 **Depends on:** M2.9.
 
@@ -125,23 +125,41 @@ The protocol refactor must not begin with a large interface rewrite. Storage and
 
 **Exit criteria:** every extra turn is attributable to a specific unresolved issue, hard limits terminate automatically, soft quality stops are visible and reversible by the Chair, and the Observer cannot mutate state or approve a Decision.
 
-## M2.11 - Decision Whiteboard and Follow-up - Planned
+**Implementation progress:** M2.10a adds backward-compatible Meeting Budgets, exact pre-call agent-turn gates, observed token/time boundary stops, failed-turn usage accounting, deterministic source-linked Process Reports, reversible structural warnings, and compact budget visibility. The validated-turn presentation correction keeps raw JSON off-stage and preserves manual focus. M2.10b adds an optional user-selected Observer outside the Seat count, exactly one recoverable post-Review call per enabled round, a 5,000-character Canonical State plus Process Report context boundary, strict source-reference validation, a 300-output-token ceiling without automatic retry, source-linked Round Briefs, preflight accounting, and credential-free event/artifact persistence. M2.10c adds a Human Chair Dispute picker, deterministic routing to at most two relevant Seats, a persisted and resumable targeted-debate plan, 250-output-token Review Envelopes using only the named Dispute, related Claim, active Directives, and bounded source IDs, plus a new Process Report and optional Round Brief over only that round's delta. Existing rooms default new fields safely and remain readable. Semantic quality evaluation with real providers, user-editable multi-dimensional limits, and authoritative cost enforcement remain.
+
+**Scope freeze:** one explicitly budgeted real-provider smoke room is the final M2.10 gate. Broader Observer semantics, semantic routing, embedding-based novelty, authoritative pricing, and more budget controls move out of the critical path unless that evaluation reveals a blocking defect.
+
+## M2.11 - Review Task Pack - Planned
 
 **Depends on:** M2.10.
 
-**Deliverables:** user-selected Final Synthesizer; Meeting Whiteboard for Claims, changed positions, Disputes, assumptions, and Chair questions; card-first live turns; expandable raw audit; source-linked Round Briefs; versioned Decision Memos; Ask Author, Ask Seat, Ask Room, and Ask Synthesizer follow-ups; targeted revision; and Memo amendment flow through a new Human Gate.
+**Product case:** review one supplied artifact against an objective, reference material, and explicit truth constraints.
 
-**Exit criteria:** a user can understand the current decision without reading the full transcript, trace every consequential Memo section to sources, ask a scoped follow-up without reopening the whole room, and approve only an immutable Memo version.
+**Deliverables:** Review Agenda; Artifact v1 and source bundle capture; task-adaptive reviewer Role Pack; independent Finding cards; duplicate clustering that preserves conflicts; one named high-impact cross-review; independently configured Editor or explicit participant-reuse savings mode; structured Change Set; Artifact v2; changed-material verification; separate executive brief and detailed Artifact; item-level accept, reject, or edit actions; immutable approved Artifact version; and expandable audit lineage.
 
-## M2.12 - Discuss v1 Evaluation and Consolidation - Planned
+**Initial benchmarks:** resume against a job description, product or requirements document, and technical plan.
 
-**Depends on:** M2.11, while the first baseline measurement happens before M2.7.
+**Exit criteria:** a user can provide Artifact v1 and sources, receive material independent Findings and a detailed Artifact v2, trace every accepted change to a Finding and source or explicit inference, decide changes individually, and complete the flow without reading the full transcript or replaying the entire detailed Artifact into every model request.
+
+The durable transition runner remains outside this slice unless navigation prevents the bounded Review case from completing. It must exist before any claim that paid work continues safely across page navigation, but it cannot replace the Artifact outcome as the milestone goal.
+
+## M2.12 - Review Evaluation and Shared Core Consolidation - Planned
+
+**Depends on:** M2.11.
 
 **Baseline progress:** Live Baseline 001 is complete. It found useful cross-model deltas, excessive output volume, arbitrary generated thresholds entering the memo, final-only human control, and an OpenAI model-parameter compatibility gap.
 
-**Deliverables:** saved single-model baselines; current v0.6 versus Protocol v1 comparison; representative product, planning, and architecture prompts; loop and homogenization fixtures; interruption and recovery tests; context-growth measurements; call, token, latency, cost, and human-reading-effort reports; and a failure taxonomy.
+**Deliverables:** saved single-model baselines; a documented manual GPT-to-Claude-style copy/review baseline; Review Task Pack runs on all three benchmarks; task-specific rubrics; accepted unique changes; rejected or unsupported Findings; human edit distance; call, token, latency, cost, and reading-effort reports; coordination failure taxonomy; and removal or simplification decisions for low-value protocol features.
 
-**Exit criteria:** evidence shows when the structured multi-model protocol adds decision value, when it should stop early, and whether its cost and reading burden are acceptable. Features that fail the evaluation are simplified or removed before Research work begins.
+**Exit criteria:** evidence identifies important accepted improvements unique to structured cross-review, shows whether they justify cost and effort, and leaves only abstractions required by Review plus at least one named second consumer. Features that fail the evaluation are simplified, made optional, or removed.
+
+## M2.13 - Decide / Plan Task Pack - Planned
+
+**Depends on:** M2.12.
+
+**Deliverables:** decision and planning Agenda variants; recommended Role Packs; alternatives, conditions, risks, checkpoints, and reversal triggers; a detailed decision package or executable plan; scoped follow-up; and a Human Gate appropriate to the artifact.
+
+**Exit criteria:** one real decision and one constrained plan complete end to end, demonstrate which Review abstractions are genuinely reusable, and cause the Task Pack contract to be consolidated under the Rule of Two rather than by speculation.
 
 ## M3 - Audit Ledger - Planned
 
@@ -150,6 +168,18 @@ The protocol refactor must not begin with a large interface rewrite. Storage and
 **Exit criteria:** a user can trace a final decision back to its supporting claims, objections, revisions, and human approval.
 
 **Relationship to M2.8:** M2.8 introduces the structured local room records required by the Discuss protocol. M3 expands them into evidence-aware, queryable audit entities rather than restarting the data model.
+
+## M3.1 - Explore Task Pack - Planned
+
+**Deliverables:** divergence-first Role Packs, idea clustering, preservation of useful outliers, user curation, optional surprise round, and an Idea Board artifact.
+
+**Exit criteria:** the room expands useful possibilities before critique, avoids premature convergence, and lets the user select directions without converting brainstorming into a decision protocol.
+
+## M3.2 - Create Task Pack - Planned
+
+**Deliverables:** one designated Author, editorial roles, versioned sections, Artifact Memory, task-shaped context retrieval, continuity state, and local revision review.
+
+**Exit criteria:** a long-form artifact retains coherent voice and continuity without broadcasting the full manuscript or transcript to every Seat on every turn.
 
 ## M3.5 - Research Room - Planned
 
@@ -170,6 +200,12 @@ The protocol refactor must not begin with a large interface rewrite. Storage and
 **Deliverables:** local execution connector first, scoped permissions, approval gate, coding-agent adapter, independent review, and deterministic checks.
 
 **Exit criteria:** an approved bounded task produces a patch and review result without granting the web control plane unrestricted workspace access.
+
+## M4.8 - Play Task Pack - Deferred
+
+**Deliverables:** deterministic game-pack interface, public and private Seat state, legal-action schemas, seeded randomness, visibility rules, bounded turns, and replay.
+
+**Exit criteria:** one rule-bound simulation runs without hidden-information leakage or model-owned rule enforcement. Play remains deferred until the work-focused Task Packs demonstrate product value.
 
 ## M5 - Evaluation and Hardening - Planned
 

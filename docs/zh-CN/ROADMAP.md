@@ -4,14 +4,14 @@
 
 ## 当前定位
 
-- **本地产品版本：** v0.8。
-- **可运行基线：** 真实流式 Discuss、可复用模型席位、会话 BYOK、人工决定 Gate、不含凭证的 IndexedDB Event Store 和确定性 Canonical Meeting State。
+- **本地产品版本：** v0.10c。
+- **可运行基线：** 真实流式 Discuss、可复用模型席位、会话 BYOK、人工决定 Gate、不含凭证的 IndexedDB Event Store、确定性 Canonical Meeting State，以及持久化、由人主持的可恢复编排器。
 - **真实证据 Gate：** 已于 2026-08-04 使用 OpenAI `gpt-5-mini` 与 Anthropic `claude-haiku-4-5-20251001` 完成；见[真实基线 001](evaluations/2026-08-04-v0.6-live-baseline.md)。
-- **最近实现 Gate：** M2.8 已完成；下一步实现 M2.9 可恢复的 Chair 控制状态机。
-- **已批准下一架构：** 会议协议蓝图 v1 的持久化与结构化状态基础已实现，编排与后续协议阶段仍在计划中。
-- **关键路径：** 真实基线 -> 本地 Event Store（已完成）-> Canonical Meeting State（已完成）-> 可恢复的 Chair 编排器 -> Observer 与定向辩论 -> Whiteboard 与 Follow-up -> 比较评测。
+- **立即证据 Gate：** M2.10c 由 Chair 选择的 Dispute 路由已通过确定性 fixture；下一步运行一次有限真实供应商 Observer + 定向辩论烟雾评测，之后停止扩建通用编排器。
+- **已批准产品方向：** 一个 Shared Core 通过经过验证的纵向 Task Pack 生长。Review 是第一条以 Artifact 为中心的产品线；见[产品方向定稿](PRODUCT_DIRECTION.md)。
+- **关键路径：** 有限 v0.10c 真实检查 -> Review Task Pack -> 三案例比较 -> Decide / Plan Pack -> Shared Core 收束 -> 证据驱动扩张。
 
-协议重构不能从大型界面重写开始。先固定存储和状态契约；任何大型前端修改前必须创建命名备份。
+当前基础足以开始第一条产品切片。没有明确 Task Pack 需求，不再启动通用协议、Observer、路由、Agent 自治或广泛界面基础设施工作。任何大型前端修改前仍必须创建命名备份。
 
 ## M0 产品机会与主张 - 已完成
 
@@ -35,7 +35,7 @@
 
 完成条件：一个目标可以在没有模拟回复、重复调用和人工修数据库的情况下走完整个 Discuss 流程。
 
-实现进度：产品和协议功能已完成，并通过模拟端到端流式测试。2026-08-04，真实 OpenAI + Anthropic 房间完成提案、交叉审阅、综合、用量报告、保存和 Human Gate。OpenAI 适配器会省略不兼容的可选生成参数，会议历史已迁入 IndexedDB，经过验证的 Turn Envelope 现在会进入有上限的 Canonical Reducer。M2 在扩大比较证据并实现可恢复协议期间保持“当前”。
+实现进度：产品和协议功能已完成，并通过模拟端到端流式测试。2026-08-04，真实 OpenAI + Anthropic 房间完成提案、交叉审阅、综合、用量报告、保存和 Human Gate。OpenAI 适配器会省略不兼容的可选生成参数，会议历史已迁入 IndexedDB，经过验证的 Turn Envelope 会进入有上限的 Canonical Reducer，由 Chair 控制的可恢复协议也已实现。M2 只在完成有限 v0.10c 真实检查并转入第一条 Review 产品切片期间保持“当前”。
 
 ## M2.1 连接与费用护栏 - 已完成
 
@@ -61,7 +61,7 @@
 
 保存房间、事件、产物与导出；刷新或重新打开浏览器后可以继续会议。
 
-实现进度：会议发言、memo、人工决定、用量、参与者快照、只追加的完成/失败 turn 事件、状态快照和 memo artifact 已保存到有数量上限的浏览器本地 IndexedDB 档案。用户可以新建房间而不删除旧记录、重新打开记录，并以事务方式删除记录。凭证不会进入档案。账号归属、服务端同步、导出和跨设备恢复仍未完成。
+实现进度：会议发言、memo、人工决定、用量、参与者与 Observer 快照、只追加的完成/失败 turn、协议 transition、Chair Directive、Process Report 与 Round Brief 事件、状态/协议快照，以及 Memo/Round Brief artifact 已保存到有数量上限的浏览器本地 IndexedDB 档案。用户可以新建房间而不删除旧记录、重新打开记录、恢复暂停或中断的协议状态，并以事务方式删除记录。凭证不会进入档案。账号归属、服务端同步、导出和跨设备恢复仍未完成。
 
 ## M2.6 会议协议蓝图 v1 - 已完成
 
@@ -89,15 +89,15 @@
 
 完成条件已满足：所有供应商 turn 必须解析成严格、有限的 JSON Turn Envelope，之后才能发出 `agent.done`；格式错误会发出 `agent.format_error`、保存为 `turn.format_failed`，且不自动重试。确定性 Reducer 会原子拒绝未知引用与状态超限，生成稳定且带来源的 record ID，忽略重复 turn ID，为每次成功归并增加版本，并把有效 JSON 工作上下文限制在 6,000 字符内。Canonical snapshot 保存到 IndexedDB，旧的无 state 房间仍可读取。
 
-## M2.9 由人主持的可恢复编排器 - 计划中
+## M2.9 由人主持的可恢复编排器 - 已完成
 
 依赖：M2.8。
 
 交付：显式房间状态机、Auto/Checkpoints/Turn by turn、Raise Hand、append-only Chair Directive、安全边界暂停与恢复、用户选择最大轮数、定向额外 turn、幂等 transition ID 和中断恢复。
 
-完成条件：Chair 可以在安全边界暂停、添加有范围的指令、继续且不产生重复供应商调用，并在刷新后恢复同一协议状态。
+完成条件已满足：客户端在每个供应商 phase 前持久化显式协议状态，把 proposal/review/synthesis 拆成独立请求，默认 Checkpoints，同时支持 Auto 与 Turn by turn；Raise Hand 在下一安全边界暂停；带范围 Chair Directive 追加到 Canonical State 与 Event Store；用户选择最大轮数；transition ID 幂等记录。若 turn ID 已存在，重复的已完成 transition 会在供应商调用前被拒绝；刷新恢复到运行中的 transition 会标记为 interrupted，并要求人类显式恢复。进行中供应商调用是否已计费天然存在不确定性，恢复前会明确提示。确定性 phase fixture 与恢复测试通过；有限真实供应商验证是 M2.10 的第一个 Gate。
 
-## M2.10 Observer、预算与定向辩论 - 计划中
+## M2.10 Observer、预算与定向辩论 - 当前
 
 依赖：M2.9。
 
@@ -105,29 +105,59 @@
 
 完成条件：每个额外 turn 都对应具体未解决问题；硬限制自动终止；软质量停止对 Chair 可见且可覆盖；Observer 不能修改状态或批准 Decision。
 
-## M2.11 Decision Whiteboard 与 Follow-up - 计划中
+实现进度：M2.10a 已加入向后兼容的 Meeting Budget、精确调用前 agent-turn Gate、已观测 token/时间边界停止、失败 turn 用量、带来源 Process Report、可逆结构警告和精简预算显示；验证后 Turn 呈现会把原始 JSON 留在舞台之外。M2.10b 已加入不占 Seat 的可选用户指定 Observer、每个启用轮次恰好一次可恢复的 Review 后调用、5,000 字符 Canonical State + Process Report 上下文边界、严格来源引用校验、不自动重试的 300 output-token 上限、带来源 Round Brief、预检计数，以及不含凭证的 event/artifact 持久化。M2.10c 已加入 Human Chair Dispute 选择器、最多两个相关 Seat 的确定性路由、持久化且可恢复的 targeted-debate plan、只使用明确 Dispute、关联 Claim、active Directive 与有限来源 ID 的 250 output-token Review Envelope，以及只针对该轮增量的新 Process Report 和可选 Round Brief。旧房间会安全默认新增字段并保持可读。真实供应商语义质量评测、用户可编辑多维限制和权威费用执行仍未完成。
+
+**范围冻结：** 一次明确预算的真实供应商烟雾房间是 M2.10 最后 Gate。更广泛的 Observer 语义、语义路由、基于 embedding 的 novelty、权威价格和更多预算控制退出关键路径，除非本次评测发现阻塞缺陷。
+
+## M2.11 Review Task Pack - 计划中
 
 依赖：M2.10。
 
-交付：用户选择 Final Synthesizer；展示 Claim、立场变化、Dispute、assumption、Chair question 的 Meeting Whiteboard；卡片优先的实时发言；可展开原始审计；带来源 Round Brief；版本化 Decision Memo；Ask Author/Seat/Room/Synthesizer；定向修订；Memo amendment 再次进入 Human Gate。
+产品案例：根据目标、参考资料和明确真实性边界，审阅一份用户提供的 Artifact。
 
-完成条件：用户无需阅读完整 transcript 即可理解当前决定；每个重要 Memo 段落都能追溯来源；可以在不重开全员会议的情况下发起有范围追问；只能批准不可变 Memo 版本。
+交付：Review Agenda；Artifact v1 和来源包保存；任务自适应审阅 Role Pack；独立 Finding card；保留冲突的重复聚类；一个明确高影响交叉审阅；独立配置 Editor 或显式参与者复用省钱模式；结构化 Change Set；Artifact v2；改动部分核验；分离的 Executive Brief 与详细 Artifact；逐项接受、拒绝或编辑；不可变已批准 Artifact 版本；可展开审计来源链。
 
-## M2.12 Discuss v1 评测与收束 - 计划中
+首批 benchmark：简历对照职位描述、产品或需求文档，以及技术计划。
 
-依赖：M2.11；第一次基线测量在 M2.7 前完成。
+完成条件：用户可以提供 Artifact v1 与来源，获得关键独立 Finding 和详细 Artifact v2；每个被接受修改都能追溯到 Finding 以及来源或明确推断；用户逐项决定改动；无需阅读完整 transcript，也不把整个详细 Artifact 重放给每个模型请求。
+
+Durable transition runner 保持在本切片之外，除非页面导航导致有限 Review 案例无法完成。任何“离开页面后付费工作仍安全继续”的承诺前必须实现它，但它不能替代 Artifact 结果成为本里程碑目标。
+
+## M2.12 Review 评测与 Shared Core 收束 - 计划中
+
+依赖：M2.11。
 
 基线进度：真实基线 001 已完成，发现跨模型有效增量、输出过长、任意生成阈值进入 memo、仅最终阶段有人类控制，以及 OpenAI 模型参数兼容缺口。
 
-交付：保存单模型基线；当前 v0.6 与 Protocol v1 对比；代表性的产品、计划与架构问题；循环和同质化 fixture；中断与恢复测试；上下文增长测量；调用、token、延迟、费用和人工阅读负担报告；失败分类。
+交付：保存单模型基线；记录一份手动 GPT-to-Claude 式复制审阅基线；在三个 benchmark 上运行 Review Task Pack；任务 rubric；交叉审阅独有且被接受的修改；被拒绝或无依据的 Finding；人工 edit distance；调用、token、延迟、费用和阅读负担；协调失败分类；低价值协议功能的删除或简化决定。
 
-完成条件：证据说明结构化多模型协议在哪些情况下增加决策价值、何时应提前停止，以及费用和阅读负担是否可接受。未通过评测的功能在 Research 前被简化或移除。
+完成条件：证据识别出结构化交叉审阅独有且被接受的重要改进，说明它们是否值得成本和投入，并只留下 Review 与至少一个明确第二使用者需要的抽象。未通过评测的功能被简化、改成可选或删除。
+
+## M2.13 Decide / Plan Task Pack - 计划中
+
+依赖：M2.12。
+
+交付：Decision 与 Plan Agenda 变体；推荐 Role Pack；备选路径、成立条件、风险、checkpoint 和反转触发条件；详细决策包或可执行计划；有范围追问；符合 Artifact 的 Human Gate。
+
+完成条件：一个真实决定和一个受约束计划端到端完成，证明 Review 中哪些抽象确实可复用，并根据 Rule of Two 而不是猜测收束 Task Pack 契约。
 
 ## M3 审计账本 - 计划中
 
 建立 Claim、Evidence、Dispute、Decision、Action、Artifact 和 Evaluation；最终决定可以追溯到依据、异议、修订和人工批准。
 
 与 M2.8 的关系：M2.8 建立 Discuss 协议需要的结构化本地房间记录；M3 在其上扩展证据感知、可查询审计实体，不重新开始数据模型。
+
+## M3.1 Explore Task Pack - 计划中
+
+交付：发散优先 Role Pack、想法聚类、保留有用离群想法、用户策展、可选 surprise round 和 Idea Board Artifact。
+
+完成条件：房间在批判前扩大有用可能性，避免过早收敛，并允许用户选择方向，而不把脑暴变成决策协议。
+
+## M3.2 Create Task Pack - 计划中
+
+交付：一个指定 Author、编辑角色、版本化章节、Artifact Memory、任务化上下文检索、连续性状态和局部修订审阅。
+
+完成条件：长篇 Artifact 保持统一声音和连续性，同时不在每轮向所有 Seat 广播完整手稿或 transcript。
 
 ## M3.5 Research 房间 - 计划中
 
@@ -142,6 +172,12 @@
 ## M4.5 Execute 房间 - 计划中
 
 优先本地执行连接器，加入最小权限、批准门、编码代理、独立 Reviewer 与确定性检查。
+
+## M4.8 Play Task Pack - 延后
+
+交付：确定性 Game Pack 接口、公共与私有 Seat state、合法动作 schema、带 seed 随机、可见性规则、有限回合和回放。
+
+完成条件：一场有明确规则的模拟不泄漏隐藏信息，也不让模型拥有规则执行权。Play 延后到工作型 Task Pack 证明产品价值之后。
 
 ## M5 评测与加固 - 计划中
 

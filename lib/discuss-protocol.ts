@@ -39,6 +39,12 @@ export type SeatRequest = {
   role: RoleId;
 };
 
+export type ObserverRequest = {
+  connectionId: string;
+  provider: ProviderId;
+  model: string;
+};
+
 export type ProviderSummary = {
   id: ProviderId;
   name: string;
@@ -53,6 +59,31 @@ export type UsageSummary = {
   latencyMs: number;
 };
 
+export type AgentProgress = "thinking" | "generating" | "validating";
+
+export type RoundBrief = {
+  id: string;
+  round: number;
+  sourceStateVersion: number;
+  sourceProcessReportId: string;
+  sourceTurnIds: string[];
+  createdAt: string;
+  summary: string;
+  focusClaimIds: string[];
+  remainingDisputeIds: string[];
+  chairQuestionIds: string[];
+  convergence: "low" | "healthy" | "premature";
+  loopRisk: "low" | "medium" | "high";
+  driftRisk: "low" | "medium" | "high";
+  recommendation: "continue" | "targeted_debate" | "ask_human" | "synthesize";
+  reason: string;
+  observer: {
+    provider: ProviderId;
+    model: string;
+  };
+  usage: UsageSummary;
+};
+
 export type DiscussEvent =
   | {
       type: "room.start";
@@ -62,7 +93,7 @@ export type DiscussEvent =
     }
   | {
       type: "phase.start";
-      phase: "proposal" | "review" | "synthesis";
+      phase: "proposal" | "review" | "targeted_debate" | "observer" | "synthesis";
       label: string;
     }
   | {
@@ -74,10 +105,24 @@ export type DiscussEvent =
       provider: ProviderId;
       role: RoleId;
       model: string;
+      round: number;
       phase: "proposal" | "review" | "synthesis";
       target?: string;
     }
   | { type: "agent.delta"; id: string; delta: string }
+  | { type: "agent.progress"; id: string; stage: AgentProgress }
+  | {
+      type: "observer.start";
+      id: string;
+      round: number;
+      provider: ProviderId;
+      connectionName: string;
+      model: string;
+    }
+  | { type: "observer.progress"; id: string; stage: AgentProgress }
+  | { type: "observer.done"; id: string; brief: RoundBrief; usage: UsageSummary }
+  | { type: "observer.format_error"; id: string; message: string; usage: UsageSummary }
+  | { type: "observer.error"; id: string; message: string }
   | {
       type: "agent.done";
       id: string;
@@ -87,7 +132,16 @@ export type DiscussEvent =
       envelope: TurnEnvelope;
       usage: UsageSummary;
     }
-  | { type: "agent.format_error"; id: string; message: string }
+  | {
+      type: "phase.done";
+      requestId: string;
+      phase: TurnPhase | "observer" | "targeted_debate";
+      round: number;
+      completedSeatIds: string[];
+      usage: UsageSummary;
+      memo?: string;
+    }
+  | { type: "agent.format_error"; id: string; message: string; usage: UsageSummary }
   | {
       type: "agent.reduction_error";
       id: string;

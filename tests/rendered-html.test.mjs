@@ -4,6 +4,7 @@ import test from "node:test";
 import ts from "typescript";
 
 let meetingStateModule;
+let meetingOrchestratorModule;
 
 async function loadMeetingStateModule() {
   if (!meetingStateModule) {
@@ -21,6 +22,24 @@ async function loadMeetingStateModule() {
     });
   }
   return meetingStateModule;
+}
+
+async function loadMeetingOrchestratorModule() {
+  if (!meetingOrchestratorModule) {
+    meetingOrchestratorModule = readFile(
+      new URL("../lib/meeting-orchestrator.ts", import.meta.url),
+      "utf8",
+    ).then((source) => {
+      const output = ts.transpileModule(source, {
+        compilerOptions: {
+          module: ts.ModuleKind.ESNext,
+          target: ts.ScriptTarget.ES2022,
+        },
+      }).outputText;
+      return import(`data:text/javascript;base64,${Buffer.from(output).toString("base64")}`);
+    });
+  }
+  return meetingOrchestratorModule;
 }
 
 async function loadWorker() {
@@ -78,7 +97,8 @@ test("provider status endpoint exposes configuration without secrets", async () 
   const body = await response.json();
   assert.equal(body.minParticipants, 2);
   assert.equal(body.maxParticipants, 3);
-  assert.equal(body.maxIterations, 2);
+  assert.equal(body.defaultMaxRounds, 2);
+  assert.equal(body.maxIterations, 5);
   assert.deepEqual(
     body.providers.map((provider) => provider.id),
     ["openai", "anthropic", "gemini"],
@@ -175,6 +195,8 @@ test("session BYOK streams a bounded meeting without exposing credentials", asyn
     }
     if (url.startsWith("https://api.anthropic.com/")) {
       providerCalls += 1;
+      const request = JSON.parse(String(init?.body ?? "{}"));
+      assert.equal(request.thinking, undefined);
       return sseResponse([
         {
           type: "message_start",
@@ -247,6 +269,14 @@ test("session BYOK streams a bounded meeting without exposing credentials", asyn
     const completedTurns = events.filter((event) => event.type === "agent.done");
     assert.equal(completedTurns.length, 5);
     assert.ok(completedTurns.every((event) => event.round === 1 && event.envelope?.card));
+    const validatingTurns = events.filter(
+      (event) => event.type === "agent.progress" && event.stage === "validating",
+    );
+    assert.equal(validatingTurns.length, 5);
+    assert.deepEqual(
+      new Set(validatingTurns.map((event) => event.id)),
+      new Set(completedTurns.map((event) => event.id)),
+    );
     const completed = events.find((event) => event.type === "room.done");
     assert.ok(completed);
     assert.match(completed.memo, /# Recommendation/);
@@ -268,6 +298,11 @@ test("one verified connection can power multiple seats", async () => {
     if (url.startsWith("https://api.openai.com/")) {
       providerCalls += 1;
       const request = JSON.parse(String(init?.body ?? "{}"));
+      if (request.model === "gpt-5-mini") {
+        assert.deepEqual(request.reasoning, { effort: "minimal" });
+      } else {
+        assert.equal(request.reasoning, undefined);
+      }
       const text = fixtureTurnEnvelope(String(request.input), "Reusable OpenAI fixture response.");
       return sseResponse([
         { type: "response.output_text.delta", delta: text },
@@ -286,8 +321,8 @@ test("one verified connection can power multiple seats", async () => {
         body: JSON.stringify({
           objective: "Decide whether one connection can support role-diverse seats.",
           seats: [
-            { id: "seat-1", connectionId: "shared-openai", provider: "openai", model: "gpt-model-a", role: "strategist" },
-            { id: "seat-2", connectionId: "shared-openai", provider: "openai", model: "gpt-model-b", role: "critic" },
+            { id: "seat-1", connectionId: "shared-openai", provider: "openai", model: "gpt-5-mini", role: "strategist" },
+            { id: "seat-2", connectionId: "shared-openai", provider: "openai", model: "gpt-4.1-mini", role: "critic" },
           ],
           connections: {
             "shared-openai": { provider: "openai", apiKey: "shared-openai-key" },
@@ -308,9 +343,244 @@ test("one verified connection can power multiple seats", async () => {
     const events = streamText.trim().split("\n").map((line) => JSON.parse(line));
     assert.deepEqual(
       events.filter((event) => event.type === "agent.start" && event.phase === "proposal").map((event) => event.model),
-      ["gpt-model-a", "gpt-model-b"],
+      ["gpt-5-mini", "gpt-4.1-mini"],
     );
     assert.ok(events.find((event) => event.type === "room.done"));
+  } finally {
+    globalThis.fetch = originalFetch;
+  }
+});
+
+test("split proposal transitions stop at a checkpoint and reject an applied transition before provider calls", async () => {
+  const originalFetch = globalThis.fetch;
+  const { createInitialMeetingState, reduceTurnEnvelope } = await loadMeetingStateModule();
+  let providerCalls = 0;
+  globalThis.fetch = async (input, init) => {
+    const url = typeof input === "string" ? input : input.url;
+    if (!url.startsWith("https://api.openai.com/")) return originalFetch(input, init);
+    providerCalls += 1;
+    const request = JSON.parse(String(init?.body ?? "{}"));
+    const text = fixtureTurnEnvelope(String(request.input), `${request.model} checkpoint proposal.`);
+    return sseResponse([
+      { type: "response.output_text.delta", delta: text },
+      { type: "response.completed", response: { usage: { input_tokens: 8, output_tokens: 6 } } },
+    ]);
+  };
+
+  try {
+    const worker = await loadWorker();
+    const objective = "Verify that resumable proposal transitions stop at a safe checkpoint.";
+    const seats = [
+      { id: "seat-1", connectionId: "shared", provider: "openai", model: "gpt-a", role: "strategist" },
+      { id: "seat-2", connectionId: "shared", provider: "openai", model: "gpt-b", role: "critic" },
+    ];
+    const requestBody = {
+      objective,
+      seats,
+      connections: { shared: { provider: "openai", apiKey: "phase-test-key" } },
+      iteration: 1,
+      priorMemo: "",
+      requestId: "transition-proposal-fixture-1",
+      protocolPhase: "proposal",
+      seatIds: ["seat-1", "seat-2"],
+      contextTurns: [],
+      meetingState: createInitialMeetingState(objective),
+    };
+    const firstResponse = await worker.fetch(
+      new Request("http://localhost/api/discuss", {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify(requestBody),
+      }),
+      workerEnv(),
+      executionContext(),
+    );
+    assert.equal(firstResponse.status, 200);
+    const firstEvents = (await firstResponse.text()).trim().split("\n").map((line) => JSON.parse(line));
+    assert.equal(providerCalls, 2);
+    assert.equal(firstEvents.filter((event) => event.type === "phase.start").length, 1);
+    assert.equal(firstEvents.find((event) => event.type === "phase.done")?.phase, "proposal");
+    assert.equal(firstEvents.find((event) => event.type === "room.done"), undefined);
+
+    let state = requestBody.meetingState;
+    for (const event of firstEvents.filter((item) => item.type === "agent.done")) {
+      const reduction = reduceTurnEnvelope(state, {
+        id: event.id,
+        sourceMessageId: event.id,
+        seatId: event.seatId,
+        round: event.round,
+        phase: event.phase,
+        envelope: event.envelope,
+        usage: event.usage,
+      });
+      assert.equal(reduction.ok, true);
+      state = reduction.state;
+    }
+
+    const duplicateResponse = await worker.fetch(
+      new Request("http://localhost/api/discuss", {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ ...requestBody, meetingState: state }),
+      }),
+      workerEnv(),
+      executionContext(),
+    );
+    const duplicateEvents = (await duplicateResponse.text()).trim().split("\n").map((line) => JSON.parse(line));
+    assert.equal(providerCalls, 2);
+    assert.match(duplicateEvents.find((event) => event.type === "room.error")?.message ?? "", /already present/i);
+
+    const proposalContext = firstEvents
+      .filter((event) => event.type === "agent.done")
+      .map((event) => ({
+        id: event.id,
+        seatId: event.seatId,
+        round: event.round,
+        phase: event.phase,
+        envelope: event.envelope,
+      }));
+    const reviewResponse = await worker.fetch(
+      new Request("http://localhost/api/discuss", {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({
+          ...requestBody,
+          requestId: "transition-review-fixture-1",
+          protocolPhase: "review",
+          contextTurns: proposalContext,
+          meetingState: state,
+        }),
+      }),
+      workerEnv(),
+      executionContext(),
+    );
+    const reviewEvents = (await reviewResponse.text()).trim().split("\n").map((line) => JSON.parse(line));
+    assert.equal(providerCalls, 4);
+    assert.equal(reviewEvents.find((event) => event.type === "phase.done")?.phase, "review");
+    assert.equal(reviewEvents.filter((event) => event.type === "agent.done" && event.phase === "review").length, 2);
+  } finally {
+    globalThis.fetch = originalFetch;
+  }
+});
+
+test("Observer makes one bounded source-linked call without receiving the transcript", async () => {
+  const originalFetch = globalThis.fetch;
+  const { createInitialMeetingState, reduceTurnEnvelope } = await loadMeetingStateModule();
+  const objective = "Check whether the review round is ready for a bounded synthesis.";
+  const first = reduceTurnEnvelope(createInitialMeetingState(objective), {
+    id: "observer-source-proposal",
+    sourceMessageId: "observer-source-proposal",
+    seatId: "seat-1",
+    round: 1,
+    phase: "proposal",
+    envelope: validEnvelope({
+      statement: "Use a bounded plan.",
+      thesis: "The plan should remain bounded.",
+      newClaims: [{ text: "Ten days is the fixed planning horizon.", assumptionLevel: "low" }],
+      questionForChair: "Which outcome matters most?",
+    }),
+  });
+  assert.equal(first.ok, true);
+  const second = reduceTurnEnvelope(first.state, {
+    id: "observer-source-review",
+    sourceMessageId: "observer-source-review",
+    seatId: "seat-2",
+    round: 1,
+    phase: "review",
+    envelope: validEnvelope({
+      statement: "The outcome needs a measurable threshold.",
+      stance: "oppose",
+      thesis: "The plan needs a measurable threshold.",
+      claimUpdates: [{ claimId: first.state.claims[0].id, action: "oppose", reason: "No threshold is named." }],
+      objections: [{ targetClaimId: first.state.claims[0].id, text: "The threshold is missing.", severity: "material" }],
+    }),
+  });
+  assert.equal(second.ok, true);
+  const state = second.state;
+  const stateBefore = JSON.stringify(state);
+  const processReport = {
+    id: `process-report-r1-v${state.version}`,
+    round: 1,
+    sourceStateVersion: state.version,
+    sourceTurnIds: ["observer-source-proposal", "observer-source-review"],
+    createdAt: "2026-08-22T10:00:00.000Z",
+    newClaimCount: 1,
+    claimUpdateCount: 1,
+    objectionCount: 1,
+    noNewInformationCount: 0,
+    madeStructuralProgress: true,
+    distinctThesisRatio: 1,
+    activeDisputeIds: [state.disputes[0].id],
+    openQuestionCount: 1,
+    recommendation: "continue",
+    reasons: [],
+  };
+  let providerCalls = 0;
+  let observerPrompt = "";
+  globalThis.fetch = async (input, init) => {
+    const url = typeof input === "string" ? input : input.url;
+    if (!url.startsWith("https://api.openai.com/")) return originalFetch(input, init);
+    providerCalls += 1;
+    const request = JSON.parse(String(init?.body ?? "{}"));
+    observerPrompt = String(request.input);
+    assert.equal(request.model, "gpt-observer-fixture");
+    assert.equal(request.max_output_tokens, 300);
+    const output = {
+      summary: "The round added one claim and one material objection. The threshold dispute remains open.",
+      focusClaimIds: [state.claims[0].id],
+      remainingDisputeIds: [state.disputes[0].id],
+      chairQuestionIds: [state.openQuestions[0].id],
+      convergence: "healthy",
+      loopRisk: "low",
+      driftRisk: "low",
+      recommendation: "targeted_debate",
+      reason: "Resolve the named threshold dispute before synthesis.",
+    };
+    return sseResponse([
+      { type: "response.output_text.delta", delta: JSON.stringify(output) },
+      { type: "response.completed", response: { usage: { input_tokens: 40, output_tokens: 30 } } },
+    ]);
+  };
+
+  try {
+    const worker = await loadWorker();
+    const response = await worker.fetch(
+      new Request("http://localhost/api/discuss", {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({
+          objective,
+          seats: [
+            { id: "seat-1", connectionId: "shared", provider: "openai", model: "gpt-a", role: "strategist" },
+            { id: "seat-2", connectionId: "shared", provider: "openai", model: "gpt-b", role: "critic" },
+          ],
+          observer: { connectionId: "shared", provider: "openai", model: "gpt-observer-fixture" },
+          connections: { shared: { provider: "openai", apiKey: "observer-fixture-key" } },
+          iteration: 1,
+          priorMemo: "FORBIDDEN RAW TRANSCRIPT",
+          requestId: "observer-transition-fixture-1",
+          protocolPhase: "observer",
+          seatIds: [],
+          meetingState: state,
+          processReport,
+        }),
+      }),
+      workerEnv(),
+      executionContext(),
+    );
+    assert.equal(response.status, 200);
+    const events = (await response.text()).trim().split("\n").map((line) => JSON.parse(line));
+    assert.equal(providerCalls, 1);
+    assert.doesNotMatch(observerPrompt, /FORBIDDEN RAW TRANSCRIPT/);
+    assert.match(observerPrompt, /DETERMINISTIC PROCESS REPORT/);
+    assert.match(observerPrompt, new RegExp(state.claims[0].id));
+    const done = events.find((event) => event.type === "observer.done");
+    assert.ok(done);
+    assert.equal(done.brief.sourceStateVersion, state.version);
+    assert.equal(done.brief.sourceProcessReportId, processReport.id);
+    assert.deepEqual(done.brief.sourceTurnIds, processReport.sourceTurnIds);
+    assert.equal(events.find((event) => event.type === "phase.done")?.phase, "observer");
+    assert.equal(JSON.stringify(state), stateBefore);
   } finally {
     globalThis.fetch = originalFetch;
   }
@@ -354,8 +624,13 @@ test("malformed Turn Envelopes fail visibly without a paid retry", async () => {
     );
 
     const events = (await response.text()).trim().split("\n").map((line) => JSON.parse(line));
+    const formatErrors = events.filter((event) => event.type === "agent.format_error");
     assert.equal(providerCalls, 2);
-    assert.equal(events.filter((event) => event.type === "agent.format_error").length, 2);
+    assert.equal(formatErrors.length, 2);
+    assert.deepEqual(
+      formatErrors.map((event) => [event.usage.inputTokens, event.usage.outputTokens]),
+      [[5, 2], [5, 2]],
+    );
     assert.equal(events.filter((event) => event.type === "agent.error").length, 0);
     assert.ok(events.find((event) => event.type === "room.error"));
     assert.equal(events.find((event) => event.type === "phase.start" && event.phase === "review"), undefined);
@@ -442,7 +717,15 @@ test("Turn Envelope validation and the Canonical Reducer preserve lineage", asyn
     newClaims: [{ text: "A two-provider pilot is the narrowest useful test.", assumptionLevel: "high" }],
   });
   assert.equal(parseTurnEnvelope(JSON.stringify(proposal), "proposal").ok, true);
-  assert.equal(parseTurnEnvelope("```json\n{}\n```", "proposal").ok, false);
+  assert.equal(parseTurnEnvelope(`\`\`\`json\n${JSON.stringify(proposal)}\n\`\`\``, "proposal").ok, true);
+  assert.equal(parseTurnEnvelope(`prefix\n${JSON.stringify(proposal)}`, "proposal").ok, false);
+  const omittedCollections = JSON.parse(JSON.stringify(proposal));
+  delete omittedCollections.card.claimUpdates;
+  delete omittedCollections.card.objections;
+  const normalizedCollections = parseTurnEnvelope(omittedCollections, "proposal");
+  assert.equal(normalizedCollections.ok, true);
+  assert.deepEqual(normalizedCollections.value.card.claimUpdates, []);
+  assert.deepEqual(normalizedCollections.value.card.objections, []);
 
   const initial = createInitialMeetingState(
     "Choose the narrowest useful protocol test.",
@@ -497,6 +780,38 @@ test("Turn Envelope validation and the Canonical Reducer preserve lineage", asyn
   const rendered = renderMeetingStateContext(second.state, 1_500);
   assert.ok(rendered.length <= 1_500);
   assert.doesNotThrow(() => JSON.parse(rendered));
+
+  const revision = reduceTurnEnvelope(first.state, {
+    id: "turn-revise",
+    sourceMessageId: "message-revise",
+    seatId: "seat-2",
+    round: 1,
+    phase: "review",
+    envelope: validEnvelope({
+      statement: "Keep the claim visible while requesting a revision.",
+      stance: "revise",
+      thesis: "A revision request is advisory until the chair resolves it.",
+      claimUpdates: [{ claimId: first.state.claims[0].id, action: "revise", reason: "Clarify the success threshold." }],
+    }),
+  });
+  assert.equal(revision.ok, true);
+  assert.equal(revision.state.claims[0].status, "contested");
+
+  const parallelSupport = reduceTurnEnvelope(revision.state, {
+    id: "turn-support-after-revise",
+    sourceMessageId: "message-support-after-revise",
+    seatId: "seat-3",
+    round: 1,
+    phase: "review",
+    envelope: validEnvelope({
+      statement: "Support the still-published claim from the same review phase.",
+      stance: "support",
+      thesis: "Parallel reviewers must share stable Claim references.",
+      claimUpdates: [{ claimId: first.state.claims[0].id, action: "support", reason: "The bounded pilot remains useful." }],
+    }),
+  });
+  assert.equal(parallelSupport.ok, true);
+  assert.equal(parallelSupport.state.claims[0].status, "contested");
 });
 
 test("the Canonical Reducer rejects unknown references and active-state overflow atomically", async () => {
@@ -555,13 +870,545 @@ test("the Canonical Reducer rejects unknown references and active-state overflow
   assert.equal(overflow.state.claims.length, 12);
 });
 
+test("resumable protocol pauses safely and recovers transitions idempotently", async () => {
+  const {
+    beginProtocolTransition,
+    completeProtocolTransition,
+    continueProtocol,
+    createMeetingProtocolState,
+    parseMeetingProtocolState,
+    recoverProtocolAfterReload,
+  } = await loadMeetingOrchestratorModule();
+  const now = "2026-08-08T12:00:00.000Z";
+  const initial = createMeetingProtocolState(["seat-1", "seat-2"], "checkpoints", 2, now);
+  const running = beginProtocolTransition(initial, "transition-proposal-1", ["seat-1", "seat-2"], now);
+  assert.equal(running.ok, true);
+  assert.equal(running.state.status, "running");
+
+  const completed = completeProtocolTransition(
+    running.state,
+    "transition-proposal-1",
+    ["seat-1", "seat-2"],
+    now,
+  );
+  assert.equal(completed.ok, true);
+  assert.equal(completed.state.phase, "proposal_checkpoint");
+  assert.equal(completed.state.status, "paused");
+  assert.equal(parseMeetingProtocolState(completed.state)?.phase, "proposal_checkpoint");
+
+  const duplicate = completeProtocolTransition(
+    completed.state,
+    "transition-proposal-1",
+    ["seat-1", "seat-2"],
+    now,
+  );
+  assert.equal(duplicate.ok, true);
+  assert.equal(duplicate.duplicate, true);
+  assert.equal(duplicate.state.transitions.length, 1);
+
+  const reviewReady = continueProtocol(completed.state, ["seat-1", "seat-2"], now);
+  assert.equal(reviewReady.ok, true);
+  assert.equal(reviewReady.state.phase, "review");
+  assert.deepEqual(reviewReady.state.pendingSeatIds, ["seat-1", "seat-2"]);
+
+  const reviewRunning = beginProtocolTransition(
+    reviewReady.state,
+    "transition-review-1",
+    ["seat-1", "seat-2"],
+    now,
+  );
+  assert.equal(reviewRunning.ok, true);
+  const recovered = recoverProtocolAfterReload(reviewRunning.state, "2026-08-08T12:01:00.000Z");
+  assert.equal(recovered.status, "interrupted");
+  assert.equal(recovered.transitions.at(-1).status, "interrupted");
+  const explicitResume = continueProtocol(recovered, ["seat-1", "seat-2"], now);
+  assert.equal(explicitResume.ok, true);
+  assert.equal(explicitResume.state.status, "ready");
+
+  const turnByTurn = createMeetingProtocolState(["seat-1", "seat-2"], "turn_by_turn", 2, now);
+  const oneSeat = beginProtocolTransition(turnByTurn, "transition-seat-1", ["seat-1"], now);
+  const oneSeatDone = completeProtocolTransition(oneSeat.state, "transition-seat-1", ["seat-1"], now);
+  assert.equal(oneSeatDone.state.status, "paused");
+  assert.deepEqual(oneSeatDone.state.pendingSeatIds, ["seat-2"]);
+});
+
+test("deterministic budgets and process reports stop bounded low-progress work", async () => {
+  const {
+    beginProtocolTransition,
+    completeProtocolTransition,
+    continueProtocol,
+    createMeetingProtocolState,
+    createProcessReport,
+    evaluateMeetingBudget,
+    parseMeetingProtocolState,
+  } = await loadMeetingOrchestratorModule();
+  const { createInitialMeetingState } = await loadMeetingStateModule();
+  const now = "2026-08-10T12:00:00.000Z";
+  const tightBudget = {
+    maxAgentTurns: 2,
+    maxInputTokens: 2_000,
+    maxOutputTokens: 1_000,
+    maxModelTimeMs: 10_000,
+  };
+  const initial = createMeetingProtocolState(
+    ["seat-1", "seat-2"],
+    "checkpoints",
+    2,
+    now,
+    tightBudget,
+  );
+  const proposal = beginProtocolTransition(initial, "budget-proposal", ["seat-1", "seat-2"], now);
+  assert.equal(proposal.ok, true);
+  const proposalDone = completeProtocolTransition(
+    proposal.state,
+    "budget-proposal",
+    ["seat-1", "seat-2"],
+    now,
+  );
+  const reviewReady = continueProtocol(proposalDone.state, ["seat-1", "seat-2"], now);
+  const turnStop = evaluateMeetingBudget(reviewReady.state, {
+    inputTokens: 100,
+    outputTokens: 100,
+    estimatedUsd: 0.01,
+    latencyMs: 100,
+  }, ["seat-1"]);
+  assert.equal(turnStop.allowed, false);
+  assert.deepEqual(turnStop.reasons, ["turn_limit"]);
+
+  const tokenStop = evaluateMeetingBudget(initial, {
+    inputTokens: 2_000,
+    outputTokens: 100,
+    estimatedUsd: 0.01,
+    latencyMs: 100,
+  }, ["seat-1"]);
+  assert.equal(tokenStop.allowed, false);
+  assert.ok(tokenStop.reasons.includes("input_token_limit"));
+
+  const legacyState = JSON.parse(JSON.stringify(initial));
+  delete legacyState.budget;
+  delete legacyState.processReports;
+  const parsedLegacy = parseMeetingProtocolState(legacyState);
+  assert.ok(parsedLegacy);
+  assert.equal(parsedLegacy.processReports.length, 0);
+
+  const meetingState = createInitialMeetingState("Stop when another round adds nothing.");
+  const noProgressEnvelope = validEnvelope({
+    statement: "No new information.",
+    stance: "no_new_information",
+    thesis: "The current state is unchanged.",
+  });
+  const firstReport = createProcessReport(meetingState, [{
+    id: "round-1-no-progress",
+    round: 1,
+    phase: "review",
+    status: "done",
+    envelope: noProgressEnvelope,
+  }], undefined, now);
+  assert.equal(firstReport.recommendation, "continue");
+  assert.equal(firstReport.madeStructuralProgress, false);
+
+  const secondReport = createProcessReport(
+    { ...meetingState, round: 2, version: 2 },
+    [{
+      id: "round-2-no-progress",
+      round: 2,
+      phase: "review",
+      status: "done",
+      envelope: noProgressEnvelope,
+    }],
+    firstReport,
+    "2026-08-10T12:01:00.000Z",
+  );
+  assert.equal(secondReport.recommendation, "pause");
+  assert.ok(secondReport.reasons.includes("low_progress"));
+});
+
+test("Observer transitions are budgeted, source-bound, resumable, and backward compatible", async () => {
+  const {
+    beginObserverTransition,
+    completeObserverTransition,
+    continueProtocol,
+    createMeetingProtocolState,
+    evaluateMeetingBudget,
+    interruptProtocolTransition,
+    parseMeetingProtocolState,
+  } = await loadMeetingOrchestratorModule();
+  const now = "2026-08-22T11:00:00.000Z";
+  const report = {
+    id: "process-report-r1-v2",
+    round: 1,
+    sourceStateVersion: 2,
+    sourceTurnIds: ["turn-proposal", "turn-review"],
+    createdAt: now,
+    newClaimCount: 1,
+    claimUpdateCount: 1,
+    objectionCount: 1,
+    noNewInformationCount: 0,
+    madeStructuralProgress: true,
+    distinctThesisRatio: 1,
+    activeDisputeIds: ["dispute-1"],
+    openQuestionCount: 1,
+    recommendation: "continue",
+    reasons: [],
+  };
+  const initial = createMeetingProtocolState(
+    ["seat-1", "seat-2"],
+    "checkpoints",
+    2,
+    now,
+    undefined,
+    true,
+  );
+  assert.equal(initial.budget.maxAgentTurns, 12);
+  const checkpoint = {
+    ...initial,
+    phase: "review_checkpoint",
+    status: "paused",
+    pendingSeatIds: [],
+    processReports: [report],
+  };
+  const budget = evaluateMeetingBudget(checkpoint, {
+    inputTokens: 0,
+    outputTokens: 0,
+    estimatedUsd: 0,
+    latencyMs: 0,
+  }, [], 1);
+  assert.equal(budget.allowed, true);
+  const running = beginObserverTransition(checkpoint, "observer-transition-1", now);
+  assert.equal(running.ok, true);
+  assert.equal(running.state.transitions.at(-1).phase, "observer");
+  const interrupted = interruptProtocolTransition(running.state, "observer-transition-1", now);
+  assert.equal(interrupted.ok, true);
+  const resumed = continueProtocol(interrupted.state, ["seat-1", "seat-2"], now);
+  assert.equal(resumed.ok, true);
+  assert.equal(resumed.state.phase, "review_checkpoint");
+  assert.equal(resumed.state.status, "paused");
+
+  const rerun = beginObserverTransition(resumed.state, "observer-transition-2", now);
+  assert.equal(rerun.ok, true);
+  const brief = {
+    id: "round-brief-r1-v2",
+    round: 1,
+    sourceStateVersion: 2,
+    sourceProcessReportId: report.id,
+    sourceTurnIds: [...report.sourceTurnIds],
+    createdAt: now,
+    summary: "One dispute remains after productive review.",
+    focusClaimIds: ["claim-1"],
+    remainingDisputeIds: ["dispute-1"],
+    chairQuestionIds: ["question-1"],
+    convergence: "healthy",
+    loopRisk: "low",
+    driftRisk: "low",
+    recommendation: "targeted_debate",
+    reason: "Resolve the remaining dispute.",
+    observer: { provider: "openai", model: "gpt-observer" },
+    usage: { inputTokens: 20, outputTokens: 10, estimatedUsd: 0.001, latencyMs: 100 },
+  };
+  const completed = completeObserverTransition(rerun.state, "observer-transition-2", brief, now);
+  assert.equal(completed.ok, true);
+  assert.equal(completed.state.roundBriefs.length, 1);
+  assert.equal(completed.state.phase, "review_checkpoint");
+  assert.equal(completed.state.status, "paused");
+
+  const legacy = JSON.parse(JSON.stringify(initial));
+  delete legacy.observerEnabled;
+  delete legacy.roundBriefs;
+  const parsedLegacy = parseMeetingProtocolState(legacy);
+  assert.ok(parsedLegacy);
+  assert.equal(parsedLegacy.observerEnabled, false);
+  assert.deepEqual(parsedLegacy.roundBriefs, []);
+});
+
+test("the Human Chair can route one open Dispute into a bounded resumable round", async () => {
+  const {
+    beginProtocolTransition,
+    beginTargetedDebateRound,
+    completeProtocolTransition,
+    createMeetingProtocolState,
+    parseMeetingProtocolState,
+    recoverProtocolAfterReload,
+  } = await loadMeetingOrchestratorModule();
+  const { createInitialMeetingState, reduceTurnEnvelope } = await loadMeetingStateModule();
+  const now = "2026-08-22T15:00:00.000Z";
+  const objective = "Resolve one named disagreement without rerunning the full meeting.";
+  let state = createInitialMeetingState(objective);
+  state = reduceTurnEnvelope(state, {
+    id: "proposal-source-turn",
+    sourceMessageId: "proposal-source-message",
+    seatId: "seat-1",
+    round: 1,
+    phase: "proposal",
+    envelope: validEnvelope({
+      statement: "Use one bounded route.",
+      thesis: "A bounded route controls cost.",
+      newClaims: [{ text: "Use one bounded route.", assumptionLevel: "low" }],
+    }),
+  }).state;
+  state = reduceTurnEnvelope(state, {
+    id: "review-source-turn",
+    sourceMessageId: "review-source-message",
+    seatId: "seat-2",
+    round: 1,
+    phase: "review",
+    envelope: validEnvelope({
+      statement: "The route still needs a stop condition.",
+      stance: "oppose",
+      thesis: "The route needs a stop condition.",
+      objections: [{ targetClaimId: state.claims[0].id, text: "No stop condition is named.", severity: "material" }],
+    }),
+  }).state;
+  const dispute = state.disputes[0];
+  const checkpoint = {
+    ...createMeetingProtocolState(["seat-1", "seat-2", "seat-3"], "checkpoints", 2, now),
+    phase: "review_checkpoint",
+    status: "paused",
+    round: 1,
+    pendingSeatIds: [],
+  };
+  const targeted = beginTargetedDebateRound(
+    checkpoint,
+    state,
+    dispute.id,
+    ["seat-1", "seat-2", "seat-3"],
+    now,
+  );
+  assert.equal(targeted.ok, true);
+  assert.equal(targeted.state.phase, "targeted_debate");
+  assert.equal(targeted.state.round, 2);
+  assert.deepEqual(targeted.state.pendingSeatIds, ["seat-2", "seat-1"]);
+  assert.deepEqual(targeted.state.targetedDebates[0].sourceMessageIds, [
+    "review-source-message",
+    "proposal-source-message",
+  ]);
+  assert.equal(parseMeetingProtocolState(targeted.state)?.targetedDebates.length, 1);
+
+  const running = beginProtocolTransition(
+    targeted.state,
+    "targeted-transition-1",
+    targeted.state.pendingSeatIds,
+    now,
+  );
+  assert.equal(running.ok, true);
+  assert.equal(running.state.transitions.at(-1).phase, "targeted_debate");
+  const recovered = recoverProtocolAfterReload(running.state, now);
+  assert.equal(recovered.status, "interrupted");
+
+  const turnByTurnTargeted = beginTargetedDebateRound(
+    { ...checkpoint, controlMode: "turn_by_turn" },
+    state,
+    dispute.id,
+    ["seat-1", "seat-2", "seat-3"],
+    now,
+  );
+  const firstTargetedSeat = beginProtocolTransition(
+    turnByTurnTargeted.state,
+    "targeted-turn-by-turn-1",
+    ["seat-2"],
+    now,
+  );
+  const firstTargetedDone = completeProtocolTransition(
+    firstTargetedSeat.state,
+    "targeted-turn-by-turn-1",
+    ["seat-2"],
+    now,
+  );
+  assert.equal(firstTargetedDone.state.status, "paused");
+  assert.deepEqual(firstTargetedDone.state.pendingSeatIds, ["seat-1"]);
+
+  const completed = completeProtocolTransition(
+    running.state,
+    "targeted-transition-1",
+    ["seat-2", "seat-1"],
+    now,
+  );
+  assert.equal(completed.ok, true);
+  assert.equal(completed.state.phase, "review_checkpoint");
+  assert.equal(completed.state.status, "paused");
+
+  const exhausted = beginTargetedDebateRound(
+    { ...checkpoint, maxRounds: 1 },
+    state,
+    dispute.id,
+    ["seat-1", "seat-2"],
+    now,
+  );
+  assert.equal(exhausted.ok, false);
+  assert.match(exhausted.error, /maximum round/i);
+});
+
+test("targeted debate calls only routed Seats with the named bounded context", async () => {
+  const originalFetch = globalThis.fetch;
+  const { createInitialMeetingState, reduceTurnEnvelope } = await loadMeetingStateModule();
+  const objective = "Resolve one named disagreement without replaying the room transcript.";
+  let state = createInitialMeetingState(objective);
+  state = reduceTurnEnvelope(state, {
+    id: "target-proposal-turn",
+    sourceMessageId: "target-proposal-message",
+    seatId: "seat-1",
+    round: 1,
+    phase: "proposal",
+    envelope: validEnvelope({
+      statement: "Adopt a ten-day plan.",
+      thesis: "Ten days is the target duration.",
+      newClaims: [{ text: "Use a ten-day duration.", assumptionLevel: "medium" }],
+    }),
+  }).state;
+  state = reduceTurnEnvelope(state, {
+    id: "target-review-turn",
+    sourceMessageId: "target-review-message",
+    seatId: "seat-2",
+    round: 1,
+    phase: "review",
+    envelope: validEnvelope({
+      statement: "The daily load is unresolved.",
+      stance: "oppose",
+      thesis: "Daily load needs an explicit bound.",
+      objections: [{ targetClaimId: state.claims[0].id, text: "Daily load is not bounded.", severity: "material" }],
+    }),
+  }).state;
+  const dispute = state.disputes[0];
+  let providerCalls = 0;
+  const prompts = [];
+  globalThis.fetch = async (input, init) => {
+    const url = typeof input === "string" ? input : input.url;
+    if (!url.startsWith("https://api.openai.com/")) return originalFetch(input, init);
+    providerCalls += 1;
+    const request = JSON.parse(String(init?.body ?? "{}"));
+    const prompt = String(request.input);
+    prompts.push(prompt);
+    const synthesis = prompt.includes("Create the decision memo");
+    assert.equal(request.max_output_tokens, synthesis ? 1_200 : 250);
+    const output = synthesis
+      ? validEnvelope({
+          statement: "# Recommendation\nUse a bounded ten-day plan.\n# Agreements\nDuration is fixed.\n# Unresolved Disputes\nDaily load needs Chair confirmation.\n# Unverified Assumptions\nBaseline skill is self-reported.\n# Tradeoffs\nSpeed versus recovery.\n# Next Actions\nChoose the daily workload.",
+          stance: "support",
+          thesis: "Use a bounded ten-day plan.",
+        })
+      : validEnvelope({
+          statement: `Routed response ${providerCalls}.`,
+          stance: "revise",
+          thesis: "Add a daily workload bound.",
+          claimUpdates: [{ claimId: state.claims[0].id, action: "revise", reason: "Name a daily workload ceiling." }],
+        });
+    return sseResponse([
+      { type: "response.output_text.delta", delta: JSON.stringify(output) },
+      { type: "response.completed", response: { usage: { input_tokens: 50, output_tokens: 30 } } },
+    ]);
+  };
+
+  try {
+    const worker = await loadWorker();
+    const response = await worker.fetch(
+      new Request("http://localhost/api/discuss", {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({
+          objective,
+          seats: [
+            { id: "seat-1", connectionId: "shared", provider: "openai", model: "gpt-a", role: "strategist" },
+            { id: "seat-2", connectionId: "shared", provider: "openai", model: "gpt-b", role: "critic" },
+            { id: "seat-3", connectionId: "shared", provider: "openai", model: "gpt-c", role: "product" },
+          ],
+          connections: { shared: { provider: "openai", apiKey: "targeted-fixture-key" } },
+          iteration: 2,
+          priorMemo: "FORBIDDEN RAW TRANSCRIPT",
+          requestId: "targeted-debate-fixture-1",
+          protocolPhase: "targeted_debate",
+          targetedDisputeId: dispute.id,
+          seatIds: ["seat-2", "seat-1"],
+          contextTurns: [],
+          meetingState: state,
+        }),
+      }),
+      workerEnv(),
+      executionContext(),
+    );
+    assert.equal(response.status, 200);
+    const events = (await response.text()).trim().split("\n").map((line) => JSON.parse(line));
+    assert.equal(providerCalls, 2);
+    assert.equal(prompts.length, 2);
+    for (const prompt of prompts) {
+      assert.match(prompt, /NAMED DISPUTE/);
+      assert.match(prompt, new RegExp(dispute.id));
+      assert.match(prompt, /target-review-message/);
+      assert.doesNotMatch(prompt, /FORBIDDEN RAW TRANSCRIPT/);
+    }
+    assert.equal(events.find((event) => event.type === "phase.done")?.phase, "targeted_debate");
+    assert.deepEqual(
+      events.filter((event) => event.type === "agent.start").map((event) => event.seatId),
+      ["seat-2", "seat-1"],
+    );
+    assert.ok(events.filter((event) => event.type === "agent.done").every((event) => event.phase === "review"));
+
+    let targetedState = state;
+    for (const event of events.filter((item) => item.type === "agent.done")) {
+      targetedState = reduceTurnEnvelope(targetedState, {
+        id: event.id,
+        sourceMessageId: event.id,
+        seatId: event.seatId,
+        round: event.round,
+        phase: event.phase,
+        envelope: event.envelope,
+        usage: event.usage,
+      }).state;
+    }
+    const targetedTurns = events
+      .filter((event) => event.type === "agent.done")
+      .map((event) => ({
+        id: event.id,
+        seatId: event.seatId,
+        round: event.round,
+        phase: event.phase,
+        envelope: event.envelope,
+      }));
+    const synthesisResponse = await worker.fetch(
+      new Request("http://localhost/api/discuss", {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({
+          objective,
+          seats: [
+            { id: "seat-1", connectionId: "shared", provider: "openai", model: "gpt-a", role: "strategist" },
+            { id: "seat-2", connectionId: "shared", provider: "openai", model: "gpt-b", role: "critic" },
+            { id: "seat-3", connectionId: "shared", provider: "openai", model: "gpt-c", role: "product" },
+          ],
+          connections: { shared: { provider: "openai", apiKey: "targeted-fixture-key" } },
+          iteration: 2,
+          priorMemo: "",
+          requestId: "targeted-synthesis-fixture-1",
+          protocolPhase: "synthesis",
+          targetedDisputeId: dispute.id,
+          seatIds: [],
+          contextTurns: targetedTurns,
+          meetingState: targetedState,
+        }),
+      }),
+      workerEnv(),
+      executionContext(),
+    );
+    const synthesisBody = await synthesisResponse.text();
+    assert.equal(synthesisResponse.status, 200, synthesisBody);
+    const synthesisEvents = synthesisBody.trim().split("\n").map((line) => JSON.parse(line));
+    assert.equal(providerCalls, 3);
+    assert.match(prompts[2], /NAMED DISPUTE/);
+    assert.match(prompts[2], /Routed response 1/);
+    assert.doesNotMatch(prompts[2], /FORBIDDEN RAW TRANSCRIPT/);
+    assert.equal(synthesisEvents.find((event) => event.type === "phase.done")?.phase, "synthesis");
+    assert.ok(synthesisEvents.find((event) => event.type === "room.done")?.memo);
+  } finally {
+    globalThis.fetch = originalFetch;
+  }
+});
+
 test("source contains real streaming adapters and credential-free structured rooms", async () => {
-  const [page, styles, route, meetingRecord, meetingState, roomStore, handoff, handoffZh] = await Promise.all([
+  const [page, styles, route, meetingRecord, meetingState, orchestrator, roomStore, handoff, handoffZh] = await Promise.all([
     readFile(new URL("../app/page.tsx", import.meta.url), "utf8"),
     readFile(new URL("../app/globals.css", import.meta.url), "utf8"),
     readFile(new URL("../app/api/discuss/route.ts", import.meta.url), "utf8"),
     readFile(new URL("../lib/meeting-record.ts", import.meta.url), "utf8"),
     readFile(new URL("../lib/meeting-state.ts", import.meta.url), "utf8"),
+    readFile(new URL("../lib/meeting-orchestrator.ts", import.meta.url), "utf8"),
     readFile(new URL("../lib/room-store.ts", import.meta.url), "utf8"),
     readFile(new URL("../docs/AI_HANDOFF.md", import.meta.url), "utf8"),
     readFile(new URL("../docs/zh-CN/AI_HANDOFF.md", import.meta.url), "utf8"),
@@ -585,9 +1432,28 @@ test("source contains real streaming adapters and credential-free structured roo
   assert.match(roomStore, /canonicalState/);
   assert.match(page, /This turn was interrupted before completion\./);
   assert.match(page, /reduceTurnEnvelope/);
-  assert.match(page, /setCurrentRoomId\(\(current\) => current \|\| createRoomId\(\)\)/);
+  assert.match(page, /currentRoomIdRef\.current = next/);
+  assert.match(page, /const next = typeof update === "function" \? update\(transcriptRef\.current\) : update/);
+  assert.match(page, /const next = typeof update === "function" \? update\(usageRef\.current\) : update/);
+  assert.match(page, /beginProtocolTransition/);
+  assert.match(page, /phaseBoundary\.detail \?\? phaseBoundary\.error\.message/);
+  assert.match(page, /Structured state rejected this turn:/);
+  assert.match(page, /Human Chair checkpoint/);
+  assert.match(page, /turnProgressLabel/);
+  assert.match(page, /progress: "generating"/);
+  assert.doesNotMatch(page, /text: item\.text \+ event\.delta/);
+  const roomDoneHandler = page.match(/if \(event\.type === "room\.done"\) \{[\s\S]*?\n    \}/)?.[0] ?? "";
+  assert.ok(roomDoneHandler);
+  assert.doesNotMatch(roomDoneHandler, /setStage\("decision"\)/);
   assert.match(meetingState, /renderedContextCharacters:\s*6_000/);
   assert.match(meetingState, /unknown_reference/);
+  assert.match(orchestrator, /recoverProtocolAfterReload/);
+  assert.match(orchestrator, /proposal_checkpoint/);
+  assert.match(orchestrator, /evaluateMeetingBudget/);
+  assert.match(orchestrator, /createProcessReport/);
+  assert.match(roomStore, /protocol\.transition/);
+  assert.match(roomStore, /chair\.directive/);
+  assert.match(roomStore, /process\.report/);
   for (const objectStore of ["rooms", "participants", "events", "stateSnapshots", "artifacts", "usage", "metadata"]) {
     assert.match(roomStore, new RegExp(`["]${objectStore}["]`));
   }
@@ -597,6 +1463,10 @@ test("source contains real streaming adapters and credential-free structured roo
   assert.match(route, /api\.anthropic\.com\/v1\/messages/);
   assert.match(route, /streamGenerateContent\?alt=sse/);
   assert.match(route, /stream:\s*true/);
+  assert.match(route, /type: "agent\.progress", id: item\.id, stage: "validating"/);
+  assert.match(route, /item: \{ \.\.\.item, id: turn\.id, text: turn\.envelope\.statement \}/);
+  assert.match(route, /Review limits: statement at most 120 words/);
+  assert.match(route, /Do not introduce external evidence/);
   assert.match(handoff, /M2/);
   assert.match(handoffZh, /M2/);
 });

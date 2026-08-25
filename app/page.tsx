@@ -2,7 +2,9 @@
 
 import { FormEvent, useEffect, useMemo, useRef, useState } from "react";
 import {
+  AgentProgress,
   DiscussEvent,
+  ObserverRequest,
   providerIds,
   ProviderId,
   ProviderSummary,
@@ -17,16 +19,42 @@ import {
   DecisionStatus,
   emptyUsage,
   MeetingRecord,
+  ObserverSnapshot,
   ParticipantSnapshot,
   TranscriptItem,
   upsertMeetingRecord,
 } from "../lib/meeting-record";
 import { createBrowserRoomStore, RoomStore } from "../lib/room-store";
 import {
+  appendChairDirective,
+  ChairDirective,
   createInitialMeetingState,
   MeetingState,
   reduceTurnEnvelope,
 } from "../lib/meeting-state";
+import {
+  appendProcessReport,
+  activeTargetedDebate,
+  beginObserverTransition,
+  beginProtocolTransition,
+  beginTargetedDebateRound,
+  completeProtocolTransition,
+  completeObserverTransition,
+  continueProtocol,
+  ControlMode,
+  createDefaultMeetingBudget,
+  createMeetingProtocolState,
+  createProcessReport,
+  evaluateMeetingBudget,
+  finishProtocol,
+  interruptProtocolTransition,
+  latestProcessReport as findLatestProcessReport,
+  MeetingProtocolState,
+  pauseProtocolAtSafeBoundary,
+  runnablePhase,
+  routeSeatsForDispute,
+  stopProtocol,
+} from "../lib/meeting-orchestrator";
 
 type WorkspaceStage = "agenda" | "meeting" | "decision";
 type TranscriptMode = "focus" | "overview";
@@ -52,6 +80,12 @@ type SeatDraft = {
   connectionId: string;
   model: string;
   role: RoleId;
+};
+
+type ObserverDraft = {
+  enabled: boolean;
+  connectionId: string;
+  model: string;
 };
 
 const defaultObjective = "Decide the narrowest useful version of a multi-AI meeting room";
@@ -96,6 +130,7 @@ const milestones = [
   ["M2.7", "Local Event Store", "IndexedDB events, snapshots, artifacts, usage, and migration."],
   ["M2.8", "Structured state", "Validated turn cards and source-linked canonical records."],
   ["M2.9", "Resumable Chair", "Checkpoints, directives, pause, resume, and recovery."],
+  ["M2.10", "Bounded progress", "Deterministic budgets are live; Observer and targeted debate remain."],
   ["M3.5", "Research", "Sources, evidence checks, and freshness."],
   ["M4.5", "Execute", "Bounded tools, coding agents, and independent review."],
 ];
@@ -105,6 +140,11 @@ export default function Home() {
   const [providers, setProviders] = useState<ProviderSummary[]>([]);
   const [sessionConnections, setSessionConnections] = useState<ConnectionRecord[]>([]);
   const [seatDrafts, setSeatDrafts] = useState<SeatDraft[]>(initialSeatDrafts);
+  const [observerDraft, setObserverDraft] = useState<ObserverDraft>({
+    enabled: false,
+    connectionId: "",
+    model: "",
+  });
   const [providerChoice, setProviderChoice] = useState<ProviderChoice>("auto");
   const [draftName, setDraftName] = useState("");
   const [draftKey, setDraftKey] = useState("");
@@ -125,10 +165,13 @@ export default function Home() {
   const [currentRoomId, setCurrentRoomId] = useState("");
   const [currentRoomCreatedAt, setCurrentRoomCreatedAt] = useState("");
   const [currentParticipants, setCurrentParticipants] = useState<ParticipantSnapshot[]>([]);
+  const [currentObserver, setCurrentObserver] = useState<ObserverSnapshot | null>(null);
   const [connectionError, setConnectionError] = useState("");
   const [stage, setStage] = useState<WorkspaceStage>("agenda");
   const [transcriptMode, setTranscriptMode] = useState<TranscriptMode>("focus");
   const [pinnedMessageId, setPinnedMessageId] = useState<string | null>(null);
+  const [liveMessageId, setLiveMessageId] = useState<string | null>(null);
+  const [followLive, setFollowLive] = useState(true);
   const [transcript, setTranscript] = useState<TranscriptItem[]>([]);
   const [phase, setPhase] = useState("Awaiting agenda");
   const [phaseKey, setPhaseKey] = useState<"agenda" | "proposal" | "review" | "synthesis">(
@@ -140,6 +183,15 @@ export default function Home() {
   const [decision, setDecision] = useState<DecisionStatus>("waiting");
   const [usage, setUsage] = useState<UsageSummary>(emptyUsage);
   const [meetingState, setMeetingState] = useState<MeetingState | null>(null);
+  const [protocolState, setProtocolState] = useState<MeetingProtocolState | null>(null);
+  const [controlMode, setControlMode] = useState<ControlMode>("checkpoints");
+  const [maxRounds, setMaxRounds] = useState(2);
+  const [directiveKind, setDirectiveKind] = useState<ChairDirective["kind"]>("constraint");
+  const [directiveTarget, setDirectiveTarget] = useState("all");
+  const [directiveText, setDirectiveText] = useState("");
+  const [raiseHandRequested, setRaiseHandRequested] = useState(false);
+  const [observerProgress, setObserverProgress] = useState<AgentProgress | null>(null);
+  const [selectedDisputeId, setSelectedDisputeId] = useState("");
   const [error, setError] = useState("");
   const [copied, setCopied] = useState(false);
   const abortRef = useRef<AbortController | null>(null);
@@ -148,6 +200,16 @@ export default function Home() {
   const meetingRecordsRef = useRef<MeetingRecord[]>([]);
   const roomStoreRef = useRef<RoomStore | null>(null);
   const meetingStateRef = useRef<MeetingState | null>(null);
+  const protocolStateRef = useRef<MeetingProtocolState | null>(null);
+  const transcriptRef = useRef<TranscriptItem[]>([]);
+  const usageRef = useRef<UsageSummary>(emptyUsage);
+  const memoRef = useRef("");
+  const decisionRef = useRef<DecisionStatus>("waiting");
+  const currentParticipantsRef = useRef<ParticipantSnapshot[]>([]);
+  const currentObserverRef = useRef<ObserverSnapshot | null>(null);
+  const currentRoomIdRef = useRef("");
+  const currentRoomCreatedAtRef = useRef("");
+  const raiseHandRef = useRef(false);
 
   useEffect(() => {
     let active = true;
@@ -159,16 +221,32 @@ export default function Home() {
         const now = new Date().toISOString();
         meetingRecordsRef.current = records;
         setMeetingRecords(records);
-        setCurrentRoomId((current) => current || createRoomId());
-        setCurrentRoomCreatedAt((current) => current || now);
+        setCurrentRoomId((current) => {
+          const next = current || createRoomId();
+          currentRoomIdRef.current = next;
+          return next;
+        });
+        setCurrentRoomCreatedAt((current) => {
+          const next = current || now;
+          currentRoomCreatedAtRef.current = next;
+          return next;
+        });
         setHistoryError("");
         setHistoryReady(true);
       })
       .catch((storeError) => {
         if (!active) return;
         const now = new Date().toISOString();
-        setCurrentRoomId((current) => current || createRoomId());
-        setCurrentRoomCreatedAt((current) => current || now);
+        setCurrentRoomId((current) => {
+          const next = current || createRoomId();
+          currentRoomIdRef.current = next;
+          return next;
+        });
+        setCurrentRoomCreatedAt((current) => {
+          const next = current || now;
+          currentRoomCreatedAtRef.current = next;
+          return next;
+        });
         setHistoryError(safeClientError(storeError));
         setHistoryReady(true);
       });
@@ -257,19 +335,58 @@ export default function Home() {
       }),
     [connectionById, seatDrafts],
   );
+  const observerRequest = useMemo<ObserverRequest | null>(() => {
+    if (!observerDraft.enabled || !observerDraft.connectionId || !observerDraft.model) return null;
+    const connection = connectionById.get(observerDraft.connectionId);
+    if (!connection) return null;
+    return {
+      connectionId: connection.id,
+      provider: connection.provider,
+      model: observerDraft.model,
+    };
+  }, [connectionById, observerDraft]);
+  const observerReady = !observerDraft.enabled || Boolean(observerRequest);
   const readySeatCount = seats.length;
   const targetSeatNumber = connectionTargetSeatId
     ? seatDrafts.findIndex((seat) => seat.id === connectionTargetSeatId) + 1
     : 0;
   const canStart =
     !configLoading &&
+    historyReady &&
     !running &&
     objective.trim().length >= 8 &&
     seats.length >= 2 &&
-    seats.length <= 3;
+    seats.length <= 3 &&
+    observerReady;
+  const maximumProviderCalls = seats.length >= 2
+    ? (seats.length * 2 + 1 + (observerDraft.enabled ? 1 : 0)) * maxRounds
+    : 0;
+  const setupBudget = useMemo(
+    () => createDefaultMeetingBudget(Math.max(2, seats.length), maxRounds, observerDraft.enabled),
+    [maxRounds, observerDraft.enabled, seats.length],
+  );
+  const activeBudgetStatus = useMemo(
+    () => protocolState ? evaluateMeetingBudget(protocolState, usage) : null,
+    [protocolState, usage],
+  );
+  const latestProcessReport = protocolState?.processReports.at(-1);
+  const latestRoundBrief = protocolState?.roundBriefs.at(-1);
+  const openDisputes = useMemo(
+    () => meetingState?.disputes.filter((dispute) => dispute.status === "open") ?? [],
+    [meetingState],
+  );
+  const selectedDispute = openDisputes.find((dispute) => dispute.id === selectedDisputeId) ?? openDisputes[0];
+  const routedDebateSeatIds = selectedDispute && meetingState
+    ? routeSeatsForDispute(meetingState, selectedDispute, seats.map((seat) => seat.id))
+    : [];
   const roomCompositionMatches = useMemo(
-    () => participantsMatchSeats(currentParticipants, seats),
-    [currentParticipants, seats],
+    () => participantsMatchSeats(currentParticipants, seats) && observerMatches(
+      protocolState,
+      currentObserver,
+      observerRequest,
+      connectionById,
+    ),
+    [connectionById, currentObserver, currentParticipants, observerRequest, protocolState, seats],
   );
 
   const activeTranscriptItem = useMemo(() => {
@@ -278,20 +395,21 @@ export default function Home() {
       if (pinned) return pinned;
     }
     return (
-      transcript.find((item) => item.status === "streaming") ??
+      transcript.find((item) => item.id === liveMessageId) ??
       [...transcript].reverse().find((item) => item.provider !== "host") ??
       transcript[0]
     );
-  }, [pinnedMessageId, transcript]);
+  }, [liveMessageId, pinnedMessageId, transcript]);
 
   useEffect(() => {
-    if (liveTextRef.current && !pinnedMessageId) {
-      liveTextRef.current.scrollTop = liveTextRef.current.scrollHeight;
-    }
-    if (overviewRef.current && transcriptMode === "overview") {
+    if (liveTextRef.current) liveTextRef.current.scrollTop = 0;
+  }, [activeTranscriptItem?.id]);
+
+  useEffect(() => {
+    if (overviewRef.current && transcriptMode === "overview" && followLive) {
       overviewRef.current.scrollTop = overviewRef.current.scrollHeight;
     }
-  }, [activeTranscriptItem?.text, pinnedMessageId, transcript, transcriptMode]);
+  }, [followLive, transcript, transcriptMode]);
 
   useEffect(() => {
     if (!historyReady || !currentRoomId || iteration === 0 || transcript.length === 0) return;
@@ -307,7 +425,9 @@ export default function Home() {
       usage,
       iteration,
       participants: currentParticipants,
+      ...(currentObserver ? { observer: currentObserver } : {}),
       ...(meetingState ? { meetingState } : {}),
+      ...(protocolState ? { protocolState } : {}),
       createdAt: currentRoomCreatedAt,
       updatedAt: new Date().toISOString(),
     };
@@ -329,6 +449,7 @@ export default function Home() {
     return () => window.clearTimeout(timer);
   }, [
     currentParticipants,
+    currentObserver,
     currentRoomCreatedAt,
     currentRoomId,
     decision,
@@ -337,15 +458,98 @@ export default function Home() {
     memo,
     meetingState,
     objective,
+    protocolState,
     transcript,
     usage,
   ]);
+
+  function updateTranscript(
+    update: TranscriptItem[] | ((current: TranscriptItem[]) => TranscriptItem[]),
+  ) {
+    const next = typeof update === "function" ? update(transcriptRef.current) : update;
+    transcriptRef.current = next;
+    setTranscript(next);
+  }
+
+  function updateUsage(update: UsageSummary | ((current: UsageSummary) => UsageSummary)) {
+    const next = typeof update === "function" ? update(usageRef.current) : update;
+    usageRef.current = next;
+    setUsage(next);
+  }
+
+  function updateMemo(next: string) {
+    memoRef.current = next;
+    setMemo(next);
+  }
+
+  function updateDecision(next: DecisionStatus) {
+    decisionRef.current = next;
+    setDecision(next);
+  }
+
+  function updateParticipants(next: ParticipantSnapshot[]) {
+    currentParticipantsRef.current = next;
+    setCurrentParticipants(next);
+  }
+
+  function updateObserver(next: ObserverSnapshot | null) {
+    currentObserverRef.current = next;
+    setCurrentObserver(next);
+  }
+
+  function updateProtocol(next: MeetingProtocolState | null) {
+    protocolStateRef.current = next;
+    setProtocolState(next);
+    if (next) setIteration(next.round);
+  }
+
+  async function flushProtocolRecord(
+    nextProtocol = protocolStateRef.current,
+    nextMeetingState = meetingStateRef.current,
+  ) {
+    const roomId = currentRoomIdRef.current || currentRoomId;
+    const createdAt = currentRoomCreatedAtRef.current || currentRoomCreatedAt;
+    if (!historyReady || !roomId || transcriptRef.current.length === 0 || !nextProtocol) {
+      throw new Error("The resumable room is not ready for durable storage.");
+    }
+    const record: MeetingRecord = {
+      version: 1,
+      id: roomId,
+      objective: objective.trim() || "Untitled meeting",
+      stage: memoRef.current ? "decision" : "meeting",
+      transcript: transcriptRef.current,
+      memo: memoRef.current,
+      decision: decisionRef.current,
+      usage: usageRef.current,
+      iteration: nextProtocol.round,
+      participants: currentParticipantsRef.current,
+      ...(currentObserverRef.current ? { observer: currentObserverRef.current } : {}),
+      ...(nextMeetingState ? { meetingState: nextMeetingState } : {}),
+      protocolState: nextProtocol,
+      createdAt,
+      updatedAt: new Date().toISOString(),
+    };
+    const store = roomStoreRef.current;
+    if (!store) throw new Error("The local meeting database is unavailable.");
+    await store.putRoom(record);
+    const nextRecords = upsertMeetingRecord(meetingRecordsRef.current, record);
+    meetingRecordsRef.current = nextRecords;
+    setMeetingRecords(nextRecords);
+    setHistoryError("");
+  }
 
   function updateSeat(id: string, update: Partial<SeatDraft>) {
     if (running) return;
     setSeatDrafts((current) =>
       current.map((seat) => (seat.id === id ? { ...seat, ...update } : seat)),
     );
+    setObserverDraft((current) => {
+      if (current.connectionId !== connectionId) return current;
+      const modelStillAvailable = models.some((model) => model.id === current.model);
+      return modelStillAvailable
+        ? current
+        : { ...current, model: models.length === 1 ? models[0].id : "" };
+    });
   }
 
   function chooseSeatConnection(seatId: string, connectionId: string) {
@@ -358,6 +562,19 @@ export default function Home() {
       connectionId,
       model: connection ? defaultSeatModel(connection) : "",
     });
+  }
+
+  function chooseObserverConnection(connectionId: string) {
+    if (connectionId === "__add__") {
+      openConnectionManager();
+      return;
+    }
+    const connection = connectionById.get(connectionId);
+    setObserverDraft((current) => ({
+      ...current,
+      connectionId,
+      model: connection ? defaultSeatModel(connection) : "",
+    }));
   }
 
   function assignConnectionToTarget(connection: ConnectionRecord) {
@@ -483,6 +700,13 @@ export default function Home() {
               : { ...seat, model: defaultSeatModel(replacement) };
           }),
         );
+        setObserverDraft((current) => {
+          if (current.connectionId !== replacement.id) return current;
+          const modelStillAvailable = models.some((model) => model.id === current.model);
+          return modelStillAvailable
+            ? current
+            : { ...current, model: defaultSeatModel(replacement) };
+        });
         resetConnectionBuilder();
         return;
       }
@@ -544,6 +768,11 @@ export default function Home() {
         seat.connectionId === connectionId ? { ...seat, connectionId: "", model: "" } : seat,
       ),
     );
+    setObserverDraft((current) =>
+      current.connectionId === connectionId
+        ? { ...current, connectionId: "", model: "" }
+        : current,
+    );
     if (editingConnectionId === connectionId) resetConnectionBuilder();
     if (focusedConnectionId === connectionId) setFocusedConnectionId(null);
     setPendingDisconnectId(null);
@@ -579,7 +808,9 @@ export default function Home() {
       usage,
       iteration,
       participants: currentParticipants,
+      ...(currentObserver ? { observer: currentObserver } : {}),
       ...(meetingState ? { meetingState } : {}),
+      ...(protocolState ? { protocolState } : {}),
       createdAt: currentRoomCreatedAt,
       updatedAt: new Date().toISOString(),
     });
@@ -592,19 +823,30 @@ export default function Home() {
     if (!record) return;
 
     setCurrentRoomId(record.id);
+    currentRoomIdRef.current = record.id;
     setCurrentRoomCreatedAt(record.createdAt);
-    setCurrentParticipants(record.participants);
+    currentRoomCreatedAtRef.current = record.createdAt;
+    updateParticipants(record.participants);
+    updateObserver(record.observer ?? null);
     setObjective(record.objective);
-    setTranscript(record.transcript);
-    setMemo(record.memo);
-    setDecision(record.decision);
-    setUsage(record.usage);
+    updateTranscript(record.transcript);
+    updateMemo(record.memo);
+    updateDecision(record.decision);
+    updateUsage(record.usage);
     setIteration(record.iteration);
     meetingStateRef.current = record.meetingState ?? null;
     setMeetingState(record.meetingState ?? null);
-    setPhase(record.memo ? decisionLabel(record.decision) : "Saved meeting");
+    const restoredProtocol = record.protocolState ?? legacyProtocolState(record);
+    updateProtocol(restoredProtocol);
+    setControlMode(restoredProtocol?.controlMode ?? "checkpoints");
+    setMaxRounds(restoredProtocol?.maxRounds ?? 2);
+    setPhase(record.memo
+      ? decisionLabel(record.decision)
+      : restoredProtocol ? protocolStatusLabel(restoredProtocol) : "Saved meeting");
     setPhaseKey(latestPhase(record.transcript));
     setPinnedMessageId(null);
+    setLiveMessageId(null);
+    setFollowLive(true);
     setTranscriptMode(record.memo ? "overview" : "focus");
     setError("");
     setStage(record.memo ? "decision" : "meeting");
@@ -636,25 +878,36 @@ export default function Home() {
     if (running) return;
     if (preserveCurrent) await saveCurrentMeetingNow();
     const now = new Date().toISOString();
-    setCurrentRoomId(createRoomId());
+    const nextRoomId = createRoomId();
+    setCurrentRoomId(nextRoomId);
+    currentRoomIdRef.current = nextRoomId;
     setCurrentRoomCreatedAt(now);
-    setCurrentParticipants([]);
+    currentRoomCreatedAtRef.current = now;
+    updateParticipants([]);
+    updateObserver(null);
     setObjective("");
-    setTranscript([]);
-    setMemo("");
-    setUsage(emptyUsage);
-    setDecision("waiting");
+    updateTranscript([]);
+    updateMemo("");
+    updateUsage(emptyUsage);
+    updateDecision("waiting");
     setIteration(0);
     meetingStateRef.current = null;
     setMeetingState(null);
+    updateProtocol(null);
     setPhase("Awaiting agenda");
     setPhaseKey("agenda");
     setError("");
     setPinnedMessageId(null);
+    setLiveMessageId(null);
+    setFollowLive(true);
     setTranscriptMode("focus");
     setStage("agenda");
     setPendingDeleteRoomId(null);
     setHistoryOpen(false);
+    setDirectiveText("");
+    setObserverProgress(null);
+    raiseHandRef.current = false;
+    setRaiseHandRequested(false);
   }
 
   async function submitMeeting(event: FormEvent<HTMLFormElement>) {
@@ -663,100 +916,320 @@ export default function Home() {
     if (iteration > 0) {
       await saveCurrentMeetingNow();
       const now = new Date().toISOString();
-      setCurrentRoomId(createRoomId());
+      const nextRoomId = createRoomId();
+      setCurrentRoomId(nextRoomId);
+      currentRoomIdRef.current = nextRoomId;
       setCurrentRoomCreatedAt(now);
+      currentRoomCreatedAtRef.current = now;
     }
-    setTranscript([]);
-    setMemo("");
-    setUsage(emptyUsage);
-    setDecision("waiting");
-    meetingStateRef.current = null;
-    setMeetingState(null);
+    const initialMeetingState = createInitialMeetingState(objective.trim());
+    const initialProtocolState = createMeetingProtocolState(
+      seats.map((seat) => seat.id),
+      controlMode,
+      maxRounds,
+      new Date().toISOString(),
+      undefined,
+      observerDraft.enabled,
+    );
+    const participants = seats.map((seat) => {
+      const connection = connectionById.get(seat.connectionId);
+      return {
+        provider: seat.provider,
+        providerName: connection?.name ?? providerUi[seat.provider].label,
+        model: seat.model,
+        role: seat.role,
+      };
+    });
+    const observerSnapshot = observerRequest
+      ? {
+          provider: observerRequest.provider,
+          providerName: connectionById.get(observerRequest.connectionId)?.name ??
+            providerUi[observerRequest.provider].label,
+          model: observerRequest.model,
+        }
+      : null;
+    const openingTranscript: TranscriptItem[] = [{
+      id: `host-${Date.now()}`,
+      provider: "host",
+      providerName: "Human Chair",
+      role: "host",
+      model: "",
+      phase: "agenda",
+      text: objective.trim(),
+      status: "done",
+    }];
+    updateTranscript(openingTranscript);
+    updateMemo("");
+    updateUsage(emptyUsage);
+    updateDecision("waiting");
+    updateParticipants(participants);
+    updateObserver(observerSnapshot);
+    meetingStateRef.current = initialMeetingState;
+    setMeetingState(initialMeetingState);
+    updateProtocol(initialProtocolState);
     setPinnedMessageId(null);
+    setLiveMessageId(null);
+    setFollowLive(true);
     setTranscriptMode("focus");
-    void runMeeting(1, "");
+    setPhase("Ready for independent proposals");
+    setPhaseKey("agenda");
+    setStage("meeting");
+    setError("");
+    raiseHandRef.current = false;
+    setRaiseHandRequested(false);
+    setObserverProgress(null);
+    try {
+      await flushProtocolRecord(initialProtocolState, initialMeetingState);
+    } catch (storageError) {
+      setError(`The meeting did not start because its recovery state could not be saved: ${safeClientError(storageError)}`);
+      setPhase("Local recovery unavailable");
+      return;
+    }
+    void runProtocol(initialProtocolState);
   }
 
-  async function runMeeting(nextIteration: 1 | 2, priorMemo: string) {
-    if (running) return;
+  async function runObserverAtCheckpoint(
+    state: MeetingProtocolState,
+    controller: AbortController,
+    transitionId: string,
+  ) {
+    const observer = observerRequest;
+    const report = findLatestProcessReport(state);
+    const canonicalState = meetingStateRef.current;
+    if (!observer || !currentObserverRef.current) {
+      throw new Error("Reconnect the saved Observer provider and model before continuing.");
+    }
+    if (!report || !canonicalState) {
+      throw new Error("Observer requires the current Process Report and Canonical Meeting State.");
+    }
+    const budgetStatus = evaluateMeetingBudget(state, usageRef.current, [], 1);
+    if (!budgetStatus.allowed) {
+      const stopped = stopProtocol(state);
+      updateProtocol(stopped);
+      setPhase("Budget exhausted");
+      setError(`Budget stop: ${budgetStopLabel(budgetStatus.reasons)}. No Observer call was started.`);
+      await flushProtocolRecord(stopped);
+      return stopped;
+    }
+    const beginning = beginObserverTransition(state, transitionId);
+    if (!beginning.ok) throw new Error(beginning.error);
+    let nextState = beginning.state;
+    updateProtocol(nextState);
+    await flushProtocolRecord(nextState);
+
+    const response = await fetch("/api/discuss", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        objective: objective.trim(),
+        seats,
+        observer,
+        connections: sessionConnectionPayload(seats, connectionById, observer),
+        iteration: nextState.round,
+        priorMemo: memoRef.current,
+        meetingState: canonicalState,
+        protocolPhase: "observer",
+        seatIds: [],
+        processReport: report,
+        requestId: transitionId,
+      }),
+      signal: controller.signal,
+    });
+    if (!response.ok) {
+      const body = (await response.json().catch(() => ({}))) as { error?: string };
+      throw new Error(body.error ?? `Observer phase failed (${response.status}).`);
+    }
+    if (!response.body) throw new Error("The Observer stream did not open.");
+    const boundary: {
+      done?: Extract<DiscussEvent, { type: "phase.done" }>;
+      brief?: Extract<DiscussEvent, { type: "observer.done" }>["brief"];
+      detail?: string;
+    } = {};
+    await readEvents(response.body, (roomEvent) => {
+      if (roomEvent.type === "phase.done" && roomEvent.phase === "observer") boundary.done = roomEvent;
+      if (roomEvent.type === "observer.done") boundary.brief = roomEvent.brief;
+      if (roomEvent.type === "observer.format_error" && !boundary.detail) {
+        boundary.detail = `Observer returned an invalid Round Brief: ${roomEvent.message}`;
+      }
+      if (roomEvent.type === "observer.error" && !boundary.detail) {
+        boundary.detail = `Observer stopped: ${roomEvent.message}`;
+      }
+      handleEvent(roomEvent);
+    });
+    if (!boundary.done || !boundary.brief) {
+      throw new Error(boundary.detail ?? "Observer ended without a validated Round Brief boundary.");
+    }
+    const completion = completeObserverTransition(nextState, transitionId, boundary.brief);
+    if (!completion.ok) throw new Error(completion.error);
+    nextState = completion.state;
+    updateProtocol(nextState);
+    await flushProtocolRecord(nextState);
+    return nextState;
+  }
+
+  async function runProtocol(startState = protocolStateRef.current) {
+    if (abortRef.current || !startState) return;
     const controller = new AbortController();
     abortRef.current = controller;
     setRunning(true);
     setStage("meeting");
     setError("");
     setCopied(false);
-    setPhase(nextIteration === 1 ? "Opening room" : "Opening revision round");
-    setPhaseKey("agenda");
-    setDecision("waiting");
-    setIteration(nextIteration);
-
-    if (nextIteration === 1) {
-      const initialState = createInitialMeetingState(objective.trim());
-      meetingStateRef.current = initialState;
-      setMeetingState(initialState);
-      setCurrentParticipants(
-        seats.map((seat) => {
-          const connection = connectionById.get(seat.connectionId);
-          return {
-            provider: seat.provider,
-            providerName: connection?.name ?? providerUi[seat.provider].label,
-            model: seat.model,
-            role: seat.role,
-          };
-        }),
-      );
-      setTranscript([
-        {
-          id: `host-${Date.now()}`,
-          provider: "host",
-          providerName: "Human Chair",
-          role: "host",
-          model: "",
-          phase: "agenda",
-          text: objective.trim(),
-          status: "done",
-        },
-      ]);
-    }
-
-    const connections = Object.fromEntries(
-      seats.flatMap((seat) => {
-        const connection = connectionById.get(seat.connectionId);
-        return connection?.source === "session" && connection.apiKey
-          ? [[connection.id, { provider: connection.provider, apiKey: connection.apiKey }]]
-          : [];
-      }),
-    );
-
+    let nextState = startState;
+    let activeTransitionId = "";
     try {
-      const response = await fetch("/api/discuss", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          objective: objective.trim(),
-          seats,
-          connections,
-          iteration: nextIteration,
-          priorMemo,
-          ...(nextIteration === 2 && meetingStateRef.current
-            ? { meetingState: meetingStateRef.current }
-            : {}),
-          requestId: createRequestId(),
-        }),
-        signal: controller.signal,
-      });
+      while (true) {
+        if (observerIsPending(nextState)) {
+          activeTransitionId = createRequestId();
+          nextState = await runObserverAtCheckpoint(nextState, controller, activeTransitionId);
+          activeTransitionId = "";
+          if (nextState.phase === "stopped") return;
+          if (raiseHandRef.current) {
+            raiseHandRef.current = false;
+            setRaiseHandRequested(false);
+            setPhase(protocolStatusLabel(nextState));
+            break;
+          }
+          if (nextState.controlMode === "auto") {
+            const continued = continueProtocol(nextState, seats.map((seat) => seat.id));
+            if (!continued.ok) throw new Error(continued.error);
+            nextState = continued.state;
+            updateProtocol(nextState);
+            await flushProtocolRecord(nextState);
+            continue;
+          }
+          setPhase(protocolStatusLabel(nextState));
+          break;
+        }
+        if (nextState.status !== "ready" || !runnablePhase(nextState.phase)) break;
+        const protocolPhase = runnablePhase(nextState.phase);
+        if (!protocolPhase) break;
+        const pendingSeatIds = protocolPhase === "synthesis"
+          ? []
+          : nextState.controlMode === "turn_by_turn"
+            ? nextState.pendingSeatIds.slice(0, 1)
+            : nextState.pendingSeatIds;
+        const budgetStatus = evaluateMeetingBudget(nextState, usageRef.current, pendingSeatIds);
+        if (!budgetStatus.allowed) {
+          nextState = stopProtocol(nextState);
+          updateProtocol(nextState);
+          setPhase("Budget exhausted");
+          setError(`Budget stop: ${budgetStopLabel(budgetStatus.reasons)}. No provider call was started.`);
+          await flushProtocolRecord(nextState);
+          return;
+        }
+        activeTransitionId = createRequestId();
+        const beginning = beginProtocolTransition(
+          nextState,
+          activeTransitionId,
+          pendingSeatIds,
+        );
+        if (!beginning.ok) throw new Error(beginning.error);
+        nextState = beginning.state;
+        updateProtocol(nextState);
+        await flushProtocolRecord(nextState);
 
-      if (!response.ok) {
-        const body = (await response.json().catch(() => ({}))) as { error?: string };
-        throw new Error(body.error ?? `Meeting request failed (${response.status}).`);
+        const response = await fetch("/api/discuss", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            objective: objective.trim(),
+            seats,
+            connections: sessionConnectionPayload(seats, connectionById, observerRequest ?? undefined),
+            iteration: nextState.round,
+            priorMemo: memoRef.current,
+            meetingState: meetingStateRef.current,
+            protocolPhase,
+            seatIds: pendingSeatIds,
+            contextTurns: protocolPhase === "targeted_debate"
+              ? []
+              : phaseContextTurns(transcriptRef.current, nextState.round),
+            ...((protocolPhase === "targeted_debate" || protocolPhase === "synthesis") &&
+              activeTargetedDebate(nextState)
+              ? { targetedDisputeId: activeTargetedDebate(nextState)?.disputeId }
+              : {}),
+            requestId: activeTransitionId,
+          }),
+          signal: controller.signal,
+        });
+
+        if (!response.ok) {
+          const body = (await response.json().catch(() => ({}))) as { error?: string };
+          throw new Error(body.error ?? `Meeting phase failed (${response.status}).`);
+        }
+        if (!response.body) throw new Error("The meeting phase stream did not open.");
+        const phaseBoundary: {
+          event?: Extract<DiscussEvent, { type: "phase.done" }>;
+          error?: Extract<DiscussEvent, { type: "room.error" }>;
+          detail?: string;
+        } = {};
+        await readEvents(response.body, (roomEvent) => {
+          if (roomEvent.type === "phase.done") phaseBoundary.event = roomEvent;
+          if (roomEvent.type === "room.error") phaseBoundary.error = roomEvent;
+          if (roomEvent.type === "agent.format_error" && !phaseBoundary.detail) {
+            phaseBoundary.detail = `This seat returned an invalid Turn Envelope: ${roomEvent.message}`;
+          }
+          if (roomEvent.type === "agent.reduction_error" && !phaseBoundary.detail) {
+            phaseBoundary.detail = `Structured state rejected this turn: ${roomEvent.message}`;
+          }
+          if (roomEvent.type === "agent.error" && !phaseBoundary.detail) {
+            phaseBoundary.detail = `This seat stopped: ${roomEvent.message}`;
+          }
+          handleEvent(roomEvent);
+        });
+        if (phaseBoundary.error) {
+          throw new Error(phaseBoundary.detail ?? phaseBoundary.error.message);
+        }
+        const phaseDone = phaseBoundary.event;
+        if (!phaseDone) throw new Error("The meeting phase ended without a completion boundary.");
+        const completion = completeProtocolTransition(
+          nextState,
+          activeTransitionId,
+          phaseDone.completedSeatIds,
+        );
+        if (!completion.ok) throw new Error(completion.error);
+        nextState = completion.state;
+        if (
+          (phaseDone.phase === "review" || phaseDone.phase === "targeted_debate") &&
+          meetingStateRef.current
+        ) {
+          const progressTurns = transcriptRef.current.flatMap((item) =>
+            item.provider !== "host" && item.round && item.phase !== "agenda" && item.status !== "streaming"
+              ? [{
+                  id: item.id,
+                  round: item.round,
+                  phase: item.phase,
+                  status: item.status,
+                  ...(item.envelope ? { envelope: item.envelope } : {}),
+                }]
+              : [],
+          );
+          const report = createProcessReport(
+            meetingStateRef.current,
+            progressTurns,
+            nextState.processReports.at(-1),
+          );
+          nextState = appendProcessReport(nextState, report);
+        }
+        activeTransitionId = "";
+
+        if (raiseHandRef.current && nextState.status === "ready") {
+          nextState = pauseProtocolAtSafeBoundary(nextState);
+          raiseHandRef.current = false;
+          setRaiseHandRequested(false);
+        }
+        updateProtocol(nextState);
+        setPhase(protocolStatusLabel(nextState));
+        await flushProtocolRecord(nextState);
+
+        if (observerIsPending(nextState)) continue;
+        if (nextState.controlMode !== "auto" || nextState.status !== "ready") break;
       }
-      if (!response.body) throw new Error("The meeting stream did not open.");
-      await readEvents(response.body, handleEvent);
     } catch (meetingError) {
       const interruptionMessage = controller.signal.aborted
         ? "This turn was stopped by the Human Chair."
         : "This turn was interrupted before completion.";
-      setTranscript((current) =>
+      updateTranscript((current) =>
         current.map((item) =>
           item.status === "streaming"
             ? {
@@ -768,11 +1241,26 @@ export default function Home() {
         ),
       );
       if (controller.signal.aborted) {
+        if (activeTransitionId) {
+          const interrupted = interruptProtocolTransition(nextState, activeTransitionId);
+          if (interrupted.ok) nextState = interrupted.state;
+        }
+        nextState = stopProtocol(nextState);
         setError("Meeting stopped by the host. No automatic retry was started.");
         setPhase("Stopped");
       } else {
+        if (activeTransitionId) {
+          const interrupted = interruptProtocolTransition(nextState, activeTransitionId);
+          if (interrupted.ok) nextState = interrupted.state;
+        }
         setError(safeClientError(meetingError));
-        setPhase("Needs attention");
+        setPhase("Interrupted at a recoverable boundary");
+      }
+      updateProtocol(nextState);
+      try {
+        await flushProtocolRecord(nextState);
+      } catch {
+        setHistoryError("The interrupted protocol state could not be saved.");
       }
     } finally {
       abortRef.current = null;
@@ -780,18 +1268,96 @@ export default function Home() {
     }
   }
 
+  async function continueMeeting() {
+    const current = protocolStateRef.current;
+    if (!current || running || !roomCompositionMatches) return;
+    const continued = continueProtocol(current, seats.map((seat) => seat.id));
+    if (!continued.ok) {
+      setError(continued.error);
+      return;
+    }
+    const previousDecision = decisionRef.current;
+    updateDecision("waiting");
+    setStage("meeting");
+    setError("");
+    try {
+      await flushProtocolRecord(continued.state);
+    } catch (storageError) {
+      updateDecision(previousDecision);
+      if (previousDecision === "pending") setStage("decision");
+      setError(`The meeting cannot continue until its recovery state is saved: ${safeClientError(storageError)}`);
+      return;
+    }
+    updateProtocol(continued.state);
+    void runProtocol(continued.state);
+  }
+
+  async function startTargetedDebate() {
+    const currentProtocol = protocolStateRef.current;
+    const currentMeeting = meetingStateRef.current;
+    const dispute = currentMeeting?.disputes.find(
+      (item) => item.id === (selectedDispute?.id ?? selectedDisputeId) && item.status === "open",
+    );
+    if (!currentProtocol || !currentMeeting || !dispute || running || !roomCompositionMatches) return;
+    const started = beginTargetedDebateRound(
+      currentProtocol,
+      currentMeeting,
+      dispute.id,
+      seats.map((seat) => seat.id),
+    );
+    if (!started.ok) {
+      setError(started.error);
+      return;
+    }
+    setError("");
+    setStage("meeting");
+    try {
+      await flushProtocolRecord(started.state);
+    } catch (storageError) {
+      setError(`The targeted debate cannot start until its recovery state is saved: ${safeClientError(storageError)}`);
+      return;
+    }
+    updateProtocol(started.state);
+    void runProtocol(started.state);
+  }
+
   function handleEvent(event: DiscussEvent) {
     if (event.type === "phase.start") {
       setPhase(event.label);
-      setPhaseKey(event.phase);
-      setPinnedMessageId(null);
+      if (event.phase === "targeted_debate") setPhaseKey("review");
+      else if (event.phase !== "observer") setPhaseKey(event.phase);
+      return;
+    }
+    if (event.type === "observer.start") {
+      setObserverProgress("thinking");
+      setPhase(`Observer · ${event.connectionName}`);
+      return;
+    }
+    if (event.type === "observer.progress") {
+      setObserverProgress(event.stage);
+      return;
+    }
+    if (event.type === "observer.done") {
+      setObserverProgress(null);
+      return;
+    }
+    if (event.type === "observer.format_error") {
+      setObserverProgress(null);
+      updateUsage((current) => mergeUsage(current, event.usage));
+      return;
+    }
+    if (event.type === "observer.error") {
+      setObserverProgress(null);
       return;
     }
     if (event.type === "agent.start") {
-      setTranscript((current) => [
+      setLiveMessageId(event.id);
+      updateTranscript((current) => [
         ...current,
         {
           id: event.id,
+          seatId: event.seatId,
+          round: event.round,
           provider: event.provider,
           providerName: event.connectionName,
           role: event.role,
@@ -800,19 +1366,33 @@ export default function Home() {
           target: event.target,
           text: "",
           status: "streaming",
+          progress: "thinking",
         },
       ]);
       return;
     }
     if (event.type === "agent.delta") {
-      setTranscript((current) =>
+      const item = transcriptRef.current.find((candidate) => candidate.id === event.id);
+      if (!item || item.progress === "generating") return;
+      setLiveMessageId(event.id);
+      updateTranscript((current) =>
         current.map((item) =>
-          item.id === event.id ? { ...item, text: item.text + event.delta } : item,
+          item.id === event.id ? { ...item, progress: "generating" } : item,
+        ),
+      );
+      return;
+    }
+    if (event.type === "agent.progress") {
+      setLiveMessageId(event.id);
+      updateTranscript((current) =>
+        current.map((item) =>
+          item.id === event.id ? { ...item, progress: event.stage } : item,
         ),
       );
       return;
     }
     if (event.type === "agent.done") {
+      setLiveMessageId(event.id);
       const currentState =
         meetingStateRef.current ?? createInitialMeetingState(objective.trim() || "Untitled meeting");
       const reduction = reduceTurnEnvelope(currentState, {
@@ -826,7 +1406,7 @@ export default function Home() {
       });
       if (!reduction.ok) {
         setError(`Structured state rejected this turn: ${reduction.error.message}`);
-        setTranscript((current) =>
+        updateTranscript((current) =>
           current.map((item) =>
             item.id === event.id
               ? {
@@ -844,7 +1424,7 @@ export default function Home() {
       }
       meetingStateRef.current = reduction.state;
       setMeetingState(reduction.state);
-      setTranscript((current) =>
+      updateTranscript((current) =>
         current.map((item) =>
           item.id === event.id
             ? {
@@ -860,7 +1440,9 @@ export default function Home() {
       return;
     }
     if (event.type === "agent.format_error") {
-      setTranscript((current) =>
+      setLiveMessageId(event.id);
+      updateUsage((current) => mergeUsage(current, event.usage));
+      updateTranscript((current) =>
         current.map((item) =>
           item.id === event.id
             ? {
@@ -868,6 +1450,7 @@ export default function Home() {
                 status: "error",
                 formatError: event.message,
                 text: item.text || `This seat returned an invalid Turn Envelope: ${event.message}`,
+                usage: event.usage,
               }
             : item,
         ),
@@ -875,7 +1458,9 @@ export default function Home() {
       return;
     }
     if (event.type === "agent.reduction_error") {
-      setTranscript((current) =>
+      setLiveMessageId(event.id);
+      updateUsage((current) => mergeUsage(current, event.usage));
+      updateTranscript((current) =>
         current.map((item) =>
           item.id === event.id
             ? {
@@ -893,7 +1478,8 @@ export default function Home() {
       return;
     }
     if (event.type === "agent.error") {
-      setTranscript((current) =>
+      setLiveMessageId(event.id);
+      updateTranscript((current) =>
         current.map((item) =>
           item.id === event.id
             ? {
@@ -906,14 +1492,14 @@ export default function Home() {
       );
       return;
     }
+    if (event.type === "phase.done") {
+      updateUsage((current) => mergeUsage(current, event.usage));
+      return;
+    }
     if (event.type === "room.done") {
-      setMemo(event.memo);
-      setUsage((current) =>
-        event.iteration === 1 ? event.usage : mergeUsage(current, event.usage),
-      );
-      setDecision("pending");
+      updateMemo(event.memo);
+      updateDecision("pending");
       setPhase("Human decision required");
-      setStage("decision");
       return;
     }
     if (event.type === "room.error") {
@@ -922,21 +1508,83 @@ export default function Home() {
     }
   }
 
+  async function addChairDirection() {
+    const currentState = meetingStateRef.current;
+    if (!currentState || running || directiveText.trim().length === 0) return;
+    const target = directiveTarget === "all" ? "all" as const : [directiveTarget];
+    const directive: ChairDirective = {
+      id: `directive-${createRequestId()}`,
+      kind: directiveKind,
+      target,
+      text: directiveText.trim().slice(0, 1_000),
+      status: "active",
+      ...(transcriptRef.current.at(-1)?.id
+        ? { createdAfterMessageId: transcriptRef.current.at(-1)!.id }
+        : {}),
+    };
+    const result = appendChairDirective(currentState, directive);
+    if (!result.ok) {
+      setError(result.error);
+      return;
+    }
+    meetingStateRef.current = result.state;
+    setMeetingState(result.state);
+    setDirectiveText("");
+    setError("");
+    try {
+      await flushProtocolRecord(protocolStateRef.current, result.state);
+    } catch (storageError) {
+      meetingStateRef.current = currentState;
+      setMeetingState(currentState);
+      setDirectiveText(directive.text);
+      setError(`The direction could not be saved: ${safeClientError(storageError)}`);
+    }
+  }
+
+  function requestSafePause() {
+    raiseHandRef.current = true;
+    setRaiseHandRequested(true);
+  }
+
+  async function recordHumanDecision(next: "approved" | "rejected") {
+    const current = protocolStateRef.current;
+    const previousDecision = decisionRef.current;
+    updateDecision(next);
+    if (current) {
+      const completed = finishProtocol(current);
+      updateProtocol(completed);
+      setPhase(decisionLabel(next));
+      try {
+        await flushProtocolRecord(completed);
+      } catch (storageError) {
+        updateDecision(previousDecision);
+        updateProtocol(current);
+        setPhase("Human decision required");
+        setError(`The decision was not applied because it could not be saved: ${safeClientError(storageError)}`);
+      }
+    }
+  }
+
   async function resetRoom() {
     if (running) return;
     await saveCurrentMeetingNow();
-    setTranscript([]);
-    setMemo("");
-    setUsage(emptyUsage);
-    setDecision("waiting");
+    updateTranscript([]);
+    updateMemo("");
+    updateUsage(emptyUsage);
+    updateDecision("waiting");
+    updateObserver(null);
     setIteration(0);
     meetingStateRef.current = null;
     setMeetingState(null);
+    updateProtocol(null);
     setPhase("Awaiting agenda");
     setPhaseKey("agenda");
     setError("");
     setPinnedMessageId(null);
+    setLiveMessageId(null);
+    setFollowLive(true);
     setStage("agenda");
+    setObserverProgress(null);
   }
 
   async function copyMemo() {
@@ -1008,7 +1656,7 @@ export default function Home() {
               <div className="objective-footer">
                 <span>{objective.length}/4,000</span>
                 <span>Discuss only</span>
-                <span>2 rounds maximum</span>
+                <span>{maxRounds} round{maxRounds === 1 ? "" : "s"} maximum</span>
               </div>
               {readySeatCount < 2 && !configLoading ? (
                 <button className="connection-callout" type="button" onClick={() => openConnectionManager()}>
@@ -1111,10 +1759,83 @@ export default function Home() {
                 })}
               </div>
 
+              <section className="protocol-setup" aria-label="Meeting control policy">
+                <div>
+                  <span className="section-kicker">Chair control</span>
+                  <div className="segmented-control protocol-mode-control">
+                    <button type="button" className={controlMode === "auto" ? "active" : ""} onClick={() => setControlMode("auto")}>Auto</button>
+                    <button type="button" className={controlMode === "checkpoints" ? "active" : ""} onClick={() => setControlMode("checkpoints")}>Checkpoints</button>
+                    <button type="button" className={controlMode === "turn_by_turn" ? "active" : ""} onClick={() => setControlMode("turn_by_turn")}>Turn by turn</button>
+                  </div>
+                </div>
+                <div>
+                  <span className="section-kicker">Maximum rounds</span>
+                  <div className="segmented-control round-limit-control">
+                    {[1, 2, 3].map((rounds) => (
+                      <button type="button" className={maxRounds === rounds ? "active" : ""} onClick={() => setMaxRounds(rounds)} key={rounds}>{rounds}</button>
+                    ))}
+                  </div>
+                </div>
+              </section>
+
+              <section className={`observer-setup ${observerDraft.enabled ? "enabled" : ""}`} aria-label="Observer configuration">
+                <div className="observer-setup-heading">
+                  <div>
+                    <span className="section-kicker">Round Observer</span>
+                    <strong>Check convergence after each review</strong>
+                  </div>
+                  <button
+                    className={`seat-check ${observerDraft.enabled ? "checked" : ""}`}
+                    type="button"
+                    onClick={() => setObserverDraft((current) => ({ ...current, enabled: !current.enabled }))}
+                    aria-pressed={observerDraft.enabled}
+                    disabled={running}
+                  >
+                    {observerDraft.enabled ? "On" : "Off"}
+                  </button>
+                </div>
+                {observerDraft.enabled ? (
+                  <div className="observer-fields">
+                    <label>
+                      <span>Connection</span>
+                      <select
+                        value={observerDraft.connectionId}
+                        onChange={(event) => chooseObserverConnection(event.target.value)}
+                        disabled={running}
+                      >
+                        <option value="">Choose connection</option>
+                        {connections.map((connection) => (
+                          <option value={connection.id} key={connection.id}>
+                            {connection.name} · {providerUi[connection.provider].label}
+                          </option>
+                        ))}
+                        <option value="__add__">Add new connection…</option>
+                      </select>
+                    </label>
+                    <label>
+                      <span>Model</span>
+                      <select
+                        value={observerDraft.model}
+                        onChange={(event) => setObserverDraft((current) => ({ ...current, model: event.target.value }))}
+                        disabled={running || !observerDraft.connectionId}
+                      >
+                        {!connectionById.get(observerDraft.connectionId) ? <option value="">Choose connection first</option> : null}
+                        {connectionById.get(observerDraft.connectionId)?.models.map((model) => (
+                          <option value={model.id} key={model.id}>{modelOptionLabel(model)}</option>
+                        ))}
+                      </select>
+                    </label>
+                  </div>
+                ) : null}
+                <p>One extra bounded call per round. It reads Canonical State and the Process Report, never the full transcript.</p>
+              </section>
+
               <div className="launch-zone">
                 <div>
                   <strong>{seats.length >= 2 ? "Room is composed" : "Choose two or three seats"}</strong>
-                  <span>{seats.length === 3 ? "7 calls per round" : seats.length === 2 ? "5 calls per round" : "Bounded at two rounds"}</span>
+                  <span>{maximumProviderCalls > 0
+                    ? `${maximumProviderCalls} calls · ${formatTokens(setupBudget.maxOutputTokens)} output · ${formatDuration(setupBudget.maxModelTimeMs)} model time max`
+                    : "Bounded by rounds and seats"}</span>
                 </div>
                 <button className="primary-button" type="submit" disabled={!canStart}>
                   Start meeting
@@ -1140,10 +1861,21 @@ export default function Home() {
                 </span>
                 <div className="segmented-control" aria-label="Transcript view">
                   <button type="button" className={transcriptMode === "focus" ? "active" : ""} onClick={() => setTranscriptMode("focus")}>Focus</button>
-                  <button type="button" className={transcriptMode === "overview" ? "active" : ""} onClick={() => setTranscriptMode("overview")}>Overview</button>
+                  <button type="button" className={transcriptMode === "overview" ? "active" : ""} onClick={() => { setTranscriptMode("overview"); setFollowLive(true); }}>Overview</button>
                 </div>
               </div>
             </header>
+
+            {observerProgress ? (
+              <div className="observer-live" role="status" aria-live="polite">
+                <span className="turn-progress-mark" aria-hidden="true" />
+                <div>
+                  <span className="section-kicker">Round Observer</span>
+                  <strong>{observerProgressLabel(observerProgress)}</strong>
+                </div>
+                <small>Canonical State + Process Report only</small>
+              </div>
+            ) : null}
 
             {transcriptMode === "focus" ? (
               <div className="focus-layout">
@@ -1160,13 +1892,17 @@ export default function Home() {
                           <p>{activeTranscriptItem.providerName}{activeTranscriptItem.model ? ` / ${activeTranscriptItem.model}` : ""}</p>
                         </div>
                         <span className={`speaker-state ${activeTranscriptItem.status}`}>
-                          {activeTranscriptItem.status === "streaming" ? "Speaking" : activeTranscriptItem.status}
+                          {turnStatusLabel(activeTranscriptItem)}
                         </span>
                       </header>
                       {activeTranscriptItem.target ? <div className="reviewing">Reviewing {activeTranscriptItem.target}</div> : null}
                       <div className="live-text" ref={liveTextRef} aria-live="polite">
-                        {activeTranscriptItem.text || (activeTranscriptItem.status === "streaming" ? "Waiting for the first token..." : "")}
-                        {activeTranscriptItem.status === "streaming" ? <span className="stream-caret" /> : null}
+                        {activeTranscriptItem.status === "streaming" ? (
+                          <div className="turn-progress" role="status">
+                            <span className="turn-progress-mark" aria-hidden="true" />
+                            <strong>{turnProgressLabel(activeTranscriptItem.progress)}</strong>
+                          </div>
+                        ) : activeTranscriptItem.text}
                       </div>
                       {activeTranscriptItem.usage ? (
                         <footer className="speaker-metrics">
@@ -1184,7 +1920,7 @@ export default function Home() {
                 <aside className="room-timeline">
                   <div className="panel-heading compact">
                     <div><span className="section-kicker">Room timeline</span><h2>{phase}</h2></div>
-                    {pinnedMessageId ? <button type="button" className="text-button" onClick={() => setPinnedMessageId(null)}>Follow live</button> : null}
+                    {pinnedMessageId || !followLive ? <button type="button" className="text-button" onClick={() => { setPinnedMessageId(null); setFollowLive(true); }}>Follow live</button> : null}
                   </div>
                   <div className="timeline-list">
                     {transcript.map((item) => (
@@ -1192,12 +1928,12 @@ export default function Home() {
                         type="button"
                         className={`timeline-item ${activeTranscriptItem?.id === item.id ? "active" : ""}`}
                         key={item.id}
-                        onClick={() => setPinnedMessageId(item.id)}
+                        onClick={() => { setPinnedMessageId(item.id); setFollowLive(false); }}
                       >
                         <span className={`timeline-dot ${item.status}`} />
                         <span>
                           <strong>{item.role === "host" ? "Agenda" : roleLabels[item.role]}</strong>
-                          <small>{item.providerName} / {item.phase}</small>
+                          <small>{item.providerName} / {item.phase} · {turnStatusLabel(item)}</small>
                         </span>
                       </button>
                     ))}
@@ -1205,7 +1941,16 @@ export default function Home() {
                 </aside>
               </div>
             ) : (
-              <div className="overview-grid" ref={overviewRef} aria-live="polite">
+              <div
+                className="overview-grid"
+                ref={overviewRef}
+                aria-live="polite"
+                onScroll={(event) => {
+                  const target = event.currentTarget;
+                  const distanceFromBottom = target.scrollHeight - target.scrollTop - target.clientHeight;
+                  setFollowLive(distanceFromBottom < 32);
+                }}
+              >
                 {transcript.map((item) => (
                   <article className={`overview-message ${item.provider}`} key={item.id}>
                     <header>
@@ -1213,19 +1958,130 @@ export default function Home() {
                       <small>{item.providerName} / {item.phase}</small>
                     </header>
                     {item.target ? <p className="reviewing">Reviews {item.target}</p> : null}
-                    <div>{item.text || "Waiting..."}</div>
+                    <div>{item.status === "streaming" ? turnProgressLabel(item.progress) : item.text}</div>
                   </article>
                 ))}
               </div>
             )}
 
+            {protocolState && !running &&
+            (protocolState.status === "paused" || protocolState.status === "interrupted") &&
+            protocolState.phase !== "human_gate" ? (
+              <section className="chair-checkpoint" aria-label="Human Chair checkpoint">
+                <div className="checkpoint-summary">
+                  <span className="section-kicker">Human Chair checkpoint</span>
+                  <h2>{protocolStatusLabel(protocolState)}</h2>
+                  <p>{protocolState.status === "interrupted"
+                    ? "The previous transition is recorded as interrupted. Its provider call may still have incurred cost. Continuing creates a new explicit transition; nothing retries automatically."
+                    : "Add a scoped direction, continue the next safe phase, or return to the agenda."}</p>
+                </div>
+                <div className="directive-composer">
+                  <select value={directiveKind} onChange={(event) => setDirectiveKind(event.target.value as ChairDirective["kind"])} aria-label="Directive type">
+                    <option value="constraint">Constraint</option>
+                    <option value="correction">Correction</option>
+                    <option value="question">Question</option>
+                    <option value="priority">Priority</option>
+                    <option value="veto">Veto</option>
+                  </select>
+                  <select value={directiveTarget} onChange={(event) => setDirectiveTarget(event.target.value)} aria-label="Directive audience">
+                    <option value="all">All seats</option>
+                    {seats.map((seat, index) => <option value={seat.id} key={seat.id}>Seat {index + 1} · {roleLabels[seat.role]}</option>)}
+                  </select>
+                  <input value={directiveText} onChange={(event) => setDirectiveText(event.target.value)} maxLength={1_000} placeholder="Add a constraint, correction, priority, question, or veto" />
+                  <button type="button" onClick={() => void addChairDirection()} disabled={!directiveText.trim()}>Add direction</button>
+                </div>
+                {meetingState?.activeChairDirectives.length ? (
+                  <div className="directive-list">
+                    {meetingState.activeChairDirectives.map((directive) => (
+                      <span key={directive.id}><strong>{directive.kind}</strong>{directive.text}</span>
+                    ))}
+                  </div>
+                ) : null}
+                {latestProcessReport && latestProcessReport.round === protocolState.round ? (
+                  <div className={`process-report ${latestProcessReport.recommendation}`} aria-label="Deterministic process report">
+                    <div>
+                      <span className="section-kicker">Process report · State v{latestProcessReport.sourceStateVersion}</span>
+                      <strong>{latestProcessReport.recommendation === "pause" ? "Chair review recommended" : "Structural progress detected"}</strong>
+                    </div>
+                    <span>{latestProcessReport.newClaimCount} claims</span>
+                    <span>{latestProcessReport.claimUpdateCount} updates</span>
+                    <span>{latestProcessReport.objectionCount} objections</span>
+                    <span>{latestProcessReport.activeDisputeIds.length} open disputes</span>
+                    {latestProcessReport.reasons.length > 0 ? <p>{processReasonLabel(latestProcessReport.reasons)}</p> : null}
+                  </div>
+                ) : null}
+                {latestRoundBrief && latestRoundBrief.round === protocolState.round ? (
+                  <article className={`round-brief ${latestRoundBrief.recommendation}`} aria-label="Observer Round Brief">
+                    <header>
+                      <div>
+                        <span className="section-kicker">Round Brief · {latestRoundBrief.observer.provider}</span>
+                        <strong>{observerRecommendationLabel(latestRoundBrief.recommendation)}</strong>
+                      </div>
+                      <span>Loop {latestRoundBrief.loopRisk} · Drift {latestRoundBrief.driftRisk}</span>
+                    </header>
+                    <p>{latestRoundBrief.summary}</p>
+                    <p className="round-brief-reason">{latestRoundBrief.reason}</p>
+                    <footer>
+                      <span>State v{latestRoundBrief.sourceStateVersion}</span>
+                      <span>{latestRoundBrief.sourceProcessReportId}</span>
+                      <span>{latestRoundBrief.sourceTurnIds.length} source turns</span>
+                    </footer>
+                  </article>
+                ) : null}
+                {protocolState.phase === "review_checkpoint" && protocolState.round < protocolState.maxRounds && openDisputes.length > 0 ? (
+                  <section className="targeted-debate-picker" aria-label="Targeted debate selection">
+                    <div>
+                      <span className="section-kicker">Optional next round</span>
+                      <strong>Resolve one named dispute</strong>
+                      <p>Only the two most relevant Seats receive this Dispute and its bounded source lineage.</p>
+                    </div>
+                    <label>
+                      Open dispute
+                      <select
+                        value={selectedDispute?.id ?? ""}
+                        onChange={(event) => setSelectedDisputeId(event.target.value)}
+                      >
+                        {openDisputes.map((dispute) => (
+                          <option key={dispute.id} value={dispute.id}>
+                            {dispute.severity} · {dispute.text.slice(0, 120)}
+                          </option>
+                        ))}
+                      </select>
+                    </label>
+                    <div className="routed-seats" aria-label="Routed seats">
+                      {routedDebateSeatIds.map((seatId) => {
+                        const index = seats.findIndex((seat) => seat.id === seatId);
+                        const seat = seats[index];
+                        return seat ? <span key={seatId}>Seat {index + 1} · {roleLabels[seat.role]}</span> : null;
+                      })}
+                    </div>
+                    <button
+                      type="button"
+                      onClick={() => void startTargetedDebate()}
+                      disabled={!roomCompositionMatches || routedDebateSeatIds.length === 0}
+                    >
+                      Debate this dispute
+                    </button>
+                  </section>
+                ) : null}
+                <div className="checkpoint-actions">
+                  <button className="primary-button" type="button" onClick={() => void continueMeeting()} disabled={!roomCompositionMatches}>
+                    {protocolContinueLabel(protocolState)}
+                  </button>
+                  {!roomCompositionMatches ? <p>Reconnect the saved providers, models, and roles before continuing.</p> : null}
+                </div>
+              </section>
+            ) : null}
+
             <footer className="meeting-controls">
               <div>
-                <strong>Round {iteration}/2</strong>
+                <strong>Round {iteration}/{protocolState?.maxRounds ?? maxRounds}</strong>
                 <span>{seats.length} seats / {transcript.filter((item) => item.status === "done").length} turns complete</span>
+                {activeBudgetStatus ? <span>{activeBudgetStatus.remainingAgentTurns} calls · {formatTokens(activeBudgetStatus.remainingOutputTokens)} output · {formatDuration(activeBudgetStatus.remainingModelTimeMs)} model time left</span> : null}
               </div>
               {error ? <p className="control-error">{error}</p> : null}
               <div className="control-actions">
+                {running && protocolState?.controlMode === "auto" ? <button type="button" onClick={requestSafePause} disabled={raiseHandRequested}>{raiseHandRequested ? "Pause requested" : "Raise hand"}</button> : null}
                 {running ? <button className="danger-button" type="button" onClick={() => abortRef.current?.abort()}>Stop meeting</button> : null}
                 {!running && memo ? <button type="button" onClick={() => setStage("decision")}>Open decision</button> : null}
                 {!running && !memo ? <button type="button" onClick={resetRoom}>Return to agenda</button> : null}
@@ -1255,14 +2111,34 @@ export default function Home() {
               <section>
                 <span className="section-kicker">Human gate</span>
                 <h2>The room advises. You decide.</h2>
-                <p>Approve the artifact, reject it, or spend the single remaining revision round on named objections.</p>
+                <p>Approve the artifact, reject it, or add a scoped direction before spending another bounded round.</p>
                 <div className="decision-actions">
-                  <button className="approve-button" type="button" onClick={() => setDecision("approved")} disabled={running || decision !== "pending"}>{decision === "approved" ? "Memo approved" : "Approve memo"}</button>
-                  <button type="button" onClick={() => void runMeeting(2, memo)} disabled={running || decision !== "pending" || iteration !== 1 || !memo || !roomCompositionMatches}>Request revision</button>
-                  <button className="reject-button" type="button" onClick={() => setDecision("rejected")} disabled={running || decision !== "pending"}>{decision === "rejected" ? "Memo rejected" : "Reject memo"}</button>
+                  <button className="approve-button" type="button" onClick={() => void recordHumanDecision("approved")} disabled={running || decision !== "pending"}>{decision === "approved" ? "Memo approved" : "Approve memo"}</button>
+                  <button type="button" onClick={() => void continueMeeting()} disabled={running || decision !== "pending" || !memo || !protocolState || protocolState.phase !== "human_gate" || protocolState.round >= protocolState.maxRounds || !roomCompositionMatches}>Request another round</button>
+                  <button className="reject-button" type="button" onClick={() => void recordHumanDecision("rejected")} disabled={running || decision !== "pending"}>{decision === "rejected" ? "Memo rejected" : "Reject memo"}</button>
                 </div>
-                {decision === "pending" && iteration === 1 && !roomCompositionMatches ? (
-                  <p className="revision-note">Reconnect seats with the original providers, models, and roles to request a revision.</p>
+                {decision === "pending" && protocolState && protocolState.round < protocolState.maxRounds && !roomCompositionMatches ? (
+                  <p className="revision-note">Reconnect seats with the original providers, models, and roles to request another round.</p>
+                ) : null}
+                {decision === "pending" && protocolState && protocolState.round >= protocolState.maxRounds ? (
+                  <p className="revision-note">The declared round budget is exhausted. Approve, reject, or start a new room.</p>
+                ) : null}
+                {decision === "pending" ? (
+                  <div className="directive-composer decision-directive-composer">
+                    <select value={directiveKind} onChange={(event) => setDirectiveKind(event.target.value as ChairDirective["kind"])} aria-label="Directive type">
+                      <option value="constraint">Constraint</option>
+                      <option value="correction">Correction</option>
+                      <option value="question">Question</option>
+                      <option value="priority">Priority</option>
+                      <option value="veto">Veto</option>
+                    </select>
+                    <select value={directiveTarget} onChange={(event) => setDirectiveTarget(event.target.value)} aria-label="Directive audience">
+                      <option value="all">All seats</option>
+                      {seats.map((seat, index) => <option value={seat.id} key={seat.id}>Seat {index + 1}</option>)}
+                    </select>
+                    <input value={directiveText} onChange={(event) => setDirectiveText(event.target.value)} maxLength={1_000} placeholder="Add direction before another round" />
+                    <button type="button" onClick={() => void addChairDirection()} disabled={!directiveText.trim()}>Add direction</button>
+                  </div>
                 ) : null}
               </section>
               <section className="usage-summary">
@@ -1426,6 +2302,9 @@ export default function Home() {
                 const usedSeats = seatDrafts.flatMap((seat, index) =>
                   seat.connectionId === connection.id ? [`Seat ${index + 1}`] : [],
                 );
+                if (observerDraft.enabled && observerDraft.connectionId === connection.id) {
+                  usedSeats.push("Observer");
+                }
                 const disconnectPending = pendingDisconnectId === connection.id;
                 return (
                   <section className={`connection-row ${ui.color} ${focusedConnectionId === connection.id ? "focused" : ""}`} key={connection.id}>
@@ -1439,7 +2318,7 @@ export default function Home() {
                     <div className="connection-model-summary">
                       <strong>{connection.models.length}</strong>
                       <span>available model{connection.models.length === 1 ? "" : "s"}</span>
-                      <small>{usedSeats.length ? `Used by ${usedSeats.join(", ")}` : "Not assigned to a seat"}</small>
+                      <small>{usedSeats.length ? `Used by ${usedSeats.join(", ")}` : "Not assigned"}</small>
                     </div>
                     <span className="billing-owner">Billed by {ui.label}</span>
                     {disconnectPending ? (
@@ -1487,18 +2366,18 @@ export default function Home() {
         <div className="modal-backdrop project-backdrop" role="presentation">
           <aside className="project-drawer" role="dialog" aria-modal="true" aria-labelledby="project-title">
             <header className="dialog-header">
-              <div><span className="section-kicker">Project truth / v0.6</span><h2 id="project-title">Build the protocol, not a model carousel</h2></div>
+              <div><span className="section-kicker">Project truth / v0.10a</span><h2 id="project-title">Build the protocol, not a model carousel</h2></div>
               <button type="button" className="quiet-button" onClick={() => setProjectOpen(false)}>Close</button>
             </header>
             <p className="project-thesis">The room verifies session connections, reuses them across provider-neutral seats, and keeps a local archive of completed meeting content. Account sync, evidence verification, durable BYOK, custom endpoints, and execution remain future work.</p>
             <div className="milestone-stack">
-              {milestones.map(([id, title, detail], index) => (
-                <article className={index === 1 || index === 3 ? "current" : ""} key={id}>
+              {milestones.map(([id, title, detail]) => (
+                <article className={id === "M2.10" ? "current" : ""} key={id}>
                   <span>{id}</span><div><strong>{title}</strong><p>{detail}</p></div>
                 </article>
               ))}
             </div>
-            <footer>Current gate: connect two providers and complete one live evaluation without duplicate calls.</footer>
+            <footer>Current gate: verify one bounded Observer plus named-Dispute route before expanding the decision workspace.</footer>
           </aside>
         </div>
       ) : null}
@@ -1531,6 +2410,135 @@ function createRoomId() {
   return `meeting-${createRequestId()}`;
 }
 
+function sessionConnectionPayload(
+  seats: SeatRequest[],
+  connectionById: Map<string, ConnectionRecord>,
+  observer?: ObserverRequest,
+) {
+  return Object.fromEntries(
+    [...seats, ...(observer ? [observer] : [])].flatMap((item) => {
+      const connection = connectionById.get(item.connectionId);
+      return connection?.source === "session" && connection.apiKey
+        ? [[connection.id, { provider: connection.provider, apiKey: connection.apiKey }]]
+        : [];
+    }),
+  );
+}
+
+function observerIsPending(state: MeetingProtocolState) {
+  return state.observerEnabled &&
+    state.phase === "review_checkpoint" &&
+    state.status === "paused" &&
+    !state.roundBriefs.some((brief) => brief.round === state.round);
+}
+
+function observerMatches(
+  protocol: MeetingProtocolState | null,
+  snapshot: ObserverSnapshot | null,
+  request: ObserverRequest | null,
+  connectionById: Map<string, ConnectionRecord>,
+) {
+  if (!protocol?.observerEnabled) return true;
+  if (!snapshot || !request) return false;
+  const connection = connectionById.get(request.connectionId);
+  return Boolean(
+    connection &&
+    snapshot.provider === request.provider &&
+    snapshot.model === request.model &&
+    connection.provider === snapshot.provider
+  );
+}
+
+function phaseContextTurns(transcript: TranscriptItem[], round: number) {
+  return transcript.flatMap((item) => {
+    if (
+      item.status !== "done" ||
+      !item.envelope ||
+      !item.seatId ||
+      item.round !== round ||
+      (item.phase !== "proposal" && item.phase !== "review")
+    ) return [];
+    return [{
+      id: item.id,
+      seatId: item.seatId,
+      round,
+      phase: item.phase,
+      envelope: item.envelope,
+    }];
+  });
+}
+
+function legacyProtocolState(record: MeetingRecord): MeetingProtocolState | null {
+  if (!record.memo || record.participants.length < 2) return null;
+  const base = createMeetingProtocolState(
+    record.participants.map((_, index) => `seat-${index + 1}`),
+    "checkpoints",
+    2,
+    record.updatedAt,
+  );
+  if (record.decision === "approved" || record.decision === "rejected") {
+    return finishProtocol({ ...base, round: record.iteration }, record.updatedAt);
+  }
+  return {
+    ...base,
+    round: record.iteration,
+    phase: "human_gate",
+    status: "paused",
+    pendingSeatIds: [],
+    completedSeatIds: [],
+    updatedAt: record.updatedAt,
+  };
+}
+
+function turnProgressLabel(progress: TranscriptItem["progress"]) {
+  if (progress === "generating") return "Generating response";
+  if (progress === "validating") return "Validating turn";
+  return "Thinking";
+}
+
+function observerProgressLabel(progress: AgentProgress) {
+  if (progress === "generating") return "Drafting a bounded Round Brief";
+  if (progress === "validating") return "Checking every source reference";
+  return "Inspecting convergence and loop risk";
+}
+
+function observerRecommendationLabel(recommendation: MeetingProtocolState["roundBriefs"][number]["recommendation"]) {
+  if (recommendation === "targeted_debate") return "Debate a named dispute";
+  if (recommendation === "ask_human") return "Ask the Human Chair";
+  if (recommendation === "synthesize") return "Ready for synthesis";
+  return "Continue the bounded discussion";
+}
+
+function turnStatusLabel(item: TranscriptItem) {
+  if (item.status === "streaming") return turnProgressLabel(item.progress);
+  if (item.status === "error") return "Stopped";
+  return item.provider === "host" ? "Posted" : "Ready";
+}
+
+function protocolStatusLabel(state: MeetingProtocolState) {
+  if (state.status === "interrupted") return "Interrupted · explicit resume required";
+  if (state.phase === "proposal_checkpoint") return "Proposal checkpoint";
+  if (state.phase === "review_checkpoint") return "Cross-review checkpoint";
+  if (state.phase === "human_gate") return "Human decision required";
+  if (state.phase === "complete") return "Meeting complete";
+  if (state.phase === "stopped") return "Stopped by the Human Chair";
+  if (state.phase === "proposal" && state.status === "paused") return "Proposal turn paused";
+  if (state.phase === "review" && state.status === "paused") return "Cross-review turn paused";
+  if (state.phase === "targeted_debate" && state.status === "paused") return "Targeted debate paused";
+  if (state.phase === "proposal") return "Ready for proposals";
+  if (state.phase === "review") return "Ready for cross-review";
+  if (state.phase === "targeted_debate") return "Ready for targeted debate";
+  return "Ready for synthesis";
+}
+
+function protocolContinueLabel(state: MeetingProtocolState) {
+  if (state.status === "interrupted") return "Resume with a new transition";
+  if (state.phase === "proposal_checkpoint") return "Continue to cross-review";
+  if (state.phase === "review_checkpoint") return "Continue to synthesis";
+  if (state.phase === "proposal" || state.phase === "review" || state.phase === "targeted_debate") return "Run next seat";
+  return "Continue meeting";
+}
+
 function participantsMatchSeats(participants: ParticipantSnapshot[], seats: SeatRequest[]) {
   if (participants.length < 2 || participants.length !== seats.length) return false;
   const participantKeys = participants
@@ -1561,6 +2569,8 @@ function meetingRecordStatus(record: MeetingRecord) {
   if (record.decision === "approved") return "Approved";
   if (record.decision === "rejected") return "Rejected";
   if (record.memo) return "Decision pending";
+  if (record.protocolState?.status === "interrupted") return "Resume required";
+  if (record.protocolState?.status === "paused") return "Chair checkpoint";
   return "Meeting saved";
 }
 
@@ -1633,6 +2643,23 @@ function phaseState(phase: "proposal" | "review" | "synthesis", current: "agenda
   if (order[phase] < order[current]) return "complete";
   if (phase === current) return "active";
   return "";
+}
+
+function budgetStopLabel(reasons: ReturnType<typeof evaluateMeetingBudget>["reasons"]) {
+  return reasons.map((reason) => {
+    if (reason === "turn_limit") return "agent-turn limit reached";
+    if (reason === "input_token_limit") return "input-token limit reached";
+    if (reason === "output_token_limit") return "output-token limit reached";
+    return "model-time limit reached";
+  }).join(", ");
+}
+
+function processReasonLabel(reasons: MeetingProtocolState["processReports"][number]["reasons"]) {
+  return reasons.map((reason) => {
+    if (reason === "low_progress") return "Two consecutive windows added no structural progress.";
+    if (reason === "repeated_disputes") return "Open disputes repeated without a Claim update.";
+    return "Participant theses converged while assumptions remain open.";
+  }).join(" ");
 }
 
 function safeClientError(error: unknown) {

@@ -4,12 +4,14 @@ import {
   legacyMeetingHistoryKey,
   MeetingRecord,
   meetingHistoryLimit,
+  ObserverSnapshot,
   parseMeetingRecord,
   ParticipantSnapshot,
   TranscriptItem,
 } from "./meeting-record";
-import { UsageSummary } from "./discuss-protocol";
-import { MeetingState } from "./meeting-state";
+import { RoundBrief, UsageSummary } from "./discuss-protocol";
+import { ChairDirective, MeetingState } from "./meeting-state";
+import { MeetingProtocolState, ProcessReport, ProtocolTransition } from "./meeting-orchestrator";
 
 const databaseName = "multi-ai-meeting-room";
 const databaseVersion = 1;
@@ -48,9 +50,13 @@ type EventRow = {
     | "turn.completed"
     | "turn.failed"
     | "turn.format_failed"
-    | "turn.reduction_failed";
+    | "turn.reduction_failed"
+    | "protocol.transition"
+    | "process.report"
+    | "round.brief"
+    | "chair.directive";
   createdAt: string;
-  payload: TranscriptItem;
+  payload: TranscriptItem | ProtocolTransition | ProcessReport | RoundBrief | ChairDirective;
 };
 
 type SnapshotRow = {
@@ -63,12 +69,14 @@ type SnapshotRow = {
   createdAt: string;
   updatedAt: string;
   canonicalState?: MeetingState;
+  protocolState?: MeetingProtocolState;
+  observer?: ObserverSnapshot;
 };
 
 type ArtifactRow = {
   id: string;
   roomId: string;
-  type: "decision.memo";
+  type: "decision.memo" | "round.brief";
   version: number;
   content: string;
   createdAt: string;
@@ -277,6 +285,61 @@ async function writeRoomRecord(database: Promise<IDBDatabase>, record: MeetingRe
     };
   });
 
+  record.protocolState?.transitions.forEach((transition) => {
+    const request = eventStore.add({
+      id: `${record.id}:protocol:${transition.id}:${transition.status}`,
+      roomId: record.id,
+      sequence: record.transcript.length + record.protocolState!.transitions.indexOf(transition),
+      type: "protocol.transition",
+      createdAt: transition.completedAt ?? transition.startedAt,
+      payload: transition,
+    } satisfies EventRow);
+    ignoreDuplicateEvent(request);
+  });
+
+  record.protocolState?.processReports.forEach((report, index) => {
+    const request = eventStore.add({
+      id: `${record.id}:process:${report.id}`,
+      roomId: record.id,
+      sequence: record.transcript.length + (record.protocolState?.transitions.length ?? 0) + index,
+      type: "process.report",
+      createdAt: report.createdAt,
+      payload: report,
+    } satisfies EventRow);
+    ignoreDuplicateEvent(request);
+  });
+
+  record.protocolState?.roundBriefs.forEach((brief, index) => {
+    const request = eventStore.add({
+      id: `${record.id}:brief:${brief.id}`,
+      roomId: record.id,
+      sequence: record.transcript.length +
+        (record.protocolState?.transitions.length ?? 0) +
+        (record.protocolState?.processReports.length ?? 0) +
+        index,
+      type: "round.brief",
+      createdAt: brief.createdAt,
+      payload: brief,
+    } satisfies EventRow);
+    ignoreDuplicateEvent(request);
+  });
+
+  record.meetingState?.activeChairDirectives.forEach((directive, index) => {
+    const request = eventStore.add({
+      id: `${record.id}:directive:${directive.id}`,
+      roomId: record.id,
+      sequence: record.transcript.length +
+        (record.protocolState?.transitions.length ?? 0) +
+        (record.protocolState?.processReports.length ?? 0) +
+        (record.protocolState?.roundBriefs.length ?? 0) +
+        index,
+      type: "chair.directive",
+      createdAt: record.updatedAt,
+      payload: directive,
+    } satisfies EventRow);
+    ignoreDuplicateEvent(request);
+  });
+
   transaction.objectStore(stores.snapshots).put({
     roomId: record.id,
     version: 1,
@@ -290,6 +353,8 @@ async function writeRoomRecord(database: Promise<IDBDatabase>, record: MeetingRe
     createdAt: record.createdAt,
     updatedAt: record.updatedAt,
     ...(record.meetingState ? { canonicalState: record.meetingState } : {}),
+    ...(record.protocolState ? { protocolState: record.protocolState } : {}),
+    ...(record.observer ? { observer: record.observer } : {}),
   } satisfies SnapshotRow);
 
   if (record.memo) {
@@ -302,6 +367,17 @@ async function writeRoomRecord(database: Promise<IDBDatabase>, record: MeetingRe
       createdAt: record.updatedAt,
     } satisfies ArtifactRow);
   }
+
+  record.protocolState?.roundBriefs.forEach((brief) => {
+    transaction.objectStore(stores.artifacts).put({
+      id: `${record.id}:round.brief:${brief.id}`,
+      roomId: record.id,
+      type: "round.brief",
+      version: brief.round,
+      content: JSON.stringify(brief),
+      createdAt: brief.createdAt,
+    } satisfies ArtifactRow);
+  });
 
   transaction.objectStore(stores.usage).put({
     id: `${record.id}:usage:${record.iteration}`,
@@ -337,11 +413,14 @@ async function listRoomRecords(db: IDBDatabase): Promise<MeetingRecord[]> {
       .sort((a, b) => a.position - b.position)
       .map(({ provider, providerName, model, role }) => ({ provider, providerName, model, role }));
     const transcript = eventRows
-      .filter((item) => item.roomId === room.id)
+      .filter((item) =>
+        item.roomId === room.id &&
+        isTranscriptEventType(item.type)
+      )
       .sort((a, b) => a.sequence - b.sequence)
-      .map((item) => item.payload);
+      .map((item) => item.payload as TranscriptItem);
     const artifact = artifactRows
-      .filter((item) => item.roomId === room.id)
+      .filter((item) => item.roomId === room.id && item.type === "decision.memo")
       .sort((a, b) => b.version - a.version)[0];
     const usage = usageRows
       .filter((item) => item.roomId === room.id)
@@ -364,16 +443,24 @@ async function listRoomRecords(db: IDBDatabase): Promise<MeetingRecord[]> {
         : emptyUsage,
       iteration: snapshot.iteration,
       participants,
+      ...(snapshot.observer ? { observer: snapshot.observer } : {}),
       ...(snapshot.canonicalState ? { meetingState: snapshot.canonicalState } : {}),
+      ...(snapshot.protocolState ? { protocolState: snapshot.protocolState } : {}),
       createdAt: room.createdAt,
       updatedAt: snapshot.updatedAt,
     });
-    return parsed ? [parsed] : [];
+    return parsed ? [finalizeInterruptedTurns(parsed)] : [];
   });
 
   return records
     .sort((a, b) => b.updatedAt.localeCompare(a.updatedAt))
     .slice(0, meetingHistoryLimit);
+}
+
+function isTranscriptEventType(type: EventRow["type"]) {
+  return type === "agenda.published" || type === "turn.completed" ||
+    type === "turn.failed" || type === "turn.format_failed" ||
+    type === "turn.reduction_failed";
 }
 
 async function deleteRoomRecord(database: Promise<IDBDatabase>, roomId: string) {
@@ -416,6 +503,14 @@ function requestResult<T>(request: IDBRequest<T>) {
     request.onsuccess = () => resolve(request.result);
     request.onerror = () => reject(request.error ?? new Error("The meeting database request failed."));
   });
+}
+
+function ignoreDuplicateEvent(request: IDBRequest) {
+  request.onerror = (event) => {
+    if (request.error?.name !== "ConstraintError") return;
+    event.preventDefault();
+    event.stopPropagation();
+  };
 }
 
 function transactionDone(transaction: IDBTransaction) {

@@ -2,6 +2,202 @@
 
 This chronological log records shipped work, validation, limitations, and the next decision. It is not a place for uncommitted feature ideas; those belong in the roadmap or decision record.
 
+## 2026-08-25 - Product Direction Baseline - Artifact-Centered Task Packs
+
+### Completed
+
+- Reconciled the original multi-model critical-review thesis with the v0.10c implementation and identified an infrastructure-first sequencing drift: the meeting engine is more mature than evidence of a better user artifact.
+- Approved one product with orthogonal Task Modes and permission levels. Review, Decide / Plan, Explore, Create, and future Play are Task Packs; Discuss, Research, and Execute continue to define authority.
+- Chose product-line-driven vertical slices over both a speculative universal platform and separate duplicated applications. Added the Rule of Two for promotion into Shared Core.
+- Chose Review as the first artifact-centered product line: Artifact v1, supplied sources and truth constraints, independent Findings, bounded cross-review, Change Set, Artifact v2, changed-material verification, and item-level Human Gate decisions.
+- Defined the product correction cadence: no two consecutive infrastructure-only milestones, one realistic case and baseline per product milestone, an expected information gain for every new paid call, and simplification or removal when evidence is weak.
+- Defined the multi-agent boundary: deterministic multi-model orchestration remains sufficient for Review and Decide; true multi-agent behavior begins only when Research or Execute has independently useful subtasks, distinct tools or private context, a merge contract, and verification.
+- Added [Product Direction](PRODUCT_DIRECTION.md), updated the Charter, Decision Record, Roadmap, protocol scope, model/agent composition, documentation index, and repository read order, with Chinese mirrors.
+
+### Product Truth
+
+- No runtime code, provider request, API key, local room, database, deployment, or paid model call changed in this planning milestone.
+- v0.10c remains the local product version. Its final gate is one explicitly budgeted real-provider smoke room for the implemented Observer plus targeted-debate path.
+- Generic Observer, routing, autonomy, and infrastructure expansion leave the critical path after that smoke room. M2.11 is now the Review Task Pack rather than a broad meeting-interface expansion.
+
+### Next Action
+
+Preserve a recoverable v0.10c source point, run the one bounded live smoke evaluation with explicit user budget approval, record its semantic and cost evidence, then implement the smallest end-to-end Review benchmark without adding unrelated platform abstractions.
+
+## 2026-08-22 - v0.10c - Chair-Selected Targeted Debate
+
+### Completed
+
+- Added a persisted `TargetedDebatePlan` containing one open Dispute, source State version, bounded source Message IDs, routed Seats, round, and creation time. Old protocol snapshots load with an empty plan list.
+- Added a Human Chair action at the Review checkpoint. The Chair selects an open Dispute; deterministic application routing wakes at most two relevant Seats, prioritizing the objection raiser and the target Claim's opposing/supporting Seats. No extra routing-model call is made.
+- Added a recoverable `targeted_debate` transition that consumes the next round budget, supports Turn-by-turn subsets, is persisted before provider work, and retains the same explicit interruption and no-automatic-retry boundary as other paid transitions.
+- Restricted every targeted request to the named Dispute, related Claim, up to four active Chair Directives, and up to eight source Message IDs. It receives no transcript or prior Memo, emits a standard Review Envelope, forbids new Claims, allows at most one Claim update and one objection, and caps transport output at 250 tokens.
+- Returned targeted deltas through the existing deterministic Canonical Reducer. The resulting Process Report reads only the targeted round's completed turns; an enabled Observer then creates exactly one new Round Brief for that delta before the room returns to the Review checkpoint or enters synthesis in Auto mode.
+- Added a compact checkpoint Dispute selector with visible routed Seats while preserving synthesis as a separate Chair choice.
+- Recorded D-032: later paid debate rounds must name and route an unresolved Dispute.
+
+### Validation
+
+- Production build, ESLint, `git diff --check`, and all eighteen automated tests pass with the bundled Node runtime.
+- New orchestration coverage verifies deterministic routing, source lineage, maximum-round refusal, persistence parsing, interruption recovery, Checkpoints completion, and Turn-by-turn seat subsets.
+- New provider fixtures prove exactly two routed calls, a 250-output-token ceiling, no prior-Memo or transcript leakage, named Dispute/source IDs in every prompt, standard Review reduction, and a `targeted_debate` completion boundary.
+- Fresh browser sessions at desktop and 390x844 mobile widths showed no horizontal overflow or console warnings/errors. No real provider call, credential transmission, paid model use, database deletion, or deployment occurred.
+
+### Current Limitations
+
+- Deterministic relevance currently uses the Dispute raiser plus target Claim support/opposition lineage, with a participant-order fallback. It is intentionally not a semantic router and needs real-room evaluation before becoming more elaborate.
+- A model can propose a revision to a Claim, but only application and Human Chair rules can later mark the Dispute resolved; explicit dispute-resolution UX remains part of the Whiteboard/Follow-up work.
+- Real-provider format reliability, semantic usefulness, latency, and cost for the combined targeted-debate plus second-Observer path are not yet verified.
+- Active provider work still belongs to the page lifecycle; navigation remains an explicit interruption rather than background continuation.
+
+### Next Action
+
+With explicit user budget approval, run one fresh Checkpoints room through Proposal, Review, Observer, one Chair-selected targeted Dispute, a second Observer Brief, and synthesis. Record which calls ran, whether the second Brief evaluates only the named delta, whether the Dispute became more decision-useful, and total tokens, latency, and advisory cost before starting M2.11.
+
+## 2026-08-22 - v0.10b - Explicit Observer and Round Brief
+
+### Completed
+
+- Added an optional Round Observer outside the participant Seat count. Setup requires an explicit reusable Connection and Model, and preflight adds exactly one bounded call per configured round.
+- Added a recoverable `observer` transition after completed Review. It runs once per round, is persisted before provider work, and returns to the Review checkpoint before Checkpoints mode continues or Auto enters synthesis.
+- Restricted Observer input to a 5,000-character Canonical State rendering, the deterministic Process Report, and explicit reference allowlists. It never receives the raw transcript or participant context turns.
+- Added a strict 300-output-token Round Brief contract with source State version, Process Report ID, Turn IDs, convergence/loop/drift signals, and a recommendation. Unknown or closed references fail visibly without retry and cannot mutate Canonical State.
+- Persisted credential-free Observer snapshots, append-only `round.brief` events, Round Brief artifacts, and protocol snapshots. Fixed RoomStore reads so process events cannot be miscast as transcript messages and Round Brief artifacts cannot replace Decision Memos.
+- Added compact Observer setup, live progress, and Review-checkpoint Round Brief surfaces without changing the transcript-first Meeting workspace.
+
+### Validation
+
+- Production build, ESLint, `git diff --check`, and all sixteen automated tests pass with the bundled Node runtime.
+- Mocked provider coverage proves one Observer call, a 300-token transport ceiling, no transcript leakage, exact source lineage, no Canonical State mutation, conservative budget accounting, interruption recovery, and backward-compatible loading of rooms without Observer fields.
+- Desktop 1440x1000 and mobile 390x844 browser checks found no Observer control overlap; an incomplete Observer configuration correctly keeps Start disabled.
+- No real provider call, credential transmission, paid model use, database deletion, or deployment occurred.
+
+### Current Limitations
+
+- Semantic Observer quality has only been tested with deterministic fixtures; a real paid room still requires explicit budget approval.
+- The Observer recommendation is advisory. It does not yet route participants, enforce a soft stop, or select the Final Synthesizer.
+- The active fetch still belongs to the current page. Navigation during a paid call remains an explicitly recoverable but billing-ambiguous interruption.
+
+### Next Action
+
+Implement one narrow Dispute-targeted continuation: the Chair selects an open Dispute, the router wakes only the relevant Seat or Seats, every request carries the named Dispute and bounded source context, and a second Round Brief evaluates only that delta. Do not add embeddings, Role Packs, the Whiteboard redesign, or a durable runner in the same slice.
+
+## 2026-08-22 - v0.10a - Validated Turn Presentation
+
+### Completed
+
+- Stopped rendering partial provider JSON as live speech. `agent.delta` now advances a bounded Generating state without entering `TranscriptItem.text`; only a validated `agent.done` statement is published.
+- Added explicit Thinking, Generating, Validating, Ready, Posted, and Stopped states across the speaker stage and room timeline. The latest materially changing Seat becomes the live focus, while a user-selected timeline item remains pinned until Follow Live is requested.
+- Removed token-driven focus-scroll forcing. A newly selected turn opens at its beginning, and Overview auto-follow disengages when the user scrolls away from the bottom.
+- Kept the completed Meeting visible after `room.done`; the Human Chair enters Decision explicitly through `Open decision`.
+- Recorded D-028 through D-031 for validated presentation, context-independent Artifact depth, task-adaptive stable Role Packs, and a future durable transition runner.
+
+### Validation
+
+- Production build, all fourteen automated tests, ESLint, and `git diff --check` pass with the bundled Node runtime.
+- Provider fixtures assert one Validating event for every completed turn and guard against appending `agent.delta` to visible text or navigating directly to Decision from `room.done`.
+- Browser checks at 1280x800 and 390x844 found no horizontal overflow. A saved interrupted room reopened with clear timeline status labels and no console warnings or errors.
+- No real provider request, API-key transmission, paid model call, database deletion, or deployment occurred.
+
+### Current Limitations
+
+- Concurrent progress behavior is covered by deterministic event fixtures but has not yet been visually observed during a fresh real-provider room.
+- Task-adaptive Role Packs, an independent Final Synthesizer, detailed task-shaped Artifacts, and navigation-safe background execution remain approved designs, not runtime behavior.
+- The current page still owns the active fetch. Navigating away can leave provider billing ambiguous; recovery remains explicit and never retries automatically.
+
+### Next Action
+
+Return to the M2.10 critical path: implement one explicit user-selected Observer call after a completed Review round, using only deterministic metrics plus bounded Canonical State, then add one Dispute-targeted continuation. Keep Role Packs, detailed Artifacts, and the durable runner as separate later slices.
+
+## 2026-08-21 - v0.10a - Anthropic Adaptive-Thinking Compatibility
+
+### Completed
+
+- Diagnosed a real Anthropic turn failure: a current adaptive-thinking model rejected the adapter's explicit `thinking.type: "disabled"` request field with HTTP 400.
+- Removed the optional `thinking` field from ordinary Anthropic meeting requests. This follows the provider's stated default behavior, avoids enabling a paid extended-thinking budget, and does not introduce a model-name compatibility table.
+- Added a provider-boundary regression assertion that every Anthropic fixture request omits `thinking`.
+
+### Validation
+
+- Production build and all fourteen automated tests pass with the bundled Node runtime.
+- The fix was verified without another provider request or paid retry. The original failed turn remains auditable.
+
+### Scope
+
+- This is a narrow provider-compatibility repair. It does not change the M2.10 roadmap, enable extended thinking, or add new meeting behavior.
+
+## 2026-08-10 - v0.10a - Deterministic Budget and Progress Gate
+
+### Completed
+
+- Added a backward-compatible `MeetingBudget` to persisted protocol snapshots. New rooms derive exact agent-turn ceilings from Seats, phases, and maximum rounds plus conservative input-token, output-token, and model-time boundaries from the existing context, output, and provider-timeout caps. Old rooms derive defaults during parsing and remain readable.
+- Added a pre-transition budget gate. Every started transition counts conservatively, including interrupted work; a requested transition that would exceed the agent-turn ceiling is stopped before a provider call. Observed token and model-time exhaustion also blocks the next transition at a safe boundary. Estimated USD remains advisory because pricing is not authoritative.
+- Counted known usage from format-failed and semantic-reduction-failed provider responses. Unknown provider failures still do not invent token or cost data.
+- Added deterministic source-linked `ProcessReport` records after completed Review rounds. Reports measure structural Claim, update, objection, open-dispute, open-question, no-new-information, and exact normalized-thesis deltas. Two consecutive structurally empty windows, unchanged disputes without updates, or identical theses while assumptions remain open produce a reversible Chair pause recommendation.
+- Persisted reports as append-only `process.report` events without allowing them to mutate Canonical State or approve a Decision. Setup now shows derived maximum calls/output/model time; Meeting shows remaining budget; Review Checkpoints show the latest report.
+- Recorded D-027: deterministic budget and structural safety signals precede any paid Observer judgment.
+
+### Validation
+
+- Production build, ESLint, `git diff --check`, and all fourteen automated tests pass with the bundled Node runtime.
+- New coverage verifies exact pre-call turn exhaustion, observed token exhaustion, backward-compatible parsing of pre-budget protocol snapshots, and a soft pause only after two consecutive no-progress windows.
+- Browser verification reopened the pre-D-027 interrupted room without credentials, displayed its derived remaining budget, and found no console warnings or errors. Desktop 1280x800 and mobile 390x844 checks found no horizontal overflow or overlap between the Chair checkpoint and meeting footer.
+- No provider request, paid Observer call, credential change, database deletion, or deployment occurred.
+
+### Current Limitations
+
+- Token and model-time ceilings are evaluated from observed usage at transition boundaries; an already in-flight transition may cross them. Exact call count remains the only fully pre-call hard budget in this slice.
+- Exact normalized theses are only a deterministic homogenization signal, not semantic similarity. Drift and paraphrased repetition remain for the explicit Observer path; embeddings are intentionally deferred.
+- Budget defaults are derived rather than user-editable. Authoritative cost enforcement remains unavailable when model pricing is unknown.
+- M2.10 is not complete: there is no user-selected Observer, paid Round Brief, or Dispute-targeted continuation yet.
+
+### Next Action
+
+Implement M2.10b as one explicit Observer system role and at most one Observer call after a completed Review round. Feed it only the deterministic Process Report plus bounded Canonical State, persist a source-linked Round Brief, include the call in preflight, and forbid state mutation. Then add one narrow Dispute-targeted continuation path. Do not add embeddings or start the Meeting Whiteboard redesign.
+
+## 2026-08-08 - v0.9 - Human-Chaired Resumable Orchestrator
+
+### Completed
+
+- Split the previous one-shot meeting request into explicit proposal, review, and synthesis phases while preserving the legacy endpoint path for compatibility.
+- Added a persisted `MeetingProtocolState` with Auto, Checkpoints, and Turn-by-turn modes; stable transition IDs; phase, round, and status tracking; safe-boundary pause/resume; and a hard one-to-five-round parser limit.
+- Made Checkpoints the default, added one-to-three-round setup controls with a maximum-call preflight, and kept older saved rooms at their original two-round scope instead of silently expanding them.
+- Added Raise Hand for the next safe boundary, scoped append-only Chair Directives, checkpoint continuation, another-round requests at the Human Gate, and transactionally persisted approve/reject actions.
+- Persisted protocol transitions and Chair Directives as separate RoomStore events. Completed transition IDs and turn IDs provide deterministic duplicate guards, while refresh recovery converts unresolved running work to `interrupted` without making another provider call.
+- Updated the split-phase API to validate protocol phase, bounded context, and requested seat IDs before provider work. Completed transitions are rejected before any provider adapter is called.
+- Fixed the first live M2.9 preflight defect: transcript and usage refs now update synchronously before strict persistence, so the initial recovery snapshot cannot race React state scheduling. The original failed start was blocked before any provider request.
+- The first paid split-phase probe then exposed two portable-output failures without automatic retry: Anthropic wrapped an otherwise valid Envelope in a whole-response `json` fence, while OpenAI `gpt-5-mini` exhausted the 1,200-token output budget before closing its JSON. The validator now strips only a complete fence wrapper, and the OpenAI adapter conditionally requests `reasoning.effort: minimal` only for original GPT-5, GPT-5 mini, and GPT-5 nano identifiers. The output cap remains unchanged.
+- The second bounded Proposal transition accepted OpenAI and paused with only Anthropic pending. Anthropic's normalized JSON omitted `claimUpdates`; the validator now treats omitted collection fields as empty arrays without relaxing any semantic field, reference, capacity, or surrounding-text check.
+- Preserved streamed `room.error` messages through the client phase boundary instead of replacing them with a generic missing-completion error, so provider-free protocol validation failures remain diagnosable.
+- Fixed the first split Review transition before any provider call: constructing proposal targets had mutated the shared Review work objects and replaced new Review IDs with already-applied Proposal IDs. Targets now use immutable copies, and the split Proposal-to-Review fixture asserts two additional provider calls and a Review completion boundary.
+- The first paid Review transition then stopped with zero accepted reviews: OpenAI exhausted the output cap before closing its JSON, while Anthropic exceeded the two-objection cap and introduced external examples as factual support despite Research mode being disabled. Review prompts now require a statement of at most 120 words, at most one new Claim, two updates, two objections, one-sentence fields, and no external evidence absent from Canonical State. No synthesis call was made.
+- A bounded Review retry made two additional provider calls. Both providers returned format-valid concise Envelopes, and the first Review reduced successfully. The second was rejected because the first Review's `revise` update had archived a Claim that both parallel reviewers saw in their shared input state. The Reducer now treats `revise` as an advisory contest rather than archival; only `withdraw` archives a Claim. A regression test confirms that a second parallel reviewer can still reference the Claim.
+- One explicitly approved pending-seat Review call was then run against the already-persisted pre-D-026 room snapshot. Anthropic returned another concise, format-valid Review, but it did not reduce and the room stopped without synthesis or retry. The generic phase error had overwritten the preceding agent-level semantic detail; the client now preserves the first format, reduction, or provider error as the primary interruption message instead of replacing it with the phase summary. Because the room's Canonical State was already mutated under the old archival rule, it is not a clean post-fix verification sample and should not receive another paid retry.
+- Recorded D-025: ambiguous in-flight work is recovered explicitly by the Chair and is never automatically retried.
+- Recorded D-026: reviewer revision requests preserve published Claim identity until explicit withdrawal or human resolution.
+
+### Validation
+
+- Production build, ESLint, `git diff --check`, and all thirteen automated tests pass with the bundled Node 22 runtime.
+- New tests cover pure orchestration transitions, idempotent completion, refresh interruption recovery, Turn-by-turn boundaries, split proposal execution, `phase.done`, and rejection of a completed transition before an extra provider call.
+- Repository-wide `tsc --noEmit` reports only the pre-existing missing Cloudflare ambient types in `db/index.ts` and `worker/index.ts`; no changed application file produced a TypeScript error.
+- The first live M2.9 proposal probe made two provider calls, then stopped before review or synthesis when both outputs failed strict validation. No automatic retry occurred; subsequent calls require a new explicit transition.
+- Across the bounded live session, exactly ten paid provider calls ran: four calls across the first two full Proposal attempts, one pending-seat Anthropic Proposal, and five Reviews. Two provider-free Review starts exposed the immutable-work bug before paid Review work. Zero Synthesis calls ran; one Review is accepted and the pre-D-026 room remains interrupted with one Review pending. The second approved call was not used because Synthesis was conditional on Review success.
+- Interactive browser validation could not run in this sandbox because local port binding was denied with `EPERM` on both the development and production servers. Build, server-render, source, and protocol tests remain green, but desktop/mobile visual behavior still needs a live browser pass.
+- The requested pre-M2.9 backup tag and the final milestone commit could not be created because this environment denied both tag-lock and `.git/index.lock` writes. The validated M2.9 changes remain in the working tree; the exact pre-change recovery commit is `f986b5e`, and the earlier `backup/v0.6-live-baseline-2026-08-04` tag remains available.
+
+### Current Limitations
+
+- The real-provider Checkpoints run has verified Proposal recovery and one accepted Review, but still needs the pending Review, Review Checkpoint, and Synthesis/Human Gate. Gemini remains untested.
+- Browser-local BYOK cannot guarantee exactly-once billing for a request that was in flight during refresh. The UI discloses that ambiguity, never retries automatically, and requires a new explicit transition to continue.
+- The current maximum-round and call-count bounds are not yet full token, turn, time, or authoritative-dollar budgets.
+- M2.10 has not added Observer / Recorder, Round Briefs, loop and drift monitoring, or Dispute-targeted participant routing. Accepted phase statements remain bounded but are still broader than the final per-agent context design.
+- M2.11 has not yet replaced the live transcript focus with Turn Cards, the Meeting Whiteboard, source-linked follow-up, and versioned Memo amendments.
+
+### Next Action
+
+Do not retry the polluted pre-D-026 room. When another live budget is justified, start one fresh, tightly bounded post-D-026 Checkpoints room and require both Reviews to reach the Review Checkpoint before authorizing Synthesis. Then implement M2.10 Observer, Round Brief, Monitor soft stops, and Dispute-targeted routing. Do not start the larger M2.11 interface redesign in the same milestone.
+
 ## 2026-08-04 - v0.8 - Structured Meeting State
 
 ### Completed

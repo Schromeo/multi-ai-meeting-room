@@ -1,11 +1,11 @@
 # 会议协议蓝图 v1
 
-状态：已批准设计；M2.7 持久化与 M2.8 结构化状态基础已实现
-日期：2026-08-03
+状态：已批准设计；已实现至 M2.10c 由 Chair 选择的定向辩论
+日期：2026-08-22
 
 ## 目的
 
-本蓝图定义 v0.8 结构化状态基础之后的 Discuss 房间架构：把有限模型调用变成由人主持、可以恢复、可以控制费用的决策协议，并避免把不断增长的完整 transcript 当成所有模型的共享记忆。
+本蓝图定义 v0.9 可恢复编排基础之后的 Discuss 房间架构：把有限模型调用变成由人主持、可以恢复、可以控制费用的决策协议，并避免把不断增长的完整 transcript 当成所有模型的共享记忆。
 
 系统必须保留这条链：
 
@@ -13,9 +13,13 @@
 
 完整原始记录继续供人查看和审计；模型只获得完成当前任务所需的有限工作上下文。
 
+## 范围边界
+
+本文是已经实现的 Discuss 决策协议，也是可复用 Shared Core 能力的来源；它不是所有 Task Pack 必须照抄的统一阶段顺序。Review、Explore、Create、Research、Execute 和未来 Play Pack 可以定义不同状态记录、角色安排、可见性与 phase transition，同时复用供应商接入、持久化、预算、上下文隔离、来源链和 Human Gate。产品线顺序以[产品方向定稿](PRODUCT_DIRECTION.md)为准。
+
 ## 当前事实
 
-### 截至 v0.8 已实现
+### 截至 v0.10c 已实现
 
 - OpenAI、Anthropic、Gemini 直接流式适配。
 - 当前页面 BYOK 与工作区托管凭证。
@@ -29,16 +33,27 @@
 - 不含凭证的浏览器本地 `RoomStore`：带版本的 IndexedDB store 保存 room、参与者快照、只追加的完成/失败 turn 事件、状态快照、memo artifact、用量和迁移 metadata。
 - 严格的跨供应商 JSON Turn Envelope、不自动重试的显式 `turn.format_failed` 事件，以及带来源链、版本、幂等、active-state 上限和有限上下文渲染的确定性 Canonical Reducer。
 - Canonical Meeting State 持久化，并向后兼容恢复结构化状态之前创建的房间。
-- 十一项自动测试和生产构建通过。
+- 通过同一个持久协议状态机拆分 proposal、review 与 synthesis 请求。
+- Auto、Checkpoints 与 Turn by turn 三种控制模式；Checkpoints 仍是默认模式。
+- 在下一个安全边界 Raise Hand、限定范围的只追加 Chair Directive，以及用户选择 1～3 轮、协议硬上限 5 轮。
+- 幂等 transition 日志、调用前状态持久化、已完成 turn 重复防护、显式中断恢复，以及不自动重试供应商请求。
+- 向后兼容的 Meeting Budget、精确调用前 turn 限制、已观测 token/时间边界停止，以及已知失败 turn 用量统计。
+- 带来源的确定性 Process Report；可逆的低进度、重复分歧与过早同质化警告会保存为只追加事件。
+- 缓冲式 Turn 呈现：结构化原始 delta 不上舞台，只显示 Thinking、Generating、Validating；会议完成后等待用户主动打开 Decision。
+- 不占参与 Seat 的可选用户指定 Observer Connection 与 Model；每个启用轮次一次计入预算、可恢复的 Review 后调用。
+- Observer 上下文隔离到有限 Canonical State、确定性 Process Report 与引用白名单；严格验证带来源 Round Brief，不修改 state，也不自动重试。
+- 不含凭证的 Observer 快照、只追加 `round.brief` 事件和 Round Brief artifact。
+- Human Chair 在 Review checkpoint 选择一个开放 Dispute，并保存带来源的 targeted-debate plan。
+- 确定性路由最多两个相关 Seat，不增加付费路由模型调用。
+- 可恢复 targeted-debate transition 只使用明确 Dispute、关联 Claim、active Chair Directive 与有限来源 Message ID；不重放 transcript 或 prior Memo。
+- 与 Review 兼容的定向增量最多 250 transport output tokens，随后生成仅针对该增量的 Process Report 与可选第二份 Round Brief。
+- 十八项自动测试和生产构建通过。
 
 ### 本蓝图已批准但尚未实现
 
-- Auto、Checkpoints、Turn by turn 三种主持模式。
-- Raise Hand 暂停和 append-only Chair Directive。
-- 用户选择最大讨论轮数与多维会议预算。
-- 系统级 Observer / Recorder 和单独选择的 Final Synthesizer。
-- 对重复、偏题、过早同质化和循环的流程监测。
-- 每轮 Round Brief，以及只针对分歧的后续辩论。
+- 超出当前推导式 turn/token/时间边界的用户可编辑多维限制与权威费用执行。
+- 单独选择的 Final Synthesizer。
+- 超出确定性 fixture 的 Observer 语义偏题与非精确重复判断真实供应商评测。
 - Claim 级追问和版本化 Decision Memo。
 - 基于账号的 D1 持久化、同步与协作。
 
@@ -277,10 +292,12 @@ Follow-up:
 - Proposal：300～450 output tokens。
 - Review：200～300 output tokens。
 - Targeted debate turn：150～250 output tokens。
-- Observer：最多 150 output tokens。
+- Observer：严格 JSON envelope 的 transport output 上限为 300 tokens；可见 summary 仍保持 2～4 句。
 - Final Memo：600～900 output tokens。
 
-界面以卡片为主，公开原文仍可为审计展开。用户针对一个 Claim 或 Seat 请求细节，而不是让整个房间提高 verbosity。
+界面以卡片为主。供应商 delta 属于传输数据，绝不能作为实时发言显示；在验证后的 statement 准备好前，舞台只显示有限的 Thinking、Generating 与 Validating 状态。公开原文仍可为审计展开。
+
+面向用户的深度与工作上下文大小相互独立。房间可以同时发布 Executive Brief 和符合任务类型的详细 Artifact。详细 Artifact 保存给用户与审计，但默认不会重新塞入后续 agent prompt；定向追问只检索与问题相关的来源链和片段。
 
 无法解析的结构化输出保存为 format failure 原始事件，不能进入 Canonical State；不自动付费重试。Chair 可以显式重试，或授权一次有限提取调用。
 
@@ -316,6 +333,22 @@ Checkpoints 与 Turn by turn 中，软停止交给 Chair；Auto 中，软停止�
 
 会议历史使用不含凭证的 IndexedDB `RoomStore`。旧的有限 `localStorage` 记录只迁移一次，并且无需凭空补造 Canonical State 也能继续读取。
 
+### 截至 v0.9 已实现
+
+每个 room snapshot 现在也保存 `MeetingProtocolState`。开始、完成与中断一个 phase 都会追加稳定 transition event；限定范围的 Chair Directive 追加独立审计 event。刷新后发现仍在 running 的 transition 会被转换为 `interrupted`，绝不自动恢复，必须由 Chair 显式操作；凭证仍然不进入持久化。
+
+### 截至 v0.10a 已实现
+
+`MeetingProtocolState` 还保存向后兼容的推导预算与有限确定性 Process Report。每份报告保留来源 State version 和 Turn ID，并持久化为只追加 `process.report` 事件。报告仍是流程产物，不能修改 Canonical State，也没有 Decision 权限。
+
+### 截至 v0.10b 已实现
+
+协议快照还保存 Observer 是否启用，并为每轮最多保存一份通过验证的 Round Brief。Observer transition 在供应商工作前持久化，计为一个系统 turn；中断恢复不会静默重试，并回到 Review checkpoint。不含凭证的 Observer provider/model 快照、只追加 `round.brief` 事件与 Round Brief artifact 保留来源 State、Process Report 与 Turn ID。旧房间解析时默认关闭 Observer，Brief 列表为空。
+
+### 截至 v0.10c 已实现
+
+协议快照还最多保存五条 `TargetedDebatePlan`。每条 plan 在供应商请求前记录一个开放 Dispute、来源 State version、有限来源 Message ID、路由 Seat ID 与消耗轮次。定向 transition 沿用现有 interrupted 恢复契约，绝不自动重试；旧房间解析时 targeted-debate 列表为空。
+
 ### 已实现本地层
 
 供应商无关的 `RoomStore` 使用浏览器 IndexedDB，持久集合包括：
@@ -327,11 +360,13 @@ Checkpoints 与 Turn by turn 中，软停止交给 Chair；Auto 中，软停止�
 - Round Brief 与 Decision Memo artifact。
 - Usage ledger entry。
 
-流式 delta 留在内存。完成时，一个 `turn.completed` 事件保存最终公开 statement 与通过验证的 Turn Envelope；中断时保存 `turn.failed` 和有限部分文本。格式错误保存为 `turn.format_failed`，语义归并失败保存为 `turn.reduction_failed`。成功归并后的 Canonical snapshot 通过房间自动保存路径写入。
+流式 delta 只存在于传输层，不保存进 `TranscriptItem`。完成时，一个 `turn.completed` 事件保存最终公开 statement 与通过验证的 Turn Envelope；中断时保存 `turn.failed` 和有限失败说明。格式错误保存为 `turn.format_failed`，语义归并失败保存为 `turn.reduction_failed`。成功归并后的 Canonical snapshot 通过房间自动保存路径写入。
 
 ### 未来服务端层
 
 仓库已有 Drizzle SQLite/D1 骨架，但没有启用 schema 或 D1 binding。基于 D1 的 `ServerRoomStore` 必须等待身份、所有权、加密 Secret 边界和同步策略，不能成为所有访问者共享的匿名会议数据库。
+
+在产品声称可以跨页面导航连续运行之前，供应商 transition 必须移到 durable runner 边界之后。客户端通过 room event cursor 重连，可以断开视图而不取消已确认工作。状态未知的进行中调用保留 ambiguous 状态，并要求 Chair 显式选择恢复方式；重连绝不等于静默重试供应商请求。
 
 无论本地还是服务端存储，都不能包含 API Key、认证 header 或带凭证的 Connection record。显式删除房间会删除本地 event、snapshot、artifact、raw response 和 usage record。
 
@@ -355,9 +390,9 @@ Human Gate 操作变为 Approve、Add Chair Direction、Request Targeted Revisio
 4. 加入 RoomStore 契约和从当前本地历史迁移到 IndexedDB。
 5. 加入 append-only Event、Snapshot、Artifact 与 Usage record。
 6. 实现 Turn Envelope 验证与确定性 Canonical Reducer。
-7. 把单次流式请求拆成可暂停恢复的房间状态机。
-8. 加入 Chair 模式、Raise Hand、Directive 和预算预检。
-9. 加入 Observer、Round Brief、Monitor 软停止和定向辩论路由。
+7. 把单次流式请求拆成可暂停恢复的房间状态机。**已完成。**
+8. 加入 Chair 模式、Raise Hand、Directive 和轮数/调用数预检。**已完成。**
+9. 加入 Observer、Round Brief 与一条由 Chair 选择的 Dispute 定向路由。**已通过确定性 fixture。** 下一步用一间明确预算的真实供应商房间验证组合路径；更广泛的 Monitor 执行仍待实现。
 10. 加入 Final Synthesizer 选择、版本化 Memo 与来源关联 Follow-up。
 11. 围绕 Turn Card 与 Meeting Whiteboard 重做 Meeting UI。
 12. 运行费用、质量、循环、中断、持久化和单模型基线评测。

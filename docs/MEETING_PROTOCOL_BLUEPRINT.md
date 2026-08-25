@@ -1,11 +1,11 @@
 # Meeting Protocol Blueprint v1
 
-Status: Approved design; M2.7 persistence and M2.8 structured-state foundations implemented
-Date: 2026-08-03
+Status: Approved design; implemented through M2.10c Chair-selected targeted debate
+Date: 2026-08-22
 
 ## Purpose
 
-This blueprint defines the next Discuss-room architecture after the v0.8 structured-state foundation. It turns a bounded sequence of model calls into a human-chaired, resumable, cost-aware decision protocol without treating a growing transcript as shared model memory.
+This blueprint defines the Discuss-room architecture after the v0.9 resumable-orchestration foundation. It turns a bounded sequence of model calls into a human-chaired, resumable, cost-aware decision protocol without treating a growing transcript as shared model memory.
 
 The design must preserve this chain:
 
@@ -13,9 +13,13 @@ The design must preserve this chain:
 
 The raw transcript remains available for people and audit. Models receive only the bounded working context required for their current task.
 
+## Scope Boundary
+
+This is the implemented Discuss decision protocol and a source of reusable Shared Core primitives. It is not a universal phase sequence for every Task Pack. Review, Explore, Create, Research, Execute, and future Play Packs may define different state records, role assignments, visibility, and phase transitions while reusing provider access, persistence, budgets, context isolation, source lineage, and Human Gates. [Product Direction](PRODUCT_DIRECTION.md) is canonical for product-line order.
+
 ## Product Truth
 
-### Implemented through v0.8
+### Implemented through v0.10c
 
 - Direct streaming adapters for OpenAI, Anthropic, and Gemini.
 - Session-only BYOK plus workspace-managed credentials.
@@ -29,16 +33,27 @@ The raw transcript remains available for people and audit. Models receive only t
 - Credential-free browser-local `RoomStore` with versioned IndexedDB stores for rooms, participant snapshots, append-only completed/failed turn events, state snapshots, memo artifacts, usage, and migration metadata.
 - Strict portable JSON Turn Envelopes, explicit `turn.format_failed` events without automatic retry, and a deterministic Canonical Reducer with source lineage, versioning, idempotency, active-state caps, and bounded context rendering.
 - Canonical Meeting State persistence with backward-compatible recovery of rooms created before structured state.
-- Eleven passing automated tests and a passing production build.
+- Separate proposal, review, and synthesis requests behind one persisted protocol state machine.
+- Auto, Checkpoints, and Turn-by-turn control modes; Checkpoints remain the default.
+- Raise Hand at the next safe boundary, scoped append-only Chair Directives, and user-selected one-to-three round limits with a hard five-round protocol cap.
+- Idempotent transition logs, pre-call state persistence, completed-turn duplicate guards, explicit interruption recovery, and no automatic provider retry.
+- Backward-compatible Meeting Budgets, exact pre-call turn limits, observed token/time boundary stops, and known failed-turn usage accounting.
+- Source-linked deterministic Process Reports with reversible low-progress, repeated-dispute, and premature-homogenization warnings persisted as append-only events.
+- Buffered turn presentation: raw structured deltas remain off-stage behind Thinking, Generating, and Validating states; completed rooms wait for the user to open Decision.
+- Optional user-selected Observer Connection and Model outside the participant Seat count, with one budgeted and recoverable post-Review call per enabled round.
+- Observer context isolation to bounded Canonical State, deterministic Process Report, and reference allowlists; strict source-linked Round Brief validation without state mutation or automatic retry.
+- Credential-free Observer snapshots, append-only `round.brief` events, and Round Brief artifacts.
+- Human Chair selection of one open Dispute at a Review checkpoint, with a persisted source-linked targeted-debate plan.
+- Deterministic routing to at most two relevant Seats without a paid routing-model call.
+- A recoverable targeted-debate transition using only the named Dispute, related Claim, active Chair Directives, and bounded source Message IDs; no transcript or prior Memo replay.
+- Review-compatible targeted deltas capped at 250 transport output tokens, followed by a delta-only Process Report and optional second Round Brief.
+- Eighteen passing automated tests and a passing production build.
 
 ### Approved here but not implemented
 
-- Auto, Checkpoints, and Turn-by-turn chair modes.
-- Raise-hand pause and append-only Chair Directives.
-- User-selected maximum debate rounds and multi-dimensional room budgets.
-- System-level Observer / Recorder and independently selected Final Synthesizer.
-- Process monitoring for repetition, drift, premature homogenization, and loops.
-- Per-round Round Briefs and targeted debate instead of full-room reruns.
+- User-editable multi-dimensional limits and authoritative-cost enforcement beyond the implemented derived turn/token/time boundaries.
+- Independently selected Final Synthesizer.
+- Real-provider evaluation of Observer drift and non-exact repetition judgment beyond deterministic fixtures.
 - Claim-level follow-up and versioned Decision Memos.
 - Account-backed D1 persistence, synchronization, and collaboration.
 
@@ -277,10 +292,12 @@ Proposed default output caps to validate with real models:
 - Proposal: 300 to 450 output tokens.
 - Review: 200 to 300 output tokens.
 - Targeted debate turn: 150 to 250 output tokens.
-- Observer: at most 150 output tokens.
+- Observer: at most 300 transport output tokens for the strict JSON envelope; the visible summary remains 2-4 concise sentences.
 - Final Memo: 600 to 900 output tokens.
 
-The UI is card-first. Raw published output remains expandable for audit. A user requests additional detail for one Claim or Seat instead of increasing verbosity for the whole room.
+The UI is card-first. Provider deltas are transport data and never appear as live speech; the stage shows bounded Thinking, Generating, and Validating states until a validated statement is ready. Raw published output remains expandable for audit.
+
+User-facing depth is separate from working-context size. The room may publish both an executive brief and a detailed task-shaped Artifact. That detailed Artifact is stored for the user and audit but is not replayed into later agent prompts by default; targeted follow-up retrieves only its relevant lineage and sources.
 
 Malformed structured output is stored as a failed-format raw event and is not reduced into Canonical State. There is no automatic paid retry. The Chair may retry explicitly or authorize one bounded extraction call.
 
@@ -316,6 +333,22 @@ In Checkpoints or Turn-by-turn mode, a soft stop pauses for the Chair. In Auto m
 
 Meeting history uses the credential-free IndexedDB `RoomStore`. Legacy bounded `localStorage` records migrate once and remain readable without acquiring Canonical State retroactively.
 
+### Implemented through v0.9
+
+Each room snapshot now also stores `MeetingProtocolState`. Starting, completing, and interrupting a phase appends stable transition events; scoped Chair Directives append separate audit events. A snapshot recovered with a running transition is converted to `interrupted`, never auto-resumed, and requires an explicit Chair action. Credentials remain excluded.
+
+### Implemented through v0.10a
+
+`MeetingProtocolState` also stores backward-compatible derived budgets and bounded deterministic Process Reports. Each report retains source State version and Turn IDs and is persisted as an append-only `process.report` event. Reports remain process artifacts, not Canonical State mutations or Decision authority.
+
+### Implemented through v0.10b
+
+Protocol snapshots also store whether Observer was enabled and up to one validated Round Brief per round. Observer transitions are persisted before provider work, count as one system turn, recover from interruption without silent retry, and return to the Review checkpoint. Credential-free Observer provider/model snapshots, append-only `round.brief` events, and Round Brief artifacts preserve source State, Process Report, and Turn IDs. Old rooms parse with Observer disabled and an empty Brief list.
+
+### Implemented through v0.10c
+
+Protocol snapshots also store up to five `TargetedDebatePlan` records. Each plan names one open Dispute, its source State version, bounded source Message IDs, routed Seat IDs, and the consumed round before any provider request begins. Targeted transitions share the existing interrupted-state recovery contract and never retry automatically. Old rooms parse with an empty targeted-debate list.
+
 ### Implemented local layer
 
 The provider-independent `RoomStore` uses browser IndexedDB. Its durable collections are:
@@ -327,11 +360,13 @@ The provider-independent `RoomStore` uses browser IndexedDB. Its durable collect
 - Round Brief and Decision Memo artifacts.
 - Usage ledger entries.
 
-Streaming deltas remain in memory. On completion, one `turn.completed` event stores the final published statement and validated Turn Envelope. An interrupted stream stores `turn.failed` with its bounded partial text. Malformed output stores `turn.format_failed`; semantic reduction failures store `turn.reduction_failed`. Canonical snapshots are written after successful reductions through the room autosave path.
+Streaming deltas remain transport-only and are not persisted in `TranscriptItem`. On completion, one `turn.completed` event stores the final published statement and validated Turn Envelope. An interrupted stream stores `turn.failed` with a bounded failure description. Malformed output stores `turn.format_failed`; semantic reduction failures store `turn.reduction_failed`. Canonical snapshots are written after successful reductions through the room autosave path.
 
 ### Future server layer
 
 The repository contains a Drizzle SQLite/D1 scaffold, but no active schema or D1 binding. A D1-backed `ServerRoomStore` waits for identity, ownership, encrypted secret boundaries, and synchronization policy. It must not become a shared unauthenticated meeting database.
+
+Before claiming continuity across navigation, provider transitions move behind a durable runner boundary. Clients reconnect with a room event cursor and may detach without cancelling confirmed work. Unknown in-flight calls keep their ambiguous status and require an explicit Chair recovery choice; reconnect never implies a silent provider retry.
 
 No API keys, authorization headers, or credential-bearing Connection records enter either store. Explicit room deletion removes local events, snapshots, artifacts, raw responses, and usage records.
 
@@ -355,9 +390,9 @@ The Human Gate actions become Approve, Add Chair Direction, Request Targeted Rev
 4. Add RoomStore contracts and IndexedDB migration from current local history.
 5. Add append-only Event, Snapshot, Artifact, and Usage records.
 6. Implement Turn Envelope validation and the deterministic Canonical Reducer.
-7. Split the single streaming request into a resumable room state machine.
-8. Add Chair modes, Raise Hand, Directives, and budget preflight.
-9. Add Observer, Round Brief, Monitor soft stops, and targeted debate routing.
+7. Split the single streaming request into a resumable room state machine. **Complete.**
+8. Add Chair modes, Raise Hand, Directives, and round/call-count preflight. **Complete.**
+9. Add Observer, Round Brief, and one Chair-selected Dispute-targeted route. **Complete under deterministic fixtures.** Next verify the combined path with one explicitly budgeted real-provider room; broader Monitor enforcement remains pending.
 10. Add Final Synthesizer selection, versioned Memos, and source-linked Follow-up.
 11. Rework the Meeting UI around Turn Cards and the Meeting Whiteboard.
 12. Run cost, quality, loop, interruption, persistence, and single-model baseline evaluations.

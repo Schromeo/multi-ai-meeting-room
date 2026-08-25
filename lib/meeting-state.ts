@@ -143,6 +143,10 @@ export type ReductionResult =
       error: { code: ReductionErrorCode; message: string; sourceMessageId: string };
     };
 
+export type ChairDirectiveResult =
+  | { ok: true; state: MeetingState; duplicate: boolean }
+  | { ok: false; state: MeetingState; error: string };
+
 export const meetingStateCaps = {
   claims: 12,
   disputes: 6,
@@ -193,8 +197,9 @@ export function parseTurnEnvelope(
   let candidate = value;
   if (typeof value === "string") {
     if (value.length > 30_000) return { ok: false, error: "The turn output exceeds the format limit." };
+    const serialized = unwrapWholeJsonFence(value);
     try {
-      candidate = JSON.parse(value);
+      candidate = JSON.parse(serialized);
     } catch {
       return { ok: false, error: "The turn output is not valid JSON." };
     }
@@ -223,9 +228,9 @@ export function parseTurnEnvelope(
     return { ok: false, error: "The turn stance or thesis is invalid." };
   }
 
-  const newClaims = parseArray(card.newClaims, 3, parseNewClaim);
-  const claimUpdates = parseArray(card.claimUpdates, 3, parseClaimUpdate);
-  const objections = parseArray(card.objections, 2, parseObjection);
+  const newClaims = parseArray(card.newClaims ?? [], 3, parseNewClaim);
+  const claimUpdates = parseArray(card.claimUpdates ?? [], 3, parseClaimUpdate);
+  const objections = parseArray(card.objections ?? [], 2, parseObjection);
   const confidence = parseConfidence(card.confidence);
   if (!newClaims || !claimUpdates || !objections || !confidence) {
     return { ok: false, error: "The turn card exceeds its limits or contains invalid records." };
@@ -269,6 +274,12 @@ export function parseTurnEnvelope(
       },
     },
   };
+}
+
+function unwrapWholeJsonFence(value: string) {
+  const trimmed = value.trim();
+  const match = /^```(?:json)?\s*\n?([\s\S]*?)\n?```$/i.exec(trimmed);
+  return match ? match[1].trim() : trimmed;
 }
 
 export function reduceTurnEnvelope(state: MeetingState, event: TurnReductionEvent): ReductionResult {
@@ -325,7 +336,7 @@ export function reduceTurnEnvelope(state: MeetingState, event: TurnReductionEven
     if (update.action === "support") {
       claim.supportingSeatIds = appendUnique(claim.supportingSeatIds, event.seatId);
       claim.status = claim.opposingSeatIds.length > 0 ? "contested" : "provisionally_supported";
-    } else if (update.action === "oppose") {
+    } else if (update.action === "oppose" || update.action === "revise") {
       claim.opposingSeatIds = appendUnique(claim.opposingSeatIds, event.seatId);
       claim.status = "contested";
     } else {
@@ -423,6 +434,33 @@ export function reduceTurnEnvelope(state: MeetingState, event: TurnReductionEven
   };
 }
 
+export function appendChairDirective(
+  state: MeetingState,
+  directive: ChairDirective,
+): ChairDirectiveResult {
+  const parsed = parseDirective(directive);
+  if (!parsed) return { ok: false, state, error: "The Chair Directive is invalid." };
+  if (state.activeChairDirectives.some((item) => item.id === parsed.id)) {
+    return { ok: true, state, duplicate: true };
+  }
+  if (state.activeChairDirectives.length >= meetingStateCaps.chairDirectives) {
+    return {
+      ok: false,
+      state,
+      error: `The active Chair Directive cap is ${meetingStateCaps.chairDirectives}.`,
+    };
+  }
+  return {
+    ok: true,
+    duplicate: false,
+    state: {
+      ...state,
+      version: state.version + 1,
+      activeChairDirectives: [...state.activeChairDirectives, parsed],
+    },
+  };
+}
+
 export function renderMeetingStateContext(
   state: MeetingState,
   maximumCharacters = meetingStateCaps.renderedContextCharacters,
@@ -455,6 +493,7 @@ export function renderMeetingStateContext(
   addWhileWithin(context, "chairDirectives", state.activeChairDirectives.map((item) => ({
     id: item.id,
     kind: item.kind,
+    target: item.target,
     text: boundedText(item.text, 320),
     status: item.status,
   })), limit);

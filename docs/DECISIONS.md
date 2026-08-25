@@ -167,5 +167,96 @@ Durable product and architecture choices live here. New entries are append-only.
 
 - **Status:** Accepted
 - **Date:** 2026-08-04
-- **Decision:** M2.8 asks every provider for the same bounded JSON Turn Envelope through its normal text-generation API, then applies one strict application-owned validator. Invalid JSON, unsupported fields, unknown Claim references, or active-state overflow produce explicit failure events and never trigger an automatic extraction or provider retry. Provider-native structured-output modes may be added later behind the adapter only when their capability and streaming differences are measured.
+- **Decision:** M2.8 asks every provider for the same bounded JSON Turn Envelope through its normal text-generation API, then applies one strict application-owned validator. A single whole-response `json` code-fence wrapper may be removed deterministically, and omitted `newClaims`, `claimUpdates`, or `objections` collections normalize to empty arrays. Surrounding prose, invalid JSON, unsupported fields, unknown Claim references, or active-state overflow still produce explicit failure events and never trigger an automatic extraction or provider retry. Provider-native structured-output modes may be added later behind the adapter only when their capability and streaming differences are measured.
 - **Reason:** one portable contract lets OpenAI, Anthropic, and Gemini participate under identical canonical rules without letting provider APIs own meeting state. Deferring provider-specific modes keeps format behavior inspectable during the first reducer evaluation and prevents a hidden repair call from consuming money or changing the original answer.
+
+## D-025 - Persisted Phase Transitions and Explicit Interruption Recovery
+
+- **Status:** Accepted
+- **Date:** 2026-08-08
+- **Decision:** provider work runs as explicit proposal, review, and synthesis transitions. The client persists protocol state before every call, assigns a stable transition ID, records completed turn IDs, and pauses only at safe boundaries. A transition restored as still running becomes `interrupted`; it is never automatically resumed or retried. Explicit Chair resume creates a new transition and warns that the earlier in-flight request may already have incurred cost.
+- **Reason:** a browser-local BYOK client has no server-side idempotency ledger and cannot promise exactly-once billing across a refresh or unknown network failure. Durable intent, duplicate-completion guards, and honest human-controlled recovery prevent automatic duplicate calls without pretending the ambiguous request never reached the provider.
+
+## D-026 - Revision Requests Do Not Archive Claims
+
+- **Status:** Accepted
+- **Date:** 2026-08-08
+- **Decision:** an AI `revise` update keeps the referenced Claim published, marks it contested, and records the reviewing Seat as opposing the current wording. Only an explicit `withdraw` update archives a Claim. A later Chair decision or source-linked replacement may resolve or supersede it.
+- **Reason:** parallel reviewers generate against the same Canonical State. Allowing the first processed reviewer to archive a shared Claim makes later valid references order-dependent and grants an AI reviewer authority that belongs to the Human Chair.
+
+## D-027 - Deterministic Safety Signals Precede Paid Observation
+
+- **Status:** Accepted
+- **Date:** 2026-08-10
+- **Decision:** the orchestrator owns a backward-compatible Meeting Budget and source-linked Process Reports before adding a paid Observer. Started provider transitions count conservatively against the exact turn limit, including interrupted work. Observed input tokens, output tokens, and model time stop new transitions at the next safe boundary; an in-flight transition may cross those measured ceilings. Format and semantic-reduction failures count known usage. Deterministic structural metrics may recommend a reversible Chair pause, but cannot mutate Canonical State, approve a Decision, or claim semantic verification.
+- **Reason:** call-count enforcement and structural deltas do not require another model. Establishing a deterministic floor makes future Observer judgment cheaper, auditable, and unable to hide basic budget or loop failures behind another paid opinion.
+
+## D-028 - Validated Turns, Not Transport Streams, Own the Stage
+
+- **Status:** Accepted
+- **Date:** 2026-08-22
+- **Decision:** provider deltas are transport and potential audit data, not user-facing speech. During generation the Meeting stage shows bounded progress states; only the validated Turn Envelope statement and card become published room content. Raw output, when retained by policy, is available only through explicit audit surfaces or failure records.
+- **Reason:** the portable JSON envelope is machine-facing. Rendering its partial bytes exposes implementation detail, produces unstable scrolling, and can make a healthy slow stream look broken before validation is possible.
+
+## D-029 - User Artifact Depth Is Independent From Working Context Size
+
+- **Status:** Accepted
+- **Date:** 2026-08-22
+- **Decision:** each room may produce a compact executive brief and a detailed, task-shaped user artifact while future model calls continue to receive bounded Canonical State, Round Briefs, and selected sources. The detailed artifact is not replayed into agent context by default.
+- **Reason:** concise model memory controls cost, but it must not force a shallow result for a user who wants the meeting to do the reading and return a complete plan, review, or decision package.
+
+## D-030 - Task-Adaptive Role Packs With Stable Room Responsibilities
+
+- **Status:** Accepted
+- **Date:** 2026-08-22
+- **Decision:** Agenda templates such as Decide, Plan, Review, Research, and Build may recommend a participant Role Pack and per-round assignments. Roles remain provider-neutral and stable for the room; the independently configured Final Synthesizer remains outside the participant count. Reusing a participant for synthesis is an explicit savings mode, not the default architecture.
+- **Reason:** three generic roles do not create the same useful tension for every objective. Task-shaped responsibilities improve coverage without making roles mutate opportunistically or hiding synthesis bias and cost.
+
+## D-031 - Durable Transitions Outlive a Page View
+
+- **Status:** Accepted target
+- **Date:** 2026-08-22
+- **Decision:** the post-M2 local architecture moves provider-transition execution behind a durable runner boundary and lets the UI reconnect through persisted events and a cursor. Navigating away detaches the view rather than pausing work. An ambiguous in-flight request is never silently restarted or presented as a completed resumable transition.
+- **Reason:** a React page lifecycle cannot reliably own paid long-running work. Event-based reconnection preserves continuity while retaining the honest interruption and duplicate-billing boundaries established by D-025.
+
+## D-032 - Later Rounds Must Name and Route a Dispute
+
+- **Status:** Accepted
+- **Date:** 2026-08-22
+- **Decision:** after the initial proposal and cross-review round, an extra debate round starts only when the Human Chair selects one open Dispute. Application code deterministically routes at most two relevant Seats, records the Dispute, source State version, source Message IDs, and routed Seats before provider work, and asks each routed Seat for a bounded Review delta. No routing-model call or full-transcript replay is allowed in this path.
+- **Reason:** a maximum-round setting is a permission boundary, not a reason to rerun the whole room. Naming the unresolved issue makes every extra call attributable, keeps context and reading effort bounded, and lets interruption recovery preserve honest billing semantics.
+
+## D-033 - Task Modes Are Orthogonal To Permission Levels
+
+- **Status:** Accepted
+- **Date:** 2026-08-25
+- **Decision:** Review, Decide / Plan, Explore, Create, and future Play are Task Packs inside one product. Discuss, Research, and Execute remain permission levels that determine available tools and authority. Any Task Pack uses the lowest permission level sufficient for its job.
+- **Reason:** the user's job and the room's authority are different concerns. Keeping them separate supports creative, analytical, research, execution, and simulation workflows without splitting the product or granting unnecessary tools.
+
+## D-034 - Product Lines Drive Shared Core Growth
+
+- **Status:** Accepted
+- **Date:** 2026-08-25
+- **Decision:** develop one end-to-end Task Pack at a time over a small Shared Core. Promote an abstraction into Shared Core only after at least two validated Task Packs require it; otherwise keep it local to the Pack.
+- **Reason:** a generic platform designed ahead of user evidence creates speculative abstractions and delays useful outcomes, while separate standalone products duplicate provider access, persistence, budgets, and approval boundaries. The Rule of Two preserves reuse without repeating the infrastructure-first drift.
+
+## D-035 - Review Is The First Artifact-Centered Vertical Slice
+
+- **Status:** Accepted
+- **Date:** 2026-08-25
+- **Decision:** after one bounded real-provider v0.10c verification, the next product milestone is a Review Task Pack. It accepts an objective, Artifact v1, supplied sources, and truth constraints; produces independent Findings, bounded cross-review, a structured Change Set, Artifact v2, independent change verification, and item-level Human Gate decisions. A concise brief and detailed Artifact are separate outputs.
+- **Reason:** Review directly tests whether structured model diversity produces accepted improvements that one strong model missed. It turns the current meeting machinery into a user-visible result and can be evaluated on resume, product-document, and technical-plan benchmarks.
+
+## D-036 - Multi-Agent Autonomy Requires A Concrete Decomposition Advantage
+
+- **Status:** Accepted
+- **Date:** 2026-08-25
+- **Decision:** multiple model Seats do not become autonomous agents by default. Add multi-agent behavior only when subtasks are independently useful, participants require distinct tools or private contexts, outputs have an explicit merge contract, and results can be verified. Research is the first planned candidate; Execute follows behind isolated tools and Human Gates.
+- **Reason:** additional autonomous loops multiply cost, coordination failures, permissions, and recovery complexity. Review and Decide can first use deterministic orchestration; a general agent platform is not a prerequisite for product value.
+
+## D-037 - Product Evidence Gates Infrastructure Work
+
+- **Status:** Accepted
+- **Date:** 2026-08-25
+- **Decision:** do not run two consecutive infrastructure-only milestones. Every product milestone ends with a realistic case and saved baseline; every new paid model call names its expected information gain; and weak evidence causes a feature to be simplified, made optional, or removed.
+- **Reason:** the project previously made the orchestrator more mature than the user outcome. Explicit correction gates keep engineering reliability in service of accepted artifact improvements rather than treating protocol completion as product success.

@@ -6,6 +6,8 @@
 
 会议室编排的是可追责的不同视角，而不是供应商 Logo。连接、模型引擎、专家行为和会议状态必须分离，避免产品退化成模型市场。
 
+Task Pack 会为具体用户工作组合这些对象。Review、Decide / Plan、Explore、Create 和未来 Play 可以推荐不同 Role Pack 与协议，而不改变 Connection 或 Model 所有权。
+
 ## 核心对象
 
 - **Connection**：管理供应商类型、密钥引用、可选 Base URL、允许的模型、费用承担者和能力信息。
@@ -14,6 +16,11 @@
 - **Skill**：定义可重复的工作方法，例如假设审计、反例搜索、需求拆解、证据分类、实施规划和决策综合。
 - **Seat**：本场会议中的一个参与者，由 Connection、Model、Role 和 Skills 组合；Seat ID 不能等于供应商 ID。
 - **Room**：管理议题、席位、协议、轮次与费用预算、工具权限、记录、产物和人类决定。
+- **Task Pack**：为一条产品线定义 Agenda schema、推荐 Role Pack、协议 phase、上下文策略、Artifact 类型、Human Gate 与评测 rubric。Task Pack 复用 Shared Core，并遵守[产品方向定稿](PRODUCT_DIRECTION.md)中的 Rule of Two。
+
+## 多 Agent 边界
+
+带 Role 的 Seat 不会自动成为自治 Agent。Agent 行为还需要任务所有权、独立状态或上下文、工具或行动、有限循环，以及可验证完成条件。只有任务拆分产生明确价值时才加入。Review 与 Decide 首先采用确定性编排；并行 Research 和隔离 Execute 是最先计划的多 Agent 候选。
 
 ## 准确描述多样性
 
@@ -39,6 +46,8 @@
 - **会议**：突出当前发言者、阶段、审阅目标和实时输出，完整记录以缩略总览存在。
 - **决定**：突出 memo、未解决异议、用量、修订预算和人类批准。
 
+当 Artifact 需要时，Task Pack 可以重命名或替换“会议”和“决定”界面。Review 突出 Finding、Change Set、Artifact 版本与逐项接受；Create 突出当前章节和编辑修改；Play 未来需要公共与私有状态。连接可用后，Setup 应保持安静。
+
 ## 近期不做
 
-任意端点市场、角色自主永久变异、隐藏长期记忆、把供应商多样性当成正确性，以及不受限制的代理执行。
+任意端点市场、通用自治 Agent 平台、角色自主永久变异、隐藏长期记忆、把供应商多样性当成正确性，以及不受限制的代理执行。

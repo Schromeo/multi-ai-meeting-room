@@ -1,5 +1,201 @@
 # 开发日志
 
+## 2026-08-25 - 产品方向基线 - 以 Artifact 为中心的 Task Pack
+
+### 已完成
+
+- 对照最初多模型 Critical Review 假设与 v0.10c 实现，确认出现了基础设施先行的顺序偏移：会议引擎成熟度已经超过“用户是否获得更好 Artifact”的证据。
+- 拍板一个产品内相互独立的任务模式与权限等级。Review、Decide / Plan、Explore、Create 和未来 Play 是 Task Pack；Discuss、Research 与 Execute 继续定义权限。
+- 选择由产品线驱动的纵向切片，不建设猜测性的万能平台，也不复制成多个独立应用。新增 Rule of Two，限制抽象进入 Shared Core。
+- 选择 Review 作为第一条以 Artifact 为中心的产品线：Artifact v1、用户来源与真实性边界、独立 Finding、有限交叉审阅、Change Set、Artifact v2、改动核验和逐项 Human Gate。
+- 定义产品校正节奏：不连续进行两个纯基础设施里程碑；每个产品里程碑有一个真实案例和基线；每个新增付费调用写明预期信息增量；证据弱时简化或删除。
+- 定义多 Agent 边界：Review 与 Decide 继续使用确定性多模型编排；只有 Research 或 Execute 具有独立有用子任务、不同工具或私有上下文、合并契约与验证时，才加入真正多 Agent。
+- 新增[产品方向定稿](PRODUCT_DIRECTION.md)，并同步更新章程、决策记录、路线图、协议范围、模型/Agent 组合、文档索引和仓库阅读顺序及英文版本。
+
+### 产品事实
+
+- 本规划里程碑没有修改运行代码、发起供应商请求、使用 API Key、改动本地房间或数据库、部署或产生付费调用。
+- v0.10c 仍是本地产品版本。最后 Gate 是一间由用户明确批准预算的真实 Observer + 定向辩论烟雾房间。
+- 完成烟雾评测后，通用 Observer、路由、自治和基础设施扩建退出关键路径。M2.11 现在是 Review Task Pack，不再是大范围会议界面扩建。
+
+### 下一动作
+
+保留可恢复的 v0.10c 源码点，在用户明确批准预算后运行一次有限真实烟雾评测并记录语义与费用证据，然后实现最小端到端 Review benchmark，不增加无关平台抽象。
+
+## 2026-08-22 - v0.10c - 由 Chair 选择的定向辩论
+
+### 已完成
+
+- 新增持久化 `TargetedDebatePlan`，保存一个开放 Dispute、来源 State version、有限来源 Message ID、路由 Seat、轮次与创建时间；旧协议快照默认读取为空列表。
+- 在 Review checkpoint 增加 Human Chair 操作。Chair 选择开放 Dispute 后，确定性应用路由最多唤醒两个相关 Seat，优先异议提出者与目标 Claim 的反对/支持席位；不增加付费路由模型调用。
+- 新增可恢复 `targeted_debate` transition，消耗下一轮预算，支持 Turn by turn 子集，在供应商工作前持久化，并沿用显式中断与不自动重试边界。
+- 每个定向请求只包含明确 Dispute、关联 Claim、最多四条 active Chair Directive 与最多八个来源 Message ID；不接收 transcript 或 prior Memo。它继续使用标准 Review Envelope，禁止新 Claim，最多一个 Claim update 与一个 objection，transport 输出上限 250 tokens。
+- 定向增量继续进入确定性 Canonical Reducer。随后 Process Report 只读取该定向轮已完成 turn；若启用 Observer，则再创建恰好一份只评估该增量的 Round Brief，然后回到 Review checkpoint，或在 Auto 中进入 synthesis。
+- 加入精简 checkpoint Dispute 选择器并显示路由 Seat；进入 synthesis 仍是另一项独立 Chair 选择。
+- 记录 D-032：后续付费辩论回合必须明确并路由一个未解决 Dispute。
+
+### 验证
+
+- 使用内置 Node runtime 的生产构建、ESLint、`git diff --check` 与全部十八项自动测试通过。
+- 新编排测试覆盖确定性路由、来源链、最大轮数拒绝、持久化解析、中断恢复、Checkpoints 完成与 Turn by turn 席位子集。
+- 新供应商 fixture 证明：只发生两次路由调用、输出上限 250 tokens、不泄漏 prior Memo 或 transcript、每个 prompt 都含明确 Dispute/来源 ID、使用标准 Review 归并，并发出 `targeted_debate` 完成边界。
+- 全新浏览器会话在桌面与 390x844 手机宽度下没有横向溢出或 console warning/error。没有真实供应商调用、凭证传输、付费模型使用、数据库删除或部署。
+
+### 当前限制
+
+- 当前确定性相关性使用异议提出者、目标 Claim 支持/反对来源，并以参与者顺序兜底；它不是语义 router，需要真实房间评测后再决定是否增加复杂度。
+- 模型可以建议修订 Claim，但只有应用规则与 Human Chair 能在后续把 Dispute 标记为 resolved；显式 Dispute 解决 UX 属于 Whiteboard/Follow-up 工作。
+- 组合后的定向辩论 + 第二次 Observer 在真实供应商上的格式可靠性、语义价值、延迟与费用尚未验证。
+- 活跃供应商工作仍依赖当前页面生命周期；离开页面继续属于显式中断，不是后台继续。
+
+### 下一动作
+
+在用户明确批准预算后，运行一间全新 Checkpoints 房间，依次完成 Proposal、Review、Observer、一次由 Chair 选择的目标 Dispute、第二份 Observer Brief 与 synthesis。记录实际调用、第二份 Brief 是否只评估明确增量、Dispute 是否更适合决策，以及总 token、延迟和提示性费用，然后再开始 M2.11。
+
+## 2026-08-22 - v0.10b - 显式 Observer 与 Round Brief
+
+### 已完成
+
+- 加入不占参与席位数量的可选 Round Observer。Setup 要求用户显式选择可复用 Connection 与 Model；预检会为每个配置轮次准确增加一次有限调用。
+- 在完成 Review 后加入可恢复的 `observer` transition。每轮最多运行一次，供应商工作前先持久化；完成后回到 Review checkpoint，Checkpoints 等待用户继续，Auto 才进入 synthesis。
+- Observer 输入只包含 5,000 字符以内的 Canonical State、确定性 Process Report 和显式引用白名单，不接收 raw transcript 或参与者 context turns。
+- 加入严格、最多 300 output tokens 的 Round Brief 契约，包含来源 State version、Process Report ID、Turn ID、收敛/循环/偏题信号与流程建议。未知或已关闭引用会显式失败且不重试，也不能修改 Canonical State。
+- 持久化不含凭证的 Observer 快照、只追加 `round.brief` 事件、Round Brief artifact 和协议快照。修正 RoomStore 读取过滤，避免流程事件被误作 transcript，也避免 Round Brief artifact 覆盖 Decision Memo。
+- 增加精简的 Observer 设置、运行状态和 Review checkpoint Brief，不改变以发言内容为中心的 Meeting 工作区。
+
+### 验证
+
+- 使用内置 Node runtime 的生产构建、ESLint、`git diff --check` 和全部十六项自动测试通过。
+- 模拟供应商测试证明：Observer 只调用一次、transport 上限 300 tokens、不泄漏 transcript、来源链精确、不修改 Canonical State、预算保守计数、中断可恢复，并向后兼容没有 Observer 字段的旧房间。
+- 1440x1000 桌面和 390x844 移动端浏览器检查未发现 Observer 控件重叠；Observer 配置不完整时 Start 会保持禁用。
+- 没有真实供应商调用、凭证传输、付费模型使用、数据库删除或部署。
+
+### 当前限制
+
+- Observer 的语义质量只通过确定性 fixture 验证；真实付费房间仍需单独批准预算。
+- Observer 建议只是提示，尚不会路由参与者、执行软停止或选择 Final Synthesizer。
+- 活跃 fetch 仍由当前页面持有；付费调用期间离开页面仍属于可显式恢复但费用不确定的中断。
+
+### 下一动作
+
+只实现一条 Dispute 定向继续路径：Chair 选择一个开放 Dispute，router 只唤醒相关 Seat，请求只携带该 Dispute 与有限来源上下文，再由第二份 Round Brief 只评估这次增量。不要在同一切片加入 embedding、Role Pack、Whiteboard 重做或 durable runner。
+
+## 2026-08-22 - v0.10a - 验证后 Turn 呈现
+
+### 已完成
+
+- 不再把供应商 JSON 半成品显示成实时发言。`agent.delta` 只推进有限的 Generating 状态，不再写入 `TranscriptItem.text`；只有通过验证的 `agent.done` statement 会公开。
+- 在发言舞台和会议时间线加入 Thinking、Generating、Validating、Ready、Posted、Stopped。最近发生实质状态变化的 Seat 成为实时焦点；用户选择的旧发言保持固定，直到主动 Follow Live。
+- 移除逐 token 强制滚动。新选择的 Turn 从开头显示；用户在 Overview 离开底部后，自动跟随会停止。
+- `room.done` 后继续保留 Meeting 画面，由 Human Chair 通过 `Open decision` 主动进入 Decision。
+- 记录 D-028～D-031：验证后呈现、与上下文大小独立的 Artifact 深度、任务自适应且房间内稳定的 Role Pack，以及未来 durable transition runner。
+
+### 验证
+
+- 生产构建、十四项自动测试、ESLint 与 `git diff --check` 均通过。
+- 供应商 fixture 断言每个完成 Turn 都有一个 Validating 事件，并防止未来把 `agent.delta` 重新拼进可见文本，或让 `room.done` 直接跳转 Decision。
+- 1280x800 与 390x844 浏览器检查没有横向溢出；保存的 interrupted 房间正常恢复，时间线状态清楚，控制台没有 warning/error。
+- 没有真实供应商请求、API Key 传输、付费模型调用、数据库删除或发布。
+
+### 当前限制
+
+- 并行进度行为已有确定性事件 fixture 覆盖，但还没有在一间全新的真实供应商房间中做视觉观察。
+- 任务自适应 Role Pack、独立 Final Synthesizer、任务化详细 Artifact 与跨导航后台执行仍只是批准设计。
+- 当前页面仍拥有进行中的 fetch；离开页面后供应商计费可能不确定，恢复保持显式且绝不自动重试。
+
+### 下一步
+
+回到 M2.10 主线：每个完成 Review round 后加入一次显式、由用户选择的 Observer 调用，只输入确定性指标与有限 Canonical State；随后加入一条 Dispute 定向继续路径。Role Pack、详细 Artifact 与 durable runner 分成后续独立切片。
+
+## 2026-08-21 - v0.10a - Anthropic Adaptive Thinking 兼容修复
+
+### 已完成
+
+- 定位真实 Anthropic turn 失败：当前 adaptive-thinking 模型以 HTTP 400 拒绝适配器显式发送的 `thinking.type: "disabled"`。
+- 从普通 Anthropic 会议请求中删除可选 `thinking` 字段，沿用供应商声明的默认行为；不启用需要额外预算的 extended thinking，也不引入模型名兼容表。
+- 新增供应商边界回归断言，确保所有 Anthropic fixture 请求都省略 `thinking`。
+
+### 验证
+
+- 使用内置 Node runtime，生产构建与全部十四项自动测试通过。
+- 未再次请求供应商或进行付费重试；原失败 turn 保持可审计。
+
+### 范围
+
+- 这是窄范围供应商兼容修复，不改变 M2.10 roadmap，不启用 extended thinking，也不增加新的会议行为。
+
+## 2026-08-10 - v0.10a - 确定性预算与进度 Gate
+
+### 已完成
+
+- 在持久 protocol snapshot 中加入向后兼容的 `MeetingBudget`。新房间根据 Seat、phase 与最大轮数推导精确 agent-turn 上限，并从现有上下文、输出和供应商 timeout 上限推导保守的 input token、output token 与模型时间边界；旧房间在解析时推导默认值并保持可读。
+- 新增 transition 前预算 Gate。每个已启动 transition 都会保守计数，包括 interrupted 工作；若新 transition 会超过 agent-turn 上限，会在供应商调用前停止。已观测 token 或模型时间耗尽也会在下一个安全边界阻止 transition。由于价格不权威，估算 USD 仍只作提示。
+- 格式失败与语义归并失败的供应商响应现在计入已知用量；未知供应商失败仍不会伪造 token 或费用。
+- 每个完成的 Review round 后生成确定性、带来源的 `ProcessReport`，测量 Claim、update、objection、open dispute、open question、no-new-information 和精确归一化 thesis 的结构变化。连续两个结构空窗口、未更新且重复的 Dispute，或 assumption 未解决时 thesis 完全同质化，会产生可逆的 Chair 暂停建议。
+- 报告保存为只追加 `process.report` 事件，不能修改 Canonical State 或批准 Decision。Setup 显示推导的最大调用/输出/模型时间，Meeting 显示剩余预算，Review Checkpoint 显示最新报告。
+- 记录 D-027：先建立确定性预算与结构安全信号，再加入付费 Observer 判断。
+
+### 验证
+
+- 使用内置 Node runtime，生产构建、ESLint、`git diff --check` 和全部十四项自动测试通过。
+- 新测试覆盖精确调用前 turn 耗尽、已观测 token 耗尽、预算字段之前的旧 protocol snapshot 向后兼容解析，以及只有连续两个无进度窗口才建议软暂停。
+- 浏览器验证在没有凭证的情况下重新打开 D-027 之前的 interrupted 房间，显示推导后的剩余预算，且控制台无 warning/error。1280x800 桌面和 390x844 移动端均无横向溢出，Chair checkpoint 与会议 footer 不重叠。
+- 没有供应商请求、付费 Observer 调用、凭证变更、数据库删除或部署。
+
+### 当前限制
+
+- Token 与模型时间上限根据已观测用量在 transition 边界判断，已经在途的 transition 仍可能越过边界；本切片中只有精确调用次数是完全调用前硬预算。
+- 精确归一化 thesis 只是确定性同质化信号，不是语义相似度。偏题与改写重复留给显式 Observer；embedding 被有意推迟。
+- 预算默认值由系统推导，用户暂时不能编辑；模型价格未知时仍不能执行权威费用硬停止。
+- M2.10 尚未完成：还没有用户选择 Observer、付费 Round Brief 或 Dispute 定向继续。
+
+### 下一步
+
+把 M2.10b 限制为一个显式 Observer 系统角色，并在每个完成 Review round 后最多调用一次。只向它提供确定性 Process Report 与有限 Canonical State，保存带来源 Round Brief，把调用计入预检，并禁止修改 state；随后增加一条最窄的 Dispute 定向继续路径。不要加入 embedding，也不要开始 Meeting Whiteboard 重做。
+
+## 2026-08-08 - v0.9 - 由人主持的可恢复编排器
+
+### 已完成
+
+- 将原先一次性的会议请求拆成明确的 proposal、review 与 synthesis phase，同时保留旧 endpoint 路径以兼容既有调用。
+- 新增持久化 `MeetingProtocolState`：支持 Auto、Checkpoints 与 Turn by turn，稳定 transition ID，phase/round/status 追踪，安全边界暂停与恢复，以及解析层 1～5 轮硬上限。
+- Checkpoints 成为默认模式；Setup 可选择 1～3 轮并预检最大调用数；旧房间继续保持原有两轮范围，不会在恢复时偷偷扩张。
+- 新增下一个安全边界 Raise Hand、限定范围的只追加 Chair Directive、Checkpoint 继续、Human Gate 请求下一轮，以及事务式持久化批准/拒绝操作。
+- 将 protocol transition 与 Chair Directive 保存为独立 RoomStore event。已完成 transition ID 与 turn ID 提供确定性重复防护；刷新恢复会把未完成的 running 工作转换为 `interrupted`，不会再次调用供应商。
+- 拆分后的 API 会在供应商调用前验证 protocol phase、有限上下文和请求的 seat ID；已经完成的 transition 会在进入 provider adapter 前被拒绝。
+- 修复第一次 M2.9 真实预检暴露的缺陷：transcript 与 usage ref 现在会在严格持久化前同步更新，初始 recovery snapshot 不再与 React state 调度竞态。原失败启动在任何供应商请求前已被拦截。
+- 随后的第一次付费拆分 phase 探针在没有自动重试的情况下暴露了两种跨供应商输出失败：Anthropic 用完整 `json` fence 包住了原本有效的 Envelope；OpenAI `gpt-5-mini` 在关闭 JSON 前耗尽 1,200-token 输出预算。Validator 现在只移除包住整个响应的一层 fence；OpenAI adapter 只对原始 GPT-5、GPT-5 mini 与 GPT-5 nano 标识条件式请求 `reasoning.effort: minimal`，输出上限保持不变。
+- 第二次有限 Proposal transition 已接受 OpenAI，并在只剩 Anthropic 待完成时暂停。Anthropic 归一化后的 JSON 省略了 `claimUpdates`；Validator 现在会把省略的 collection 字段视为空数组，但不会放宽语义字段、引用、容量或响应前后文字检查。
+- 客户端 phase boundary 现在会保留流中的 `room.error`，不再用通用的缺失 completion 错误覆盖它，使不触发供应商调用的协议校验失败仍可诊断。
+- 第一次拆分 Review transition 在任何供应商调用前暴露并修复：构建 Proposal target 时曾修改共享 Review work object，把新的 Review ID 替换成已归并的 Proposal ID。Target 现在使用不可变副本；拆分 Proposal→Review fixture 会断言新增两次供应商调用和 Review completion boundary。
+- 第一次付费 Review transition 随后在零条审阅被接受时停止：OpenAI 在关闭 JSON 前耗尽输出上限；Anthropic 超过两条 objection 上限，并在 Research 关闭时仍把外部例子当作事实支持。Review prompt 现在要求 statement 不超过 120 词、最多 1 条新 Claim、2 条 update、2 条 objection、字段各一整句，并禁止引入 Canonical State 之外的外部证据。没有发起 synthesis 调用。
+- 一次有限 Review 重试额外发起了 2 次供应商调用。两家供应商都返回格式有效的精简 Envelope，第一条 Review 成功归并；第二条被拒绝，因为第一条 Review 的 `revise` update 归档了两位并行审阅者在共享输入状态中都能看到的 Claim。Reducer 现在把 `revise` 视为建议性争议而不是归档，只有 `withdraw` 才归档 Claim；回归测试确认第二位并行审阅者仍可引用该 Claim。
+- 随后在已经持久化的 D-026 修复前房间快照上，显式批准并运行了 1 次只针对待处理席位的 Review。Anthropic 再次返回格式有效的精简 Review，但归并失败，房间在没有 synthesis 或重试的情况下停止。通用 phase error 曾覆盖此前更具体的 agent 语义错误；客户端现在会把第一条格式、归并或供应商错误保留为主要中断信息，不再被 phase 汇总替换。由于该房间的 Canonical State 已经按旧归档规则发生变异，它不能作为干净的修复后验证样本，也不应再次付费重试。
+- 记录 D-025：不确定的在途工作由 Chair 显式恢复，绝不自动重试。
+- 记录 D-026：Reviewer 的修订请求会保留已发布 Claim 的身份，直到明确撤回或由人解决。
+
+### 验证
+
+- 使用内置 Node 22 runtime，生产构建、ESLint、`git diff --check` 与全部十三项自动测试通过。
+- 新测试覆盖纯编排 transition、完成幂等、刷新中断恢复、Turn by turn 边界、拆分 proposal 执行、`phase.done`，以及在额外供应商调用前拒绝已完成 transition。
+- 仓库级 `tsc --noEmit` 只报告 `db/index.ts` 与 `worker/index.ts` 中既有的 Cloudflare ambient type 缺失；本轮修改的应用文件没有 TypeScript 错误。
+- 第一次 M2.9 真实 proposal 探针发起了两次供应商调用；两个输出都未通过严格验证，因此在 review 与 synthesis 前停止。没有自动重试；后续调用必须由新的显式 transition 发起。
+- 本次有限真实会话准确执行了 10 次付费供应商调用：前两次完整 Proposal 尝试共 4 次、一次只针对待完成 Anthropic 席位的 Proposal、以及 5 次 Review。付费 Review 前有两次不触发供应商的 Review start 暴露 immutable-work 缺陷。Synthesis 调用为 0；已有 1 条 Review 被接受，D-026 修复前房间仍在另一条 Review 待完成时中断。第二个批准调用没有使用，因为 Synthesis 以 Review 成功为前提。
+- 当前沙箱对开发与生产服务的本地端口绑定都返回 `EPERM`，因此无法完成交互式浏览器验证。Build、服务端渲染、源码与协议测试均通过，但桌面/移动端视觉行为仍需在可运行服务的浏览器里检查。
+- 本轮尝试创建 M2.9 前备份 tag 与最终里程碑 commit 时，环境拒绝写入 tag lock 和 `.git/index.lock`。通过验证的 M2.9 修改仍保留在 working tree；准确的修改前恢复 commit 是 `f986b5e`，更早的 `backup/v0.6-live-baseline-2026-08-04` tag 仍然可用。
+
+### 当前限制
+
+- 真实供应商 Checkpoints 运行已经验证 Proposal 恢复与 1 条成功 Review，但仍需完成待处理 Review、Review Checkpoint 和 Synthesis/Human Gate；Gemini 尚未验证。
+- 浏览器本地 BYOK 无法保证刷新时在途请求的账单 exactly once。界面会诚实提示这种不确定性，绝不自动重试，并要求创建新的显式 transition 才能继续。
+- 当前最大轮数与调用数边界还不是完整的 token、turn、时间或权威美元预算。
+- M2.10 尚未加入 Observer / Recorder、Round Brief、循环与偏题监测、以及仅路由给相关 Dispute 参与者的机制。当前已接受 phase statement 虽然有限，仍比最终逐代理上下文设计更宽。
+- M2.11 尚未用 Turn Card、Meeting Whiteboard、来源关联追问和版本化 Memo amendment 替换当前以 transcript 为中心的实时界面。
+
+### 下一步
+
+不要重试已经污染的 D-026 修复前房间。只有在新的真实预算合理时，才新建一间严格限额的 D-026 修复后 Checkpoints 房间，并要求两条 Review 都到达 Review Checkpoint 后再授权 Synthesis。随后实现 M2.10 Observer、Round Brief、Monitor 软停止与 Dispute 定向路由；不要在同一里程碑启动更大的 M2.11 界面重做。
+
 ## 2026-08-04 - v0.8 - 结构化 Meeting State
 
 ### 已完成

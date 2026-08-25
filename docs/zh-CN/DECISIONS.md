@@ -94,4 +94,82 @@ Participant Seat 负责实质贡献；Observer / Recorder 和 Final Synthesizer 
 
 ## D-024 先使用跨供应商 JSON Envelope，再评估供应商专用结构化输出 - 已接受
 
-M2.8 通过三家供应商的普通文本生成 API 请求同一个有限 JSON Turn Envelope，再由应用拥有的严格 validator 处理。无效 JSON、额外字段、未知 Claim 引用或 active-state 超限都会产生显式失败事件，不能自动发起提取或供应商重试。只有测量过能力与流式差异后，才可以在 adapter 内增加供应商原生 structured-output 模式。这样 OpenAI、Anthropic 与 Gemini 使用同一 canonical 规则，供应商 API 不能拥有会议状态，也不会由隐藏修复调用额外花钱或改变原始答案。
+M2.8 通过三家供应商的普通文本生成 API 请求同一个有限 JSON Turn Envelope，再由应用拥有的严格 validator 处理。应用可以确定性移除包住整个响应的一层 `json` code fence，并把省略的 `newClaims`、`claimUpdates` 或 `objections` collection 归一为空数组；但响应前后存在说明文字、无效 JSON、额外字段、未知 Claim 引用或 active-state 超限仍会产生显式失败事件，不能自动发起提取或供应商重试。只有测量过能力与流式差异后，才可以在 adapter 内增加供应商原生 structured-output 模式。这样 OpenAI、Anthropic 与 Gemini 使用同一 canonical 规则，供应商 API 不能拥有会议状态，也不会由隐藏修复调用额外花钱或改变原始答案。
+
+## D-025 持久化 Phase Transition 与显式中断恢复 - 已接受
+
+供应商工作以明确的 proposal、review 与 synthesis transition 运行。客户端在每次调用前先持久化协议状态，分配稳定 transition ID，记录已完成 turn ID，并只在安全边界暂停。刷新后仍显示 running 的 transition 会转换为 `interrupted`，绝不自动恢复或重试；Chair 显式恢复时会创建新的 transition，并提示此前未确认的请求可能已经产生费用。
+
+浏览器本地 BYOK 客户端没有服务端幂等账本，无法在刷新或未知网络故障后保证账单 exactly once。持久意图、完成项重复防护和由人控制的诚实恢复，可以阻止自动重复调用，同时不假装不确定的请求从未到达供应商。
+
+## D-026 修订请求不能归档 Claim - 已接受
+
+AI 提交的 `revise` update 会保留被引用 Claim，将其标记为 contested，并记录审阅席位反对当前表述；只有明确的 `withdraw` update 才能归档 Claim。后续由 Chair 决策或带来源链的替代 Claim 解决或取代它。
+
+并行审阅者基于同一份 Canonical State 生成结果。若允许先处理的审阅者归档共享 Claim，后续原本有效的引用就会依赖处理顺序，而且会把本应属于 Human Chair 的权限交给 AI Reviewer。
+
+## D-027 先建立确定性安全信号，再加入付费 Observer - 已接受
+
+编排器先拥有向后兼容的 Meeting Budget 和带来源的 Process Report，再加入付费 Observer。已经启动的供应商 transition 会保守计入精确 turn 上限，包括 interrupted 工作。已观测的 input token、output token 与模型时间会在下一个安全边界阻止新 transition；进行中的 transition 仍可能越过这些观测上限。格式失败与语义归并失败的已知用量也必须计入。确定性结构指标只能建议一个可逆的 Chair 暂停，不能修改 Canonical State、批准 Decision 或声称完成语义验证。
+
+调用次数限制和结构化增量不需要另一个模型。先建立确定性底线，可以让未来 Observer 判断更便宜、更可审计，也不能用另一条付费意见掩盖基本预算或循环缺陷。
+
+## D-028 只有验证后的 Turn 才能占据舞台 - 已接受
+
+供应商 delta 属于传输与潜在审计数据，不是面向用户的发言。生成期间，Meeting 舞台只显示有限进度状态；只有通过验证的 Turn Envelope statement 与 card 才成为公开会议内容。若策略选择保留原始输出，它也只能在显式 Audit 界面或失败记录中提供。
+
+可移植 JSON Envelope 是机器接口。把它的半截字节直接渲染出来会暴露实现细节、造成滚动抖动，也会让一个正常但较慢的流在完成验证前看起来像故障。
+
+## D-029 用户交付物深度与工作上下文大小相互独立 - 已接受
+
+每个房间可以同时生成精简 Executive Brief 和符合任务类型的详细用户 Artifact；后续模型调用仍只接收有限 Canonical State、Round Brief 与选定来源。详细 Artifact 默认不会重新塞回 agent 上下文。
+
+精简模型记忆用于控制成本，但不能因此强迫用户只得到浅薄结果。用户可以把阅读负担交给会议，并获得完整计划、审阅或决策包。
+
+## D-030 任务自适应 Role Pack，房间内职责稳定 - 已接受
+
+Decide、Plan、Review、Research、Build 等 Agenda 模板可以推荐参与者 Role Pack 和逐轮任务；角色保持供应商无关，并在房间内稳定。独立配置的 Final Synthesizer 仍位于参与席位数量之外；复用参与者做综合是显式省钱模式，不是默认架构。
+
+三个通用角色无法为所有目标制造同样有效的张力。任务化职责可以改善覆盖，同时避免角色随意漂移，也不会隐藏综合偏差与费用。
+
+## D-031 Durable Transition 必须超越单个页面生命周期 - 已接受目标
+
+M2 之后的本地架构会把供应商 transition 执行移到 durable runner 边界之后，UI 通过已持久化事件与 cursor 重连。离开页面只会断开视图，不会暂停工作；状态不明的进行中请求绝不会被静默重启，也不会被伪装成已经完成、可无风险恢复的 transition。
+
+React 页面生命周期不适合可靠拥有耗时且可能计费的工作。基于事件的重连可以提供连续性，同时保留 D-025 已建立的诚实中断和重复计费边界。
+
+## D-032 后续回合必须明确并路由一个 Dispute - 已接受
+
+初始提案与交叉审阅完成后，只有 Human Chair 选择一个开放 Dispute，才能启动额外辩论回合。应用代码确定性路由最多两个相关 Seat，并在供应商工作前记录 Dispute、来源 State version、来源 Message ID 与路由 Seat；每个 Seat 只提交有限 Review 增量。本路径不增加路由模型调用，也不重放完整 transcript。
+
+最大轮数是一条权限边界，不是重跑全员会议的理由。明确未解决问题可以让每次额外调用都能归因，限制上下文与阅读负担，并让中断恢复继续遵守诚实的计费语义。
+
+## D-033 任务模式与权限等级相互独立 - 已接受
+
+Review、Decide / Plan、Explore、Create 和未来 Play 是同一个产品内的 Task Pack。Discuss、Research 与 Execute 继续作为决定可用工具和权限的等级。每个 Task Pack 采用足以完成工作的最低权限。
+
+用户要完成的工作和房间拥有的权限是两件事。将它们分开，可以在不拆分产品、也不授予多余工具的情况下支持创作、分析、研究、执行和模拟工作流。
+
+## D-034 产品线驱动共享核心生长 - 已接受
+
+在精简 Shared Core 上一次开发一条端到端 Task Pack。只有至少两个经过验证的 Task Pack 都需要某个抽象时，才把它提升到 Shared Core；否则保留在具体 Pack 内。
+
+脱离用户证据设计通用平台会制造猜测性抽象并推迟可用结果，而多个完全独立产品又会重复供应商接入、持久化、预算与批准边界。Rule of Two 在避免再次基础设施先行的同时保留复用。
+
+## D-035 Review 是第一条以 Artifact 为中心的纵向切片 - 已接受
+
+完成一次有限真实供应商 v0.10c 验证后，下一个产品里程碑是 Review Task Pack。它接收目标、Artifact v1、用户提供的来源和真实性边界，生成独立 Finding、有限交叉审阅、结构化 Change Set、Artifact v2、独立改动核验，以及逐项 Human Gate 决定。简短摘要与详细 Artifact 分开输出。
+
+Review 可以直接验证结构化模型差异是否产生单个强模型遗漏、且用户最终接受的重要改进。它把现有会议机器转化为用户可感知结果，并能在简历、产品文档和技术计划 benchmark 上评测。
+
+## D-036 多 Agent 自治必须具有明确任务拆分优势 - 已接受
+
+多个模型 Seat 默认不会变成自治 Agent。只有子任务彼此独立有用、参与者需要不同工具或私有上下文、输出具有明确合并契约且结果可以验证时，才加入多 Agent 行为。Research 是第一个计划候选；Execute 必须等待隔离工具和 Human Gate。
+
+额外自治循环会成倍增加费用、协调失败、权限和恢复复杂度。Review 与 Decide 首先使用确定性编排；通用 Agent 平台不是产品价值的前置条件。
+
+## D-037 产品证据约束基础设施工作 - 已接受
+
+不连续进行两个纯基础设施里程碑。每个产品里程碑以真实案例和保存的基线结束；每个新增付费模型调用必须写明预期信息增量；证据不足的功能应被简化、改成可选或删除。
+
+项目此前让编排器成熟度超过了用户结果。显式校正规则确保工程可靠性服务于被接受的 Artifact 改进，而不是把协议完成误当作产品成功。

@@ -18,6 +18,12 @@
 
 它们是同一个产品的权限等级，不是三个产品。
 
+## 任务模式
+
+Review、Decide / Plan、Explore、Create 和未来 Play Pack 定义要完成的工作，并与权限等级分离。例如 Review 可以运行在 Discuss 或 Research；Execute 增加权限，但不会变成另一个产品。
+
+各产品线以有限纵向 Task Pack 形式生长在共享核心上。[产品方向定稿](PRODUCT_DIRECTION.md)是当前开发顺序和方向校正的基准。
+
 ## 不可偏离的原则
 
 1. 人类始终是主持人与最终负责人。
@@ -28,10 +34,11 @@
 6. 每一轮必须改变产物、解决分歧或停止。
 7. 工具采用最小权限，关键动作必须批准。
 8. 用质量、时间、成本和人工投入与强单模型基线比较。
+9. 共享抽象必须由产品证据驱动；没有明确纵向用例，不扩建基础设施。
 
 ## 当前重点
 
-M2 已实现真实 Discuss 协议：模型适配、流式输出、有限轮次、交叉审阅、决策 memo、人工决策门、用量估算、不保存凭证的 IndexedDB Event Store、严格 Turn Envelope 和确定性 Canonical Meeting State。2026-08-04，真实 OpenAI + Anthropic 会议已经走通结构化之前的端到端路径。M2 在用真实供应商验证结构化协议、让 turn 之间可以恢复并由人主持，以及扩大问题证据期间保持当前阶段。
+M2 已实现真实 Discuss 协议：模型适配、流式输出、有限轮次、交叉审阅、决策 memo、人工决策门、用量估算、不保存凭证的 IndexedDB Event Store、严格 Turn Envelope、确定性 Canonical Meeting State，以及持久化、由人主持的可恢复编排器。Auto、Checkpoints 与 Turn by turn 会把供应商工作拆成显式 phase transition；Chair Directive、Raise Hand、中断恢复、重复 transition 防护、向后兼容 Meeting Budget、确定性带来源 Process Report、显式 Observer，以及由 Chair 选择 Dispute 的定向回合均已实现。2026-08-04，真实 OpenAI + Anthropic 会议走通了结构化之前的端到端路径。新版路径完成一次有限真实供应商验证后，当前工作转向 Review Task Pack，交付详细版本化 Artifact 和被接受的 Change Set。在产品证据提出需求前，暂停扩建通用编排器。
 
 ## 第一阶段不做
 
@@ -43,4 +50,4 @@ M2 已实现真实 Discuss 协议：模型适配、流式输出、有限轮次�
 
 ## 成功标准
 
-在可接受的成本、延迟和人工投入下，有限多代理会议比一个强单模型产生更有用或验证更充分的结果。
+在可接受的成本、延迟和人工投入下，有限、结构化多模型工作流产生单个强模型遗漏、并最终被用户接受的重要改进，项目才算成功。未来只有当任务拆分、工具和验证确实需要时，Research 与 Execute 才加入真正多 Agent 工作。
