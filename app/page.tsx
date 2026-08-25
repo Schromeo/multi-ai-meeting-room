@@ -543,13 +543,6 @@ export default function Home() {
     setSeatDrafts((current) =>
       current.map((seat) => (seat.id === id ? { ...seat, ...update } : seat)),
     );
-    setObserverDraft((current) => {
-      if (current.connectionId !== connectionId) return current;
-      const modelStillAvailable = models.some((model) => model.id === current.model);
-      return modelStillAvailable
-        ? current
-        : { ...current, model: models.length === 1 ? models[0].id : "" };
-    });
   }
 
   function chooseSeatConnection(seatId: string, connectionId: string) {
@@ -662,6 +655,13 @@ export default function Home() {
           : { ...seat, model: models.length === 1 ? models[0].id : "" };
       }),
     );
+    setObserverDraft((current) => {
+      if (current.connectionId !== connectionId) return current;
+      const modelStillAvailable = models.some((model) => model.id === current.model);
+      return modelStillAvailable
+        ? current
+        : { ...current, model: models.length === 1 ? models[0].id : "" };
+    });
   }
 
   async function saveConnection(event: FormEvent<HTMLFormElement>) {

@@ -1435,6 +1435,12 @@ test("source contains real streaming adapters and credential-free structured roo
   assert.match(page, /currentRoomIdRef\.current = next/);
   assert.match(page, /const next = typeof update === "function" \? update\(transcriptRef\.current\) : update/);
   assert.match(page, /const next = typeof update === "function" \? update\(usageRef\.current\) : update/);
+  const updateSeatHandler = page.match(/function updateSeat[\s\S]*?\n  }\n\n  function chooseSeatConnection/)?.[0] ?? "";
+  assert.ok(updateSeatHandler);
+  assert.doesNotMatch(updateSeatHandler, /setObserverDraft|\bmodels\b|\bconnectionId\b/);
+  const updateModelsHandler = page.match(/function updateConnectionModels[\s\S]*?\n  }\n\n  async function saveConnection/)?.[0] ?? "";
+  assert.ok(updateModelsHandler);
+  assert.match(updateModelsHandler, /setObserverDraft/);
   assert.match(page, /beginProtocolTransition/);
   assert.match(page, /phaseBoundary\.detail \?\? phaseBoundary\.error\.message/);
   assert.match(page, /Structured state rejected this turn:/);
