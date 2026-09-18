@@ -1,4 +1,5 @@
 import type { TurnEnvelope, TurnPhase } from "./meeting-state";
+import type { ReviewArtifactResult, ReviewEditCheckpoint } from "./review-artifact";
 
 export const providerIds = ["openai", "anthropic", "gemini"] as const;
 export type ProviderId = (typeof providerIds)[number];
@@ -59,7 +60,18 @@ export type UsageSummary = {
   latencyMs: number;
 };
 
+export type ReplayCostEstimate = {
+  basis: "provider_rates";
+  modelSpecific: false;
+  currency: "USD";
+  inputUsdPerMTok: number;
+  outputUsdPerMTok: number;
+  inputRateSource: "runtime_override" | "provider_default";
+  outputRateSource: "runtime_override" | "provider_default";
+};
+
 export type AgentProgress = "thinking" | "generating" | "validating";
+export type ReviewWorkStage = "editing" | "verifying";
 
 export type RoundBrief = {
   id: string;
@@ -85,6 +97,8 @@ export type RoundBrief = {
 };
 
 export type DiscussEvent =
+  | { type: "plan.checkpoint"; artifact: import("./plan-artifact").PlanArtifact }
+  | { type: "plan.work"; stage: "building" | "reviewing"; status: "started" | "done"; usage?: UsageSummary }
   | {
       type: "room.start";
       requestId: string;
@@ -124,6 +138,22 @@ export type DiscussEvent =
   | { type: "observer.format_error"; id: string; message: string; usage: UsageSummary }
   | { type: "observer.error"; id: string; message: string }
   | {
+      type: "review.work.start";
+      id: string;
+      stage: ReviewWorkStage;
+      seatId: string;
+      provider: ProviderId;
+      connectionName: string;
+      model: string;
+      role: RoleId;
+    }
+  | { type: "review.work.progress"; id: string; stage: ReviewWorkStage; progress: AgentProgress }
+  | { type: "review.work.done"; id: string; stage: ReviewWorkStage; usage: UsageSummary }
+  | { type: "review.work.format_error"; id: string; stage: ReviewWorkStage; message: string; usage: UsageSummary }
+  | { type: "review.work.error"; id: string; stage: ReviewWorkStage; message: string }
+  | { type: "review.edit.done"; checkpoint: ReviewEditCheckpoint }
+  | { type: "review.artifact.done"; result: ReviewArtifactResult }
+  | {
       type: "agent.done";
       id: string;
       seatId: string;
@@ -140,6 +170,8 @@ export type DiscussEvent =
       completedSeatIds: string[];
       usage: UsageSummary;
       memo?: string;
+      reviewResult?: ReviewArtifactResult;
+      planArtifact?: import("./plan-artifact").PlanArtifact;
     }
   | { type: "agent.format_error"; id: string; message: string; usage: UsageSummary }
   | {
@@ -156,5 +188,7 @@ export type DiscussEvent =
       iteration: number;
       memo: string;
       usage: UsageSummary;
+      reviewResult?: ReviewArtifactResult;
+      planArtifact?: import("./plan-artifact").PlanArtifact;
     }
   | { type: "room.error"; requestId: string; message: string };

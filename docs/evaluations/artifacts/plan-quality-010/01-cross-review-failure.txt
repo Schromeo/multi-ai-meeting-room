@@ -1,0 +1,82 @@
+- main:
+  - button "M Meeting Room":
+    - generic: M
+    - strong: Meeting Room
+  - navigation "Meeting stages":
+    - button "1 Setup":
+      - generic: "1"
+      - text: Setup
+    - button "2 Agenda":
+      - generic: "2"
+      - text: Agenda
+    - button "3 Meeting":
+      - generic: "3"
+      - text: Meeting
+    - button "4 Decision" [disabled]:
+      - generic: "4"
+      - text: Decision
+  - button "Meetings 11":
+    - text: Meetings
+    - generic: "11"
+  - button "2 connections": 2 connections
+  - generic "Protocol progress":
+    - generic: "1"
+    - text: Proposals
+    - generic: "2"
+    - text: Cross-review
+    - generic: "3"
+    - text: Memo
+  - generic: Cross-review turn paused
+  - generic "Transcript view":
+    - button "Focus"
+    - button "Overview"
+  - article:
+    - generic: Human Chair
+    - generic: Human Chair / agenda
+    - generic: 为一个有一定数据结构和算法基础、准备算法面试的人制定一份完整、可直接执行的12天LeetCode刷题计划。每天至少10个Medium等价量：1 Hard=2 Medium，3 Easy=1 Medium。此次测试假设每天可投入360分钟（含复盘），这不是已确认的用户时间条件。必须逐日列出具体题号、题名、难度、新做或重做、每题时间、复盘时间、完成标准和落后时的调整规则；解释主题顺序与间隔复习。不能只列宽泛主题，不得用反复抄答案或把复习冒充新题来凑量。若高强度目标与学习效果有冲突，应明确风险与前提，不能悄悄降低用户题量。审阅者独立核对题量、时间、难度梯度、题目匹配、复习间隔和可执行性，指出具体哪一天哪里有问题及修正建议；无法核实的题目元数据不要假装已查证。最终交付完整中文计划，保留仍未解决的异议，不以一致赞同代替验证。
+  - article:
+    - generic: Strategist
+    - generic: OpenAI / proposal
+    - generic: 提议以数据结构板块分期+间隔重做的12天高强度方案：D1-3数组/双指针/滑窗，D4-5栈队列/单调栈/二分，D6图/并查集，D7-8树/二叉搜索树，D9-10回溯/动态规划基础，D11区间/贪心/前缀与差分，D12综合模拟与错题重打。每日目标≥10“Medium等价”，新题:复盘≈8:2；每题新做18–22分钟，Hard 36–44分钟，含复盘总360分钟；次日与第4日安排同题型跨日复现与第8日汇总复盘。给出每日“完成标准”和“落后调整”规则，Builder负责具体题单。强调高负荷的风险与前提并保留异议。
+  - article:
+    - generic: Critical Reviewer
+    - generic: Anthropic / proposal
+    - generic: 在起草前必须先锁定几条硬约束，否则后续按日排题会集体返工。360分钟/天含复盘时,若每天10 MEU且按1H=2M/3E=1M换算,单题净做题预算大约22-30分钟(视Hard占比),对Medium尚可,对Hard明显偏紧,连续12天累计120 MEU对准备中的候选人属于高强度而非可持续节奏,倦怠与'为凑量而抄答案'风险真实存在。此外,题目元数据(编号/难度/标签)在本模式下无法核验,规划者与我都不得假装已确认;应约定所有题号在交付时标注'待用户/官方站二次核对'。建议在Day 1-2安排诊断+主题基线,主题顺序按 数组/哈希→双指针/滑窗→二分→栈/队列→链表→树/BFS/DFS→图→回溯→贪心→DP(线性→区间/状压)→复习周,间隔复习采用D+1、D+3、D+7触发。
+  - article:
+    - generic: Strategist
+    - generic: OpenAI / review
+    - paragraph: Reviews Critical Reviewer / Anthropic
+    - generic: "Strength: it correctly caps Hard load and flags metadata unverifiability; Weakness: time math for 10 MEU within 360 minutes remains unproven for varied Hard mixes; Unsupported: effectiveness of T+1/T+3 spacing is asserted without evidence; Revision: fix a daily Hard cap and allocate explicit per-item time budgets; Verdict: revise."
+  - article:
+    - generic: Critical Reviewer
+    - generic: Anthropic / review
+    - paragraph: Reviews Strategist / OpenAI
+    - generic: "This seat returned an invalid Turn Envelope: The turn output is not valid JSON."
+  - region "Human Chair checkpoint":
+    - generic: Human Chair checkpoint
+    - heading "Cross-review turn paused" [level=2]
+    - paragraph: Add a scoped direction, continue the next safe phase, or return to the agenda.
+    - combobox "Directive type":
+      - option "Constraint" [selected]
+      - option "Correction"
+      - option "Question"
+      - option "Priority"
+      - option "Veto"
+    - combobox "Directive audience":
+      - option "All seats" [selected]
+      - option "Seat 1 · Strategist"
+      - option "Seat 2 · Critical Reviewer"
+    - textbox "Add a constraint, correction, priority, question, or veto"
+    - button "Add direction" [disabled]
+    - generic "Deterministic process report":
+      - generic: Process report · State v3
+      - strong: Structural progress detected
+      - generic: 7 claims
+      - generic: 2 updates
+      - generic: 3 objections
+      - generic: 3 open disputes
+    - button "Run next seat"
+  - strong: Round 1/1
+  - generic: 2 seats / 4 turns complete
+  - generic: 4 calls · 47K output · 648s model time left
+  - button "Return to agenda"

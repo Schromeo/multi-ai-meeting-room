@@ -1,29 +1,49 @@
 # AI 交接说明
 
-最后更新：2026-08-25
+最后更新：2026-08-30
 
 ## 当前状态
 
-- 阶段：v0.10c 已完成 M2.1 连接护栏、M2.2 可复用席位核心、M2.7 本地 Event Store、M2.8 结构化 Meeting State、M2.9 由人主持的可恢复编排器，以及 M2.10 的确定性安全、显式 Observer 与 Dispute 定向切片。2026-08-04，真实基线 001 已用 OpenAI + Anthropic 走通 M2.8 之前的 Human Gate 路径。2026-08-25 方向基线决定：一次有限 v0.10c 烟雾评测后冻结通用编排扩建，并把 Review 作为第一条以 Artifact 为中心的 Task Pack。
+- **最新本地纠错（D-063）：** Connection Setup现在除`AIza`外也识别当前Gemini `AQ.`授权key；Anthropic会先于前缀重叠的OpenAI `sk-`族判断，未知格式保留手选。识别只作本地提示：不持久化、不跨供应商试探，也不宣称已验证凭证。构建、63项测试和lint通过；仍只有三项既有Cloudflare ambient错误。零真实调用。见[简报](correction-briefs/2026-08-30-provider-key-prefix-detection.md)。已准备的含Gemini三席位smoke尚未运行，执行时仍需明确确认。
+- **最新本地纠错（D-062 / PLAN-06）：** 新Plan的Builder/Reviewer阶段会在供应商工作前保存严格的usage未知`started`回执，再由同请求/阶段终态原位替换。没有Reviewer回执表示该阶段未启动；保留下来的started表示可能存在未知供应商用量，绝不等于零。构建、62项测试和lint通过；仍只有三项既有Cloudflare ambient错误。零真实调用。不重写历史歧义，也不建设计费账本。见[简报](correction-briefs/2026-08-29-plan-stage-request-receipts.md)。
+- **最新本地纠错（D-061 / PLAN-11）：** stopped协议快照现在保存`budget`或`human`来源，旧房间保持中性。保存Plan恢复会在控件启用前按保留用量评估；额度耗尽的恢复仍可见但禁用，且不能调用供应商。构建、62项测试和lint通过；类型检查仍只有三项既有Cloudflare ambient错误。零真实调用、零记录迁移。PLAN-11已本地验证；D-062另行关闭新Plan回执，PLAN-12持久连续性仍待处理。见[简报](correction-briefs/2026-08-29-plan-stop-and-recovery-truth.md)。
+- **最新本地纠错（D-060 / PLAN-13）：** 初始实际产物Plan Reviewer现在只向明确受支持的Anthropic家族发送原生JSON Schema，包含Fable 5。本地日期/长度/数量语义继续权威；可接受单独JSON围栏，说明文字包裹仍失败，也未增加重试或原文保留。构建、62项测试及lint通过；类型检查仅三项既有Cloudflare ambient错误。零真实调用，保存的Live014 Plan未动。PLAN-13为本地修复/真实未验证，PLAN-10继续待处理。下一步最多单独授权一次Fable Reviewer-only调用读取保存产物，绝不再生成Sol。见[简报](correction-briefs/2026-08-29-plan-reviewer-structured-output.md)。
+- **最新真实结果（014）：** 刷新授权后恰好运行一次Sol Builder和一次Fable Reviewer。Sol交付12/12有效Plan天；Fable完成但审阅未通过JSON校验，所以完整草稿保留，独立意见和Human Gate未完成。见[评估](evaluations/2026-08-29-plan-artifact-first-live-014.md)、[Plan](../evaluations/artifacts/plan-artifact-first-014/01-plan-readable.md)及诊断。D-059/PLAN-17/18机械验证通过；D-060随后已在不重生成Plan或付费重试的情况下本地修复Reviewer契约。
+- **最新纠错与负面真实证据（D-059 / 真实实验012）：** Detailed Plan现在严格按首次两调用/22K预算，直接由一个Builder生成，再由一个实际产物Reviewer审阅。历史12在供应商前发现旧通用synthesis Gate；历史13发现version-zero产物解析错位，Sol可能但未确认启动，Fable未调用。两项均已本地修复；构建、61项测试和lint通过。见[评估](evaluations/2026-08-29-plan-artifact-first-live-012.md)和[18项问题清单](PLAN_ISSUE_REGISTER.md)。产品质量仍未运行；再进行两调用需要刷新授权。
+- **最新本地纠错（D-058 / PLAN-03处理中）：** 已识别原始GPT-5 Plan Builder现在请求low；实际审阅/修改/复核继续medium，其他供应商/模型保持默认。尝试诊断分开保存请求档位和实际报告reasoning用量。构建、59项测试及lint通过，零真实调用。这只证明配置，仍需新的明确授权进行一次Builder阶段结果验证。见[问题清单](PLAN_ISSUE_REGISTER.md)。
+- **最新本地纠错（D-057）：** [Plan问题清单](PLAN_ISSUE_REGISTER.md)跟踪16项。PLAN-01初始Builder/Reviewer保存有限结束/用量及拒收诊断，不存原始响应；PLAN-02新格式指令显式限定阶段/轮次。59项离线测试、构建、lint通过，零真实调用。010/011缺失诊断仍未知，旧correction不迁移。真实Plan质量未通过。
+- **最新续接011：** [报告](evaluations/2026-08-27-plan-wait-continuation-011.md)。D-056取消Plan应用截止/累计时间停止，增加一次显式保存产物恢复。续接010同一房间，只新增一次GPT调用，没有新有效天数，审阅未启动。原77条任务及六天与留档一致，历史11；无重试/修改/批准。剩余输出46K->37K为取整显示，原始失败/结束/用量未暴露。仍为原累计$5，不追加$5。构建、54项离线测试、lint通过，保留三项既有Cloudflare类型错误。完整可用Plan及真实超过180秒完成仍未证实；D-056替代下方D-055历史180秒政策。
+- **最新实测010：** 新授权$5，GPT-5/Opus4.7未完成完整交付。实际6次供应商请求：交叉审阅JSON失败后改变输入恢复一次，随后medium推理Builder在180秒超时，保住Day1-6。补缺失天数因只剩1个预留调用名额被拦截，没有新增请求；实际计划审阅/修改/复核/批准均未运行。历史11条，[质量实测010](evaluations/2026-08-27-plan-quality-live-010.md)已归档原稿与失败。失败用量/实际账单不全，不得说花完$5或质量通过。
+- 阶段：尚未提交的 v0.11j，加上 Keep original 和首个 M2.13 详细 Plan 切片。评测工具扩建已收尾；M2.12 对照暂缓而非通过。D-052 允许有界主流程修正，通用编排继续冻结。
 - 产品：一个由人主持的多 AI 工作空间，包含 Review、Decide / Plan、Explore、Create 和未来 Play Task Pack，并横跨 Discuss、Research 与 Execute 权限等级。
-- 已完成：三家统一适配；工作区 Secret 与当前页面 BYOK；显式供应商选择；凭证验证与兼容模型发现；统一连接库；可复用供应商中立席位；token 流式输出；独立提案；交叉审阅；综合；人工决定；用量估算；停止控制；分阶段工作区和 transcript 模式；用 Thinking/Generating/Validating 隐藏结构化原始 delta 的验证后 Turn 呈现；用户固定焦点与手动 Overview 跟随；会议完成后由用户主动进入 Decision；不含凭证的 IndexedDB `RoomStore`；事务迁移与删除；只追加房间、协议 transition、Chair Directive、Process Report 与 Round Brief 事件；严格的跨供应商 JSON Turn Envelope；不自动重试的格式失败事件；服务端和客户端双重确定性 Canonical Reducer gate；Claim、Dispute、Assumption、Chair Directive、Human Choice 与 Follow-up 契约；幂等 turn 归并；active-state 上限；有限上下文渲染；canonical snapshot；显式逐 phase 请求；持久化 Auto/Checkpoints/Turn by turn；安全边界 Raise Hand；用户可选 1～3 轮且协议硬上限 5 轮；中断后显式恢复；transition 恢复与重复调用防护；向后兼容 Meeting Budget；精确调用前 turn Gate；已观测 token/时间边界停止；失败 turn 用量统计；确定性带来源 Process Report 与可逆结构警告；用户显式配置 Observer；每个启用轮次一次可恢复的 Review 后 Observer 调用；严格、带来源的 Round Brief；不含凭证的 Observer 快照与 artifact；由 Chair 选择开放 Dispute；确定性路由至最多两个相关 Seat；持久化、计入预算且可恢复的 targeted-debate transition；不重放 transcript、最多 250 output tokens 的定向回应；十八项自动测试。
-- 已批准但未实现：Review Agenda 和来源包、任务自适应审阅 Role Pack、Finding 聚类、独立配置 Editor、结构化 Change Set、Artifact v2 与改动核验、分离的 Executive Brief 与详细 Artifact、逐项 Human Gate、三案例 Review 评测；后续 Decide / Plan、Explore、Create、Research、Execute 与 Play Task Pack；带 event cursor 重连的 durable transition runner、导出、账号同步，以及身份完成后的 D1 持久化。
-- 真实证据：OpenAI `gpt-5-mini` 与 Anthropic `claude-haiku-4-5-20251001` 完成 5 次供应商调用，共 2,437 input tokens、3,424 output tokens、54 秒模型时间和 $0.032 提示性估算。Human Gate 仍待用户决定；报告见 `evaluations/2026-08-04-v0.6-live-baseline.md`。
-- 已修复真实缺陷：OpenAI 适配器不再无条件发送可选 `reasoning.effort` 或 `text.verbosity`。Anthropic 适配器不再发送新版 adaptive-thinking 模型会拒绝的 `thinking.type: "disabled"`；普通会议省略 `thinking` 并沿用供应商默认值。回归断言覆盖两家请求边界；原失败房间仍证明系统会安全停止且不自动重试。
+- 已完成：Review、BYOK、本地历史与准确批准；结构化详细 LeetCode Plan、有界生成/恢复、实际计划审阅、零调用人工编辑及 D-055 显式修改/复核。构建、52 项离线测试和 lint 通过；真实 Plan 质量仍未证明。
+- 已批准但未实现：任务自适应审阅 Role Pack、Finding 聚类、独立配置 Editor 与 Verifier、批量 Finding 操作、三案例 Review 评测；更完整的 Decide / Plan、Explore、Create、Research、Execute 与 Play Task Pack；带 event cursor 重连的 durable transition runner、导出、账号同步，以及身份完成后的 D1 持久化。
+- 真实证据：Review Benchmark 001 使用 Anthropic Haiku 与 OpenAI `gpt-4.1-mini` 运行两次：十次调用、27K 输入 tokens、6,010 输出 tokens、96 秒，应用合计估算 `$0.087`，低于批准的 `$0.10` 上限。Run A 暴露共同的错误未来日期推断，并证明自由文本 Chair 纠正没有约束力。Run B 消除了该错误，证明被拒绝 Finding 在 cross-review 与 synthesis 中仍保持拒绝，但格式错误且浅薄的最终 brief 未通过产品 Gate。见 `docs/zh-CN/evaluations/2026-08-25-v0.11-review-benchmark-001.md`；供应商账单仍是权威依据。
+- 最新真实证据：Artifact v2 Benchmark 002 使用六次调用、3,537 个可见输出 tokens 和 54 秒。Editor 成功；Anthropic Verifier 未通过 changed-material 契约。旧组合 transition 随后在 Resume 前耗尽 turn budget。没有生成最终 Artifact，失败后没有新增调用。见 `docs/zh-CN/evaluations/2026-08-26-v0.11-artifact-v2-benchmark-002.md`。
+- 最新阶段证据：Verifier v2 Stage Replay 008 恰好调用一次 Anthropic Haiku，并以 597 input tokens、224 output tokens、3.1 秒和 `$0.0034` 应用估算通过双重 lineage/semantics 契约。Meeting History 保持 10 条。见 `docs/zh-CN/evaluations/2026-08-27-v0.11-verifier-v2-stage-replay-008.md`；供应商账单仍是权威依据。
+- 最新机械证据：Mechanical Review Smoke 004 恰好使用六次 Anthropic Haiku 调用，以一项 Chair 已接受 Change 和通过的 verification 到达待决定 Human Gate。用量为 7,144 input tokens、2,666 output tokens、32 秒和 `$0.041` 应用估算，高于预测的 `$0.02-$0.03`。见 `docs/zh-CN/evaluations/2026-08-26-v0.11-mechanical-review-smoke-004.md`。
+- 最新真实 Artifact 证据：Artifact v2 Benchmark 005 恰好使用六次 OpenAI/Anthropic 调用，以三项带来源 Change 到达待决定 Human Gate。界面显示 14K 输入 tokens、3,057 输出 tokens、48 秒和 `$0.046` 应用估算。删除占位符与弱化 `eliminate` 有价值，但两名 Reviewer 都漏掉明确受约束的 `~50%` 指标；一名 Reviewer 错误地把 `reduce` 当作绝对措辞，Verifier 又重复了这个前提。见 `docs/zh-CN/evaluations/2026-08-26-v0.11-artifact-v2-benchmark-005.md`。
+- 最新 Decide / Plan 证据：Smoke 006 完成一场恢复后的混合供应商 12 天 LeetCode 房间。最终 synthesis 使用 1,585 output tokens、22 秒和 `$0.013`；房间显示总计 11K input、3,974 output、71 秒和 `$0.044` 估算。协议恢复通过，但产物因遗漏具体题名/题号而未通过 Gate。见 `docs/zh-CN/evaluations/2026-08-27-v0.11-decide-plan-smoke-006.md`。
+- 最新详细 Plan 证据：Smoke 007 新增每天 10 MEU 契约。一次输入已改变的 Anthropic review 恢复通过；最终 OpenAI synthesis 使用 2,092 output tokens、26 秒和 `$0.017`，随后因缺少 Day 2 被拒绝。没有继续重试。见 `docs/zh-CN/evaluations/2026-08-27-v0.11-detailed-plan-smoke-007.md`。
+- 已修复真实缺陷：供应商可选参数兼容、席位模型选择崩溃、Canonical State 容量不足导致依赖顺序的 Review 拒绝、只写在 prompt 中的 phase 上限、Observer 选择输出过大、targeted debate 使用完整 Review schema 的负担、不可见 Observer 失败原因、缺少可信日期、Claim 决定无约束力、被拒绝 Claim 泄漏进 synthesis、只依靠 prompt 的 Review Brief 结构、synthesis card 污染、Decide 产物输出不足，以及废弃 transcript turn 破坏显式恢复。原失败房间保留供审计。
 - 其他未完成：生产 API Key、加密永久 BYOK、Skill 包、多样性指标、导出、证据系统、执行连接器和广泛比较评测。
-- 当前里程碑：M2.10 最后证据 Gate，随后进入 M2.11 Review Task Pack。
-- 下一动作：先保留可恢复 v0.10c 源码点，再在用户单独批准预算后运行一间全新 Checkpoints 房间：形成开放 Dispute，由 Chair 选择一次定向回合，只运行路由 Seat 与一次 Observer，再进入综合。记录费用、延迟、格式可靠性与明确 Dispute 是否更适合决策。记录有限证据后，开始最小端到端 Review benchmark；不继续通用 Observer、路由、自治或界面基础设施工作。
-- 恢复点：commit `f986b5e` 是 M2.9 之前的精确源码状态，现有 tag `backup/v0.6-live-baseline-2026-08-04` 保存更早的真实基线。当前 M2.9 修改仍在 working tree 中，因为本环境拒绝写入 `.git/index.lock` 与 tag lock，所以无法 stage、commit 或创建新的备份 tag。
+- 当前重点：可用交付的参考质量，不再扩建体验，也不再一律追求最低配置。Plan 负面 Gate 现已有本地修改/复核路径及任务化 prompt。Review 历史语义失败与比较优势仍未解决，M2.12 继续暂缓。
+- 强制校正流程：每个实现切片现在都必须以 Correction Brief 开始，并按照[开发校正循环](DEVELOPMENT_CORRECTION_LOOP.md)分别记录机械、语义、Artifact、Human Gate、体验、经济性和差异化价值结果。
+- 最新本地修正：待决定 Plan Gate 人工逐天编辑，整份重新校验，保存后发布，失败留草稿，恢复原始一天、历史和准确修订批准。原 AI Plan/审阅保持不变，复制/视图注明人工修改未经模型复审。不调用付费模型，不改 prompt/预算，不增加数据库 store。仍有三处既有 Cloudflare 声明错误。
+- 最新实现（D-055）：每份原计划最多选三条意见，一次修改和一次不同席位复核，允许有据拒绝，保留未解决意见。调用前保存意图/草稿；失败停止，完成或放弃后 UI 不可重复循环。原天数/审阅不变，精确批准包含来源与修改；人工编辑需在完成或放弃后进行，且不冒充模型复审。Plan 交付调用对已有识别范围内 GPT-5 使用 medium，其余保留供应商默认，不更换用户模型。上限：Builder16K、审阅6K、修改12K、复核6K，Plan 超时180秒。Gemini 思考计入输出用量；OpenAI Plan 不完整响应保留已报告用量。
+- 下一动作：保存的Live014 Plan完整但尚未通过审阅。用户恢复Anthropic/Fable连接后，最多另行确认一次Reviewer-only调用，沿用6K上限，不重生成Sol、不自动重试；随后先判断意见是否有据，再决定是否修改/复核。保留010-014，不加席、不造通用账本平台、不大改UX。
+- 恢复点：`241affd` 完成 v0.10c 并锁定产品方向；`0dfbc1f` 在 Codex sandbox 中关闭本地 inspector；`d844b40` 修复席位模型选择崩溃，也是当前已提交基线。v0.10c 烟雾校正和 v0.11a-e Review 工作仍留在尚未提交的工作区。
 - 线上地址：`https://multi-ai-meeting-room.schromeo.chatgpt.site`
 - 发布状态：线上仍为上一版本。v0.4 源码已推送并保存，但 Sites 自动生成的 `nodejs_compat` 标记与 2026-08-04 生效的平台默认值冲突；输入不变时不要重复部署。
 
 ## 每次开始工作前
 
-1. 阅读项目章程、产品方向定稿、本文件、决策记录、路线图、会议协议蓝图、模型与代理蓝图和最新开发日志。
+1. 阅读项目章程、产品方向定稿、开发校正循环、本文件、决策记录、路线图、会议协议蓝图、模型与代理蓝图和最新开发日志。
 2. 修改前检查工作区，保留用户已有改动。
 3. 说明本次工作推进哪个里程碑和完成条件。
 4. 确认该任务没有已经完成或被明确否决。
 5. 只实现验证当前假设所需的最小端到端范围。
+6. 实现前写出当前 Correction Brief；若无法写全，则先建立 fixture、rubric 或 baseline，不扩大代码。
 
 ## 防循环与重试规则
 
@@ -63,7 +83,7 @@ M2 不包括联网研究、代码执行、通用插件或自治循环。密钥�
 
 ## 已批准产品目标
 
-M2.7 持久化、M2.8 结构化状态、M2.9 可恢复编排和已经实现的 M2.10 切片构成当前 Shared Core。一次有限真实检查后，先做 M2.11 Review 与 M2.12 证据，再做 M2.13 Decide / Plan。不能把 Discuss 协议当成所有 Task Pack 的统一阶段。产品顺序以 `PRODUCT_DIRECTION.md` 为准；已经实现的 Discuss 协议仍以 `MEETING_PROTOCOL_BLUEPRINT.md` 为准。
+M2.7 持久化、M2.8 结构化状态、M2.9 可恢复编排和已经实现的 M2.10 切片构成 Shared Core。Review 仍是第一条产品线；D-052 暂缓 M2.12 对照，同时允许有界 M2.13 Plan 修正，并不表示 Task Pack 或比较优势已完成。不能把 Discuss 当成统一阶段。产品顺序以 PRODUCT_DIRECTION.md 为准，已实现行为见 MEETING_PROTOCOL_BLUEPRINT.md。
 
 ## 每次结束工作前
 

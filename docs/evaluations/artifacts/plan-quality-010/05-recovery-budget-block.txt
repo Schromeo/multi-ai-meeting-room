@@ -1,0 +1,134 @@
+- main:
+  - button "M Meeting Room":
+    - generic: M
+    - strong: Meeting Room
+  - navigation "Meeting stages":
+    - button "1 Setup":
+      - generic: "1"
+      - text: Setup
+    - button "2 Agenda":
+      - generic: "2"
+      - text: Agenda
+    - button "3 Meeting":
+      - generic: "3"
+      - text: Meeting
+    - button "4 Decision" [disabled]:
+      - generic: "4"
+      - text: Decision
+  - button "Meetings 11":
+    - text: Meetings
+    - generic: "11"
+  - button "2 connections": 2 connections
+  - generic "Protocol progress":
+    - generic: "1"
+    - text: Proposals
+    - generic: "2"
+    - text: Cross-review
+    - generic: "3"
+    - text: Memo
+  - generic: Budget exhausted
+  - generic "Transcript view":
+    - button "Focus"
+    - button "Overview"
+  - region "Detailed LeetCode plan":
+    - heading "12-day LeetCode plan" [level=2]
+    - paragraph: 6/12 days ready · 10 MEU/day · 360 min/day
+    - text: Day
+    - combobox "Plan day":
+      - option "Day 1"
+      - option "Day 2"
+      - option "Day 3"
+      - option "Day 4"
+      - option "Day 5"
+      - option "Day 6" [selected]
+      - option "Day 7 · pending"
+      - option "Day 8 · pending"
+      - option "Day 9 · pending"
+      - option "Day 10 · pending"
+      - option "Day 11 · pending"
+      - option "Day 12 · pending"
+    - status: "Pending days: 7, 8, 9, 10, 11, 12"
+    - heading "Day 6 · BST与树形分治/Trie；T+1复习Day5树题，T+3复习Day3难题" [level=3]
+    - generic: 14.00 MEU
+    - generic: 344 min total
+    - generic: 7 new / 5 redo
+    - table:
+      - rowgroup:
+        - row "Problem Difficulty Work Minutes":
+          - columnheader "Problem"
+          - columnheader "Difficulty"
+          - columnheader "Work"
+          - columnheader "Minutes"
+      - rowgroup:
+        - row "#102 Binary Tree Level Order Traversal medium redo 14":
+          - cell "#102 Binary Tree Level Order Traversal"
+          - cell "medium"
+          - cell "redo"
+          - cell "14"
+        - row "#105 Construct Binary Tree from Preorder and Inorder Traversal medium redo 16":
+          - cell "#105 Construct Binary Tree from Preorder and Inorder Traversal"
+          - cell "medium"
+          - cell "redo"
+          - cell "16"
+        - row "#236 Lowest Common Ancestor of a Binary Tree medium redo 16":
+          - cell "#236 Lowest Common Ancestor of a Binary Tree"
+          - cell "medium"
+          - cell "redo"
+          - cell "16"
+        - row "#150 Evaluate Reverse Polish Notation medium redo 14":
+          - cell "#150 Evaluate Reverse Polish Notation"
+          - cell "medium"
+          - cell "redo"
+          - cell "14"
+        - row "#239 Sliding Window Maximum hard redo 32":
+          - cell "#239 Sliding Window Maximum"
+          - cell "hard"
+          - cell "redo"
+          - cell "32"
+        - row "#98 Validate Binary Search Tree medium new 22":
+          - cell "#98 Validate Binary Search Tree"
+          - cell "medium"
+          - cell "new"
+          - cell "22"
+        - row "#114 Flatten Binary Tree to Linked List medium new 22":
+          - cell "#114 Flatten Binary Tree to Linked List"
+          - cell "medium"
+          - cell "new"
+          - cell "22"
+        - row "#129 Sum Root to Leaf Numbers medium new 20":
+          - cell "#129 Sum Root to Leaf Numbers"
+          - cell "medium"
+          - cell "new"
+          - cell "20"
+        - row "#208 Implement Trie (Prefix Tree) medium new 28":
+          - cell "#208 Implement Trie (Prefix Tree)"
+          - cell "medium"
+          - cell "new"
+          - cell "28"
+        - row "#211 Design Add and Search Words Data Structure medium new 26":
+          - cell "#211 Design Add and Search Words Data Structure"
+          - cell "medium"
+          - cell "new"
+          - cell "26"
+        - row "#79 Word Search medium new 26":
+          - cell "#79 Word Search"
+          - cell "medium"
+          - cell "new"
+          - cell "26"
+        - row "#297 Serialize and Deserialize Binary Tree hard new 48":
+          - cell "#297 Serialize and Deserialize Binary Tree"
+          - cell "hard"
+          - cell "new"
+          - cell "48"
+    - paragraph:
+      - strong: Review · 60 min
+      - text: ≥10 MEU；Trie两题API正确、通过样例；序列化题能在预算内实现。总结BST性质与树型DP模板。元数据需官网二次确认。
+    - paragraph:
+      - strong: Adjustment
+      - text: 若进度落后>45分钟，优先完成Trie与BST；将297延期并以2道树Medium替换（2 MEU等价）；如仍超时，以redo Medium替代最后1道新Medium以控时而不降MEU。
+    - paragraph: "MEU: Hard = 2 Medium; 3 Easy = 1 Medium. Problem identities and difficulties are model-supplied, not externally verified. Review is advisory. Interrupted-call usage may be incomplete."
+  - strong: Round 1/1
+  - generic: 2 seats / 5 turns complete
+  - generic: 1 calls · 46K output · 633s model time left
+  - paragraph: "Budget stop: agent-turn limit reached. No provider call was started."
+  - button "Return to agenda"

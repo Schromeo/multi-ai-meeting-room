@@ -1,0 +1,50 @@
+# Alex Example
+
+## Education
+MS Computer Science, December 2024.
+
+## Experience
+Internal Tools Engineer, June-December 2025.
+- Built and documented an internal API for the support team.
+- Made manual triage easier for the support team.
+
+## Projects
+SignalSearch: Added query filters to reduce false positives in evaluated examples.
+BatchIndex: Implemented intermediate result reuse to reduce redundant computation in some indexing jobs.
+
+## Skills
+Python, TypeScript, SQL, Linux.
+
+---
+
+**Material Change List**
+
+1. **Unsupported metric and AI claim in "Experience" section**
+   - **Before:** "- Reduced manual triage time by approximately 50%."
+   - **After:** "- Made manual triage easier for the support team."
+   - **Evidence:** Candidate notes state "triage became easier" but confirm there is no measured 50% reduction.
+   - **Before:** "- Used AI tools to [FILL IN OR DELETE: quantify productivity gain]."
+   - **After:** [Removed line]
+   - **Evidence:** No verified AI-tool workflow or impact example present; template text marked for deletion or update.
+
+2. **Project claims strengthened only within supported limits**
+   - **Before (SignalSearch):** "SignalSearch: Added query filters to reduce false positives."
+   - **After (SignalSearch):** "SignalSearch: Added query filters to reduce false positives in evaluated examples."
+   - **Evidence:** Candidate notes state reduction in false positives is observed in evaluated examples; no evidence of general elimination or effect beyond this.
+   - **Before (BatchIndex):** "BatchIndex: Eliminated redundant computation across all indexing jobs."
+   - **After (BatchIndex):** "BatchIndex: Implemented intermediate result reuse to reduce redundant computation in some indexing jobs."
+   - **Evidence:** Candidate notes clarify that not all jobs benefit—claim must be limited accordingly.
+
+3. **Template/placeholder text removed**
+   - **Before:** "- Used AI tools to [FILL IN OR DELETE: quantify productivity gain]."
+   - **After:** [Removed line]
+   - **Evidence:** No AI-tool workflow or impact example supplied.
+
+---
+
+**Remaining Human Checks and Uncertainties**
+
+- Employment and project achievements reflect self-report; third-party confirmation is not provided in the supplied evidence.
+- Details on the scope or business impact of the projects beyond technical improvements are not included here and would require further human follow-up if necessary.
+- No graduation-window or eligibility rule is addressed, nor is one supplied, but job timing post-graduation may warrant human review.
+- All skills and educational attainments are accepted as stated due to confirmed evidence, but no external credential verification is performed.

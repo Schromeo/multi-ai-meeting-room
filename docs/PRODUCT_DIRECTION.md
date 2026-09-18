@@ -95,6 +95,8 @@ Review uses bounded model roles and deterministic orchestration first. Research 
 
 ## Direction Checks
 
+The required operating procedure for these checks is [Development Correction Loop](DEVELOPMENT_CORRECTION_LOOP.md). Every implementation slice must identify its observed failure, user artifact, baseline, smallest hypothesis, expected information gain, acceptance checks, cost boundary, and stop condition before code work expands.
+
 Every completed product milestone must answer:
 
 1. Which real user problem did this change solve?
@@ -112,6 +114,7 @@ Hard development rules:
 - Do not create a shared abstraction with only one validated consumer.
 - Do not broaden autonomy, permissions, model count, or rounds without a named use case and Human Gate.
 - A polished transcript or reliable state machine is not evidence of a better user outcome.
+- If a protocol passes mechanically but its artifact fails, the next work targets the artifact contract or task responsibility split, not generic orchestration polish.
 
 ## Success Evidence
 

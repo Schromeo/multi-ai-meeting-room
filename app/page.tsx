@@ -1,6 +1,11 @@
 "use client";
 
 import { FormEvent, useEffect, useMemo, useRef, useState } from "react";
+import { PlanView } from "./plan-view";
+import { PlanAmendmentPanel } from "./plan-amendment";
+import { modelRevisedPlan, planDecisionReady, validPlanConcernSelection, preparePlanRecovery } from "../lib/plan-artifact";
+import { PlanDayEditor } from "./plan-day-editor";
+import { createPlanHumanRevision, missingPlanDays, parsePlanArtifact, parsePlanApproval, parsePlanRequest, planReady, planBrief, planText, planLimits, revisedPlan, type PlanArtifact, type PlanApproval, type PlanHumanRevision, type PlanDay } from "../lib/plan-artifact";
 import {
   AgentProgress,
   DiscussEvent,
@@ -8,6 +13,7 @@ import {
   providerIds,
   ProviderId,
   ProviderSummary,
+  ReplayCostEstimate,
   roleBriefs,
   roleIds,
   roleLabels,
@@ -20,17 +26,26 @@ import {
   emptyUsage,
   MeetingRecord,
   ObserverSnapshot,
+  parseReviewTaskInput,
   ParticipantSnapshot,
+  reviewTaskLimits,
+  ReviewTaskInput,
+  TaskMode,
   TranscriptItem,
   upsertMeetingRecord,
 } from "../lib/meeting-record";
 import { createBrowserRoomStore, RoomStore } from "../lib/room-store";
+import { inferProviderFromApiKey } from "../lib/provider-key-detection";
 import {
+  addChairFindingByChair,
   appendChairDirective,
   ChairDirective,
+  ClaimDecision,
   createInitialMeetingState,
+  decideClaimByChair,
   MeetingState,
   reduceTurnEnvelope,
+  ReviewFindingSourceKind,
 } from "../lib/meeting-state";
 import {
   appendProcessReport,
@@ -42,6 +57,7 @@ import {
   completeObserverTransition,
   continueProtocol,
   ControlMode,
+  createArtifactFirstProtocolState,
   createDefaultMeetingBudget,
   createMeetingProtocolState,
   createProcessReport,
@@ -55,10 +71,40 @@ import {
   routeSeatsForDispute,
   stopProtocol,
 } from "../lib/meeting-orchestrator";
+import {
+  buildReviewExecutiveBrief,
+  createReviewApprovedArtifact,
+  createReviewHumanRevision,
+  prepareKeptOriginalReview,
+  ReviewApprovedArtifact,
+  ReviewArtifactResult,
+  ReviewEditCheckpoint,
+  ReviewHumanRevision,
+  selectReviewArtifactSeatIds,
+  validateReviewFindingSource,
+} from "../lib/review-artifact";
+import ReplayReceipt from "./replay-receipt";
 
 type WorkspaceStage = "agenda" | "meeting" | "decision";
 type TranscriptMode = "focus" | "overview";
 type ProviderChoice = ProviderId | "auto";
+type ReviewResultView = "artifact" | "changes" | "verification" | "brief";
+
+type ReviewReplayResult = {
+  ok: boolean;
+  stage: "review_verifier" | "review_baseline";
+  fixtureVersion: number;
+  provider: ProviderId;
+  model: string;
+  diagnostic?: string;
+  rawOutput: string;
+  usage: UsageSummary | null;
+  verification?: ReviewArtifactResult["verification"];
+  caseId?: string;
+  requestId?: string;
+  outputAtCap?: boolean;
+  costEstimate?: ReplayCostEstimate;
+};
 
 type ModelOption = {
   id: string;
@@ -88,7 +134,7 @@ type ObserverDraft = {
   model: string;
 };
 
-const defaultObjective = "Decide the narrowest useful version of a multi-AI meeting room";
+const defaultObjective = "Review Artifact v1 against the supplied references and truth constraints";
 
 const providerUi: Record<
   ProviderId,
@@ -137,6 +183,10 @@ const milestones = [
 
 export default function Home() {
   const [objective, setObjective] = useState(defaultObjective);
+  const [taskMode, setTaskMode] = useState<TaskMode>("review");
+  const [reviewArtifact, setReviewArtifact] = useState("");
+  const [reviewReferences, setReviewReferences] = useState("");
+  const [reviewTruthConstraints, setReviewTruthConstraints] = useState("");
   const [providers, setProviders] = useState<ProviderSummary[]>([]);
   const [sessionConnections, setSessionConnections] = useState<ConnectionRecord[]>([]);
   const [seatDrafts, setSeatDrafts] = useState<SeatDraft[]>(initialSeatDrafts);
@@ -167,6 +217,12 @@ export default function Home() {
   const [currentParticipants, setCurrentParticipants] = useState<ParticipantSnapshot[]>([]);
   const [currentObserver, setCurrentObserver] = useState<ObserverSnapshot | null>(null);
   const [connectionError, setConnectionError] = useState("");
+  const [replayConnectionId, setReplayConnectionId] = useState("");
+  const [replayModelId, setReplayModelId] = useState("");
+  const [replayKind, setReplayKind] = useState<"review_verifier_v1" | "review_baseline_resume_v1">("review_verifier_v1");
+  const [replayRunning, setReplayRunning] = useState(false);
+  const [replayError, setReplayError] = useState("");
+  const [replayResult, setReplayResult] = useState<ReviewReplayResult | null>(null);
   const [stage, setStage] = useState<WorkspaceStage>("agenda");
   const [transcriptMode, setTranscriptMode] = useState<TranscriptMode>("focus");
   const [pinnedMessageId, setPinnedMessageId] = useState<string | null>(null);
@@ -180,6 +236,32 @@ export default function Home() {
   const [iteration, setIteration] = useState(0);
   const [running, setRunning] = useState(false);
   const [memo, setMemo] = useState("");
+  const [reviewEditCheckpoint, setReviewEditCheckpoint] = useState<ReviewEditCheckpoint | null>(null);
+  const [reviewResult, setReviewResult] = useState<ReviewArtifactResult | null>(null);
+  const [planEnabled, setPlanEnabled] = useState(false);
+  const [planSettings, setPlanSettings] = useState({ days: 12, dailyMeu: 10, dailyMinutes: 360 });
+  const planRequest = useMemo(() => taskMode === "decide" && planEnabled ? parsePlanRequest(planSettings) : null, [taskMode, planEnabled, planSettings]);
+  const [planArtifact, setPlanArtifact] = useState<PlanArtifact | null>(null);
+  const [planApproval, setPlanApproval] = useState<PlanApproval | null>(null);
+  const [planWork, setPlanWork] = useState<string | null>(null);
+  const planRef = useRef<PlanArtifact | null>(null);
+  const planApprovalRef = useRef<PlanApproval | null>(null);
+  const [planHumanRevision, setPlanHumanRevision] = useState<PlanHumanRevision | null>(null);
+  const planHumanRevisionRef = useRef<PlanHumanRevision | null>(null);
+  const [editingPlanDay, setEditingPlanDay] = useState<PlanDay | null>(null);
+  const [lastEditedPlanDay, setLastEditedPlanDay] = useState(1);
+  const [planSaving, setPlanSaving] = useState(false);
+  const planSavingRef = useRef(false);
+  const [reviewHumanRevision, setReviewHumanRevision] = useState<ReviewHumanRevision | null>(null);
+  const [reviewApprovedArtifact, setReviewApprovedArtifact] = useState<ReviewApprovedArtifact | null>(null);
+  const [reviewResultView, setReviewResultView] = useState<ReviewResultView>("artifact");
+  const [editingReviewChangeId, setEditingReviewChangeId] = useState("");
+  const [reviewChangeDraft, setReviewChangeDraft] = useState("");
+  const [reviewWork, setReviewWork] = useState<{
+    stage: "editing" | "verifying";
+    progress: AgentProgress;
+    label: string;
+  } | null>(null);
   const [decision, setDecision] = useState<DecisionStatus>("waiting");
   const [usage, setUsage] = useState<UsageSummary>(emptyUsage);
   const [meetingState, setMeetingState] = useState<MeetingState | null>(null);
@@ -189,6 +271,11 @@ export default function Home() {
   const [directiveKind, setDirectiveKind] = useState<ChairDirective["kind"]>("constraint");
   const [directiveTarget, setDirectiveTarget] = useState("all");
   const [directiveText, setDirectiveText] = useState("");
+  const [chairFindingOpen, setChairFindingOpen] = useState(false);
+  const [chairFindingText, setChairFindingText] = useState("");
+  const [chairFindingSourceKind, setChairFindingSourceKind] = useState<ReviewFindingSourceKind>("truth_constraint");
+  const [chairFindingExcerpt, setChairFindingExcerpt] = useState("");
+  const [chairFindingTargetId, setChairFindingTargetId] = useState("");
   const [raiseHandRequested, setRaiseHandRequested] = useState(false);
   const [observerProgress, setObserverProgress] = useState<AgentProgress | null>(null);
   const [selectedDisputeId, setSelectedDisputeId] = useState("");
@@ -204,12 +291,17 @@ export default function Home() {
   const transcriptRef = useRef<TranscriptItem[]>([]);
   const usageRef = useRef<UsageSummary>(emptyUsage);
   const memoRef = useRef("");
+  const reviewEditCheckpointRef = useRef<ReviewEditCheckpoint | null>(null);
+  const reviewResultRef = useRef<ReviewArtifactResult | null>(null);
+  const reviewHumanRevisionRef = useRef<ReviewHumanRevision | null>(null);
+  const reviewApprovedArtifactRef = useRef<ReviewApprovedArtifact | null>(null);
   const decisionRef = useRef<DecisionStatus>("waiting");
   const currentParticipantsRef = useRef<ParticipantSnapshot[]>([]);
   const currentObserverRef = useRef<ObserverSnapshot | null>(null);
   const currentRoomIdRef = useRef("");
   const currentRoomCreatedAtRef = useRef("");
   const raiseHandRef = useRef(false);
+  const keepingOriginalRef = useRef(false);
 
   useEffect(() => {
     let active = true;
@@ -312,11 +404,15 @@ export default function Home() {
     () => new Map(connections.map((connection) => [connection.id, connection])),
     [connections],
   );
-  const detectedProvider = inferProvider(draftKey);
+  const detectedProvider = inferProviderFromApiKey(draftKey);
   const effectiveProvider = providerChoice === "auto" ? detectedProvider : providerChoice;
   const editingConnection = editingConnectionId
     ? sessionConnections.find((connection) => connection.id === editingConnectionId)
     : undefined;
+  const replayConnection = connectionById.get(replayConnectionId) ?? connections[0];
+  const effectiveReplayModel = replayConnection?.models.some((model) => model.id === replayModelId)
+    ? replayModelId
+    : replayConnection?.models[0]?.id ?? "";
 
   const seats = useMemo<SeatRequest[]>(
     () =>
@@ -346,6 +442,14 @@ export default function Home() {
     };
   }, [connectionById, observerDraft]);
   const observerReady = !observerDraft.enabled || Boolean(observerRequest);
+  const reviewInput = useMemo<ReviewTaskInput | null>(
+    () => parseReviewTaskInput({
+      artifact: reviewArtifact,
+      references: reviewReferences,
+      truthConstraints: reviewTruthConstraints,
+    }),
+    [reviewArtifact, reviewReferences, reviewTruthConstraints],
+  );
   const readySeatCount = seats.length;
   const targetSeatNumber = connectionTargetSeatId
     ? seatDrafts.findIndex((seat) => seat.id === connectionTargetSeatId) + 1
@@ -355,15 +459,24 @@ export default function Home() {
     historyReady &&
     !running &&
     objective.trim().length >= 8 &&
+    (taskMode !== "review" || Boolean(reviewInput)) &&
+    (taskMode !== "decide" || !planEnabled || Boolean(planRequest)) &&
     seats.length >= 2 &&
     seats.length <= 3 &&
     observerReady;
   const maximumProviderCalls = seats.length >= 2
-    ? (seats.length * 2 + 1 + (observerDraft.enabled ? 1 : 0)) * maxRounds
+    ? planRequest
+      ? 2
+      : (seats.length * 2 + (taskMode === "review" ? 3 : 2) + (observerDraft.enabled ? 1 : 0)) * maxRounds
     : 0;
   const setupBudget = useMemo(
-    () => createDefaultMeetingBudget(Math.max(2, seats.length), maxRounds, observerDraft.enabled),
-    [maxRounds, observerDraft.enabled, seats.length],
+    () => {
+      const base = createDefaultMeetingBudget(Math.max(2, seats.length), maxRounds, observerDraft.enabled);
+      return planRequest ? createPlanBudget() : taskMode === "review"
+        ? createReviewArtifactBudget(base, maxRounds)
+        : createDecisionPackageBudget(base, maxRounds);
+    },
+    [maxRounds, observerDraft.enabled, seats.length, taskMode, planRequest],
   );
   const activeBudgetStatus = useMemo(
     () => protocolState ? evaluateMeetingBudget(protocolState, usage) : null,
@@ -375,6 +488,42 @@ export default function Home() {
     () => meetingState?.disputes.filter((dispute) => dispute.status === "open") ?? [],
     [meetingState],
   );
+  const reviewFindings = useMemo(
+    () => taskMode === "review"
+      ? (meetingState?.claims ?? []).filter((claim) =>
+          Boolean(claim.reviewSource) ||
+          claim.sourceMessageIds.some((sourceId) =>
+            transcript.some((turn) => turn.id === sourceId && turn.phase === "proposal"),
+          ),
+        )
+      : [],
+    [meetingState, taskMode, transcript],
+  );
+  const acceptedReviewFindings = reviewFindings.filter(
+    (finding) => finding.status === "accepted_by_chair",
+  );
+  const reviewArtifactSeatIds = useMemo(
+    () => selectReviewArtifactSeatIds(seats),
+    [seats],
+  );
+  const displayedPlan = planApproval?.artifact ?? (planArtifact ? revisedPlan(planArtifact, planHumanRevision) : null);
+  const savedPlanRecovery = planArtifact && protocolState && !planApproval ? preparePlanRecovery(planArtifact, protocolState) : null;
+  const savedPlanRecoveryBudgetStatus = savedPlanRecovery
+    ? evaluateMeetingBudget(savedPlanRecovery, usage, savedPlanRecovery.pendingSeatIds)
+    : null;
+  const savedPlanRecoveryUnavailable = savedPlanRecoveryBudgetStatus?.allowed === false;
+  const savedPlanRecoveryLabel = savedPlanRecoveryUnavailable && savedPlanRecoveryBudgetStatus
+    ? `Recovery unavailable · ${budgetStopLabel(savedPlanRecoveryBudgetStatus.reasons)}`
+    : savedPlanRecovery
+      ? `Resume saved plan (up to ${savedPlanRecovery.pendingSeatIds.length} calls)`
+      : null;
+  const planEditedDays = planHumanRevision?.days.map((day) => day.day) ?? [];
+  const effectiveReviewArtifact = reviewHumanRevision?.artifactV3 ?? reviewResult?.artifactV2 ?? "";
+  const effectiveReviewChanges = reviewHumanRevision?.changeSet ?? reviewResult?.changeSet ?? [];
+  const displayedReviewArtifact = reviewApprovedArtifact?.artifact ?? effectiveReviewArtifact;
+  const displayedReviewChanges = reviewApprovedArtifact?.changeSet ?? effectiveReviewChanges;
+  const displayedReviewVersion = reviewApprovedArtifact?.artifactVersion ??
+    reviewHumanRevision?.artifactVersion ?? reviewResult?.artifactVersion ?? 2;
   const selectedDispute = openDisputes.find((dispute) => dispute.id === selectedDisputeId) ?? openDisputes[0];
   const routedDebateSeatIds = selectedDispute && meetingState
     ? routeSeatsForDispute(meetingState, selectedDispute, seats.map((seat) => seat.id))
@@ -412,12 +561,22 @@ export default function Home() {
   }, [followLive, transcript, transcriptMode]);
 
   useEffect(() => {
-    if (!historyReady || !currentRoomId || iteration === 0 || transcript.length === 0) return;
+    if (planSaving || !historyReady || !currentRoomId || iteration === 0 || transcript.length === 0) return;
 
     const record: MeetingRecord = {
       version: 1,
       id: currentRoomId,
       objective: objective.trim() || "Untitled meeting",
+      taskMode,
+      ...(taskMode === "review" && reviewInput ? { reviewInput } : {}),
+      ...(reviewEditCheckpoint ? { reviewEditCheckpoint } : {}),
+      ...(reviewResult ? { reviewResult } : {}),
+      ...(planRequest ? { planRequest } : {}),
+      ...(planArtifact ? { planArtifact } : {}),
+      ...(planApproval ? { planApproval } : {}),
+      ...(planHumanRevision ? { planHumanRevision } : {}),
+      ...(reviewHumanRevision ? { reviewHumanRevision } : {}),
+      ...(reviewApprovedArtifact ? { reviewApprovedArtifact } : {}),
       stage: memo ? "decision" : "meeting",
       transcript,
       memo,
@@ -433,6 +592,9 @@ export default function Home() {
     };
 
     const timer = window.setTimeout(() => {
+      if (planSavingRef.current) return;
+      if (planArtifact !== planRef.current) return;
+      if (planHumanRevision !== planHumanRevisionRef.current) return;
       const nextRecords = upsertMeetingRecord(meetingRecordsRef.current, record);
       meetingRecordsRef.current = nextRecords;
       setMeetingRecords(nextRecords);
@@ -459,6 +621,17 @@ export default function Home() {
     meetingState,
     objective,
     protocolState,
+    reviewInput,
+    reviewEditCheckpoint,
+    reviewHumanRevision,
+    reviewApprovedArtifact,
+    reviewResult,
+    planRequest,
+    planArtifact,
+    planApproval,
+    planHumanRevision,
+    planSaving,
+    taskMode,
     transcript,
     usage,
   ]);
@@ -482,6 +655,29 @@ export default function Home() {
     setMemo(next);
   }
 
+  function updateReviewResult(next: ReviewArtifactResult | null) {
+    reviewResultRef.current = next;
+    setReviewResult(next);
+    if (next) setReviewResultView("artifact");
+  }
+
+  function updateReviewHumanRevision(next: ReviewHumanRevision | null) {
+    reviewHumanRevisionRef.current = next;
+    setReviewHumanRevision(next);
+    setEditingReviewChangeId("");
+    setReviewChangeDraft("");
+  }
+
+  function updateReviewApprovedArtifact(next: ReviewApprovedArtifact | null) {
+    reviewApprovedArtifactRef.current = next;
+    setReviewApprovedArtifact(next);
+  }
+
+  function updateReviewEditCheckpoint(next: ReviewEditCheckpoint | null) {
+    reviewEditCheckpointRef.current = next;
+    setReviewEditCheckpoint(next);
+  }
+
   function updateDecision(next: DecisionStatus) {
     decisionRef.current = next;
     setDecision(next);
@@ -503,9 +699,17 @@ export default function Home() {
     if (next) setIteration(next.round);
   }
 
+  function updatePlan(next: PlanArtifact | null) {
+    planRef.current = next; setPlanArtifact(next);
+    if (!next) { updatePlanHumanRevision(null); setEditingPlanDay(null); setLastEditedPlanDay(1); }
+  }
+  function updatePlanApproval(next: PlanApproval | null) { planApprovalRef.current = next; setPlanApproval(next); }
+  function updatePlanHumanRevision(next: PlanHumanRevision | null) { planHumanRevisionRef.current = next; setPlanHumanRevision(next); }
+
   async function flushProtocolRecord(
     nextProtocol = protocolStateRef.current,
     nextMeetingState = meetingStateRef.current,
+    artifactUpdate?: Pick<MeetingRecord, "reviewResult" | "memo" | "decision" | "stage" | "planHumanRevision" | "planArtifact">,
   ) {
     const roomId = currentRoomIdRef.current || currentRoomId;
     const createdAt = currentRoomCreatedAtRef.current || currentRoomCreatedAt;
@@ -516,6 +720,22 @@ export default function Home() {
       version: 1,
       id: roomId,
       objective: objective.trim() || "Untitled meeting",
+      taskMode,
+      ...(taskMode === "review" && reviewInput ? { reviewInput } : {}),
+      ...(reviewEditCheckpointRef.current
+        ? { reviewEditCheckpoint: reviewEditCheckpointRef.current }
+        : {}),
+      ...(reviewResultRef.current ? { reviewResult: reviewResultRef.current } : {}),
+      ...(planRequest ? { planRequest } : {}),
+      ...(planRef.current ? { planArtifact: planRef.current } : {}),
+      ...(planApprovalRef.current ? { planApproval: planApprovalRef.current } : {}),
+      ...(planHumanRevisionRef.current ? { planHumanRevision: planHumanRevisionRef.current } : {}),
+      ...(reviewHumanRevisionRef.current
+        ? { reviewHumanRevision: reviewHumanRevisionRef.current }
+        : {}),
+      ...(reviewApprovedArtifactRef.current
+        ? { reviewApprovedArtifact: reviewApprovedArtifactRef.current }
+        : {}),
       stage: memoRef.current ? "decision" : "meeting",
       transcript: transcriptRef.current,
       memo: memoRef.current,
@@ -528,6 +748,7 @@ export default function Home() {
       protocolState: nextProtocol,
       createdAt,
       updatedAt: new Date().toISOString(),
+      ...artifactUpdate,
     };
     const store = roomStoreRef.current;
     if (!store) throw new Error("The local meeting database is unavailable.");
@@ -761,6 +982,55 @@ export default function Home() {
     }
   }
 
+  async function runReviewReplay() {
+    if (!replayConnection || !effectiveReplayModel || replayRunning) return;
+    setReplayRunning(true);
+    setReplayError("");
+    setReplayResult(null);
+    const replaySeat: SeatRequest = {
+      id: "review-verifier-replay",
+      connectionId: replayConnection.id,
+      provider: replayConnection.provider,
+      model: effectiveReplayModel,
+      role: "critic",
+    };
+    try {
+      const response = await fetch("/api/discuss", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          stageReplay: {
+            kind: replayKind,
+            connectionId: replayConnection.id,
+            provider: replayConnection.provider,
+            model: effectiveReplayModel,
+          },
+          connections: sessionConnectionPayload([replaySeat], connectionById),
+          requestId: createRequestId(),
+        }),
+      });
+      const result = (await response.json().catch(() => ({}))) as ReviewReplayResult & { error?: string };
+      if (!response.ok && !(result.stage === "review_baseline" && typeof result.rawOutput === "string")) {
+        throw new Error(result.error ?? `Stage replay failed (${response.status}).`);
+      }
+      setReplayResult(result);
+    } catch (replayFailure) {
+      setReplayError(safeClientError(replayFailure));
+    } finally {
+      setReplayRunning(false);
+    }
+  }
+
+  function downloadBaselineReceipt() {
+    if (replayResult?.stage !== "review_baseline") return;
+    const url = URL.createObjectURL(new Blob([JSON.stringify(replayResult, null, 2)], { type: "application/json" }));
+    const anchor = document.createElement("a");
+    anchor.href = url;
+    anchor.download = `review-s1-${replayResult.requestId}.json`;
+    anchor.click();
+    setTimeout(() => URL.revokeObjectURL(url), 1_000);
+  }
+
   function removeSessionConnection(connectionId: string) {
     setSessionConnections((current) => current.filter((item) => item.id !== connectionId));
     setSeatDrafts((current) =>
@@ -796,11 +1066,22 @@ export default function Home() {
   }
 
   async function saveCurrentMeetingNow() {
+    if (planSavingRef.current) return;
     if (!historyReady || !currentRoomId || iteration === 0 || transcript.length === 0) return;
     await persistMeetingRecord({
       version: 1,
       id: currentRoomId,
       objective: objective.trim() || "Untitled meeting",
+      taskMode,
+      ...(taskMode === "review" && reviewInput ? { reviewInput } : {}),
+      ...(reviewEditCheckpoint ? { reviewEditCheckpoint } : {}),
+      ...(reviewResult ? { reviewResult } : {}),
+      ...(planRequest ? { planRequest } : {}),
+      ...(planArtifact ? { planArtifact } : {}),
+      ...(planApproval ? { planApproval } : {}),
+      ...(planHumanRevision ? { planHumanRevision } : {}),
+      ...(reviewHumanRevision ? { reviewHumanRevision } : {}),
+      ...(reviewApprovedArtifact ? { reviewApprovedArtifact } : {}),
       stage: memo ? "decision" : "meeting",
       transcript,
       memo,
@@ -817,6 +1098,7 @@ export default function Home() {
   }
 
   async function openMeetingRecord(roomId: string) {
+    if (editingPlanDay || planSavingRef.current) { setError("Save or cancel the day edit before switching meetings."); return; }
     if (running) return;
     await saveCurrentMeetingNow();
     const record = meetingRecordsRef.current.find((item) => item.id === roomId);
@@ -829,6 +1111,22 @@ export default function Home() {
     updateParticipants(record.participants);
     updateObserver(record.observer ?? null);
     setObjective(record.objective);
+    setTaskMode(record.taskMode);
+    setPlanEnabled(Boolean(record.planRequest));
+    if (record.planRequest) setPlanSettings(record.planRequest);
+    updatePlan(record.planArtifact ?? null);
+    updatePlanApproval(record.planApproval ?? null);
+    updatePlanHumanRevision(record.planHumanRevision ?? null);
+    setEditingPlanDay(null);
+    setLastEditedPlanDay(1);
+    setReviewArtifact(record.reviewInput?.artifact ?? "");
+    setReviewReferences(record.reviewInput?.references ?? "");
+    setReviewTruthConstraints(record.reviewInput?.truthConstraints ?? "");
+    closeChairFindingComposer();
+    updateReviewEditCheckpoint(record.reviewEditCheckpoint ?? null);
+    updateReviewResult(record.reviewResult ?? null);
+    updateReviewHumanRevision(record.reviewHumanRevision ?? null);
+    updateReviewApprovedArtifact(record.reviewApprovedArtifact ?? null);
     updateTranscript(record.transcript);
     updateMemo(record.memo);
     updateDecision(record.decision);
@@ -836,14 +1134,19 @@ export default function Home() {
     setIteration(record.iteration);
     meetingStateRef.current = record.meetingState ?? null;
     setMeetingState(record.meetingState ?? null);
-    const restoredProtocol = record.protocolState ?? legacyProtocolState(record);
+    const rawProtocol = record.protocolState ?? legacyProtocolState(record);
+    const restoredProtocol = rawProtocol
+      ? record.planRequest ? rawProtocol : record.taskMode === "review"
+        ? ensureReviewArtifactBudget(rawProtocol, record.participants.length)
+        : ensureDecisionPackageBudget(rawProtocol, record.participants.length, record.transcript)
+      : rawProtocol;
     updateProtocol(restoredProtocol);
     setControlMode(restoredProtocol?.controlMode ?? "checkpoints");
     setMaxRounds(restoredProtocol?.maxRounds ?? 2);
     setPhase(record.memo
       ? decisionLabel(record.decision)
       : restoredProtocol ? protocolStatusLabel(restoredProtocol) : "Saved meeting");
-    setPhaseKey(latestPhase(record.transcript));
+    setPhaseKey(record.reviewResult || record.reviewEditCheckpoint ? "synthesis" : latestPhase(record.transcript));
     setPinnedMessageId(null);
     setLiveMessageId(null);
     setFollowLive(true);
@@ -855,6 +1158,7 @@ export default function Home() {
   }
 
   async function deleteMeetingRecord(roomId: string) {
+    if (roomId === currentRoomId && (editingPlanDay || planSavingRef.current)) { setError("Save or cancel the day edit before deleting this meeting."); return; }
     if (running && currentRoomId === roomId) return;
     const store = roomStoreRef.current;
     if (!store) {
@@ -875,6 +1179,7 @@ export default function Home() {
   }
 
   async function createNewMeeting(preserveCurrent = true) {
+    if (editingPlanDay || planSavingRef.current) { setError("Save or cancel the day edit before starting another meeting."); return; }
     if (running) return;
     if (preserveCurrent) await saveCurrentMeetingNow();
     const now = new Date().toISOString();
@@ -886,6 +1191,19 @@ export default function Home() {
     updateParticipants([]);
     updateObserver(null);
     setObjective("");
+    setTaskMode("review");
+    setPlanEnabled(false);
+    updatePlan(null);
+    updatePlanApproval(null);
+    setReviewArtifact("");
+    setReviewReferences("");
+    setReviewTruthConstraints("");
+    closeChairFindingComposer();
+    updateReviewEditCheckpoint(null);
+    updateReviewResult(null);
+    updateReviewHumanRevision(null);
+    updateReviewApprovedArtifact(null);
+    setReviewWork(null);
     updateTranscript([]);
     updateMemo("");
     updateUsage(emptyUsage);
@@ -912,6 +1230,7 @@ export default function Home() {
 
   async function submitMeeting(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
+    if (editingPlanDay || planSavingRef.current) { setError("Save or cancel the day edit before starting another run."); return; }
     if (!canStart) return;
     if (iteration > 0) {
       await saveCurrentMeetingNow();
@@ -923,14 +1242,17 @@ export default function Home() {
       currentRoomCreatedAtRef.current = now;
     }
     const initialMeetingState = createInitialMeetingState(objective.trim());
-    const initialProtocolState = createMeetingProtocolState(
-      seats.map((seat) => seat.id),
-      controlMode,
-      maxRounds,
-      new Date().toISOString(),
-      undefined,
-      observerDraft.enabled,
-    );
+    const now = new Date().toISOString();
+    const initialProtocolState = planRequest
+      ? createArtifactFirstProtocolState(reviewArtifactSeatIds, controlMode, now, setupBudget)
+      : createMeetingProtocolState(
+          seats.map((seat) => seat.id),
+          controlMode,
+          maxRounds,
+          now,
+          setupBudget,
+          observerDraft.enabled,
+        );
     const participants = seats.map((seat) => {
       const connection = connectionById.get(seat.connectionId);
       return {
@@ -955,11 +1277,19 @@ export default function Home() {
       role: "host",
       model: "",
       phase: "agenda",
-      text: objective.trim(),
+      text: taskMode === "review" ? `Review · ${objective.trim()}` : objective.trim(),
       status: "done",
     }];
     updateTranscript(openingTranscript);
+    updatePlan(null);
+    updatePlanApproval(null);
     updateMemo("");
+    updateReviewEditCheckpoint(null);
+    updateReviewResult(null);
+    updateReviewHumanRevision(null);
+    updateReviewApprovedArtifact(null);
+    closeChairFindingComposer();
+    setReviewWork(null);
     updateUsage(emptyUsage);
     updateDecision("waiting");
     updateParticipants(participants);
@@ -971,7 +1301,7 @@ export default function Home() {
     setLiveMessageId(null);
     setFollowLive(true);
     setTranscriptMode("focus");
-    setPhase("Ready for independent proposals");
+    setPhase(planRequest ? "Ready to build the requested plan" : "Ready for independent proposals");
     setPhaseKey("agenda");
     setStage("meeting");
     setError("");
@@ -1004,7 +1334,7 @@ export default function Home() {
     }
     const budgetStatus = evaluateMeetingBudget(state, usageRef.current, [], 1);
     if (!budgetStatus.allowed) {
-      const stopped = stopProtocol(state);
+      const stopped = stopProtocol(state, "budget");
       updateProtocol(stopped);
       setPhase("Budget exhausted");
       setError(`Budget stop: ${budgetStopLabel(budgetStatus.reasons)}. No Observer call was started.`);
@@ -1022,6 +1352,8 @@ export default function Home() {
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({
         objective: objective.trim(),
+        taskMode,
+        ...(taskMode === "review" && reviewInput ? { reviewInput } : {}),
         seats,
         observer,
         connections: sessionConnectionPayload(seats, connectionById, observer),
@@ -1069,13 +1401,28 @@ export default function Home() {
 
   async function runProtocol(startState = protocolStateRef.current) {
     if (abortRef.current || !startState) return;
+    if (planRequest && planRef.current && planReady(planRef.current) && startState.phase === "synthesis") {
+      if (planRef.current.sourceStateVersion !== meetingStateRef.current?.version) {
+        setError("This plan belongs to an earlier meeting state. No provider call was made.");
+        return;
+      }
+      const completed: MeetingProtocolState = { ...startState, phase: "human_gate", status: "paused", pendingSeatIds: [], completedSeatIds: [], updatedAt: new Date().toISOString() };
+      const brief = planBrief(planRef.current);
+      try {
+        await flushProtocolRecord(completed, meetingStateRef.current, { reviewResult: undefined, memo: brief, decision: "pending", stage: "decision" });
+        updateMemo(brief); updateDecision("pending"); updateProtocol(completed); setStage("decision"); setPhase("Human decision required");
+      } catch { setError("The reviewed Plan could not be saved. No provider call was made."); }
+      return;
+    }
     const controller = new AbortController();
     abortRef.current = controller;
     setRunning(true);
     setStage("meeting");
     setError("");
     setCopied(false);
-    let nextState = startState;
+    let nextState = planRequest ? startState : taskMode === "review"
+      ? ensureReviewArtifactBudget(startState, seats.length)
+      : ensureDecisionPackageBudget(startState, seats.length, transcriptRef.current);
     let activeTransitionId = "";
     try {
       while (true) {
@@ -1105,13 +1452,22 @@ export default function Home() {
         const protocolPhase = runnablePhase(nextState.phase);
         if (!protocolPhase) break;
         const pendingSeatIds = protocolPhase === "synthesis"
-          ? []
+          ? planRequest
+            ? planRef.current && missingPlanDays(planRef.current).length === 0 ? reviewArtifactSeatIds.slice(1) : reviewArtifactSeatIds
+            : taskMode === "review"
+            ? reviewEditCheckpointRef.current
+              ? reviewArtifactSeatIds.slice(1)
+              : reviewArtifactSeatIds
+            : []
           : nextState.controlMode === "turn_by_turn"
             ? nextState.pendingSeatIds.slice(0, 1)
             : nextState.pendingSeatIds;
         const budgetStatus = evaluateMeetingBudget(nextState, usageRef.current, pendingSeatIds);
+        if (planRequest && protocolPhase === "synthesis" && nextState.transitions.filter((turn) => turn.phase === "synthesis").length >= 2) {
+          throw new Error("The Plan's one explicit recovery has been used. Saved days remain available; no further call was started.");
+        }
         if (!budgetStatus.allowed) {
-          nextState = stopProtocol(nextState);
+          nextState = stopProtocol(nextState, "budget");
           updateProtocol(nextState);
           setPhase("Budget exhausted");
           setError(`Budget stop: ${budgetStopLabel(budgetStatus.reasons)}. No provider call was started.`);
@@ -1134,6 +1490,10 @@ export default function Home() {
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({
             objective: objective.trim(),
+            taskMode,
+            ...(taskMode === "review" && reviewInput ? { reviewInput } : {}),
+            ...(planRequest ? { planRequest } : {}),
+            ...(protocolPhase === "synthesis" && planRef.current ? { planArtifact: planRef.current } : {}),
             seats,
             connections: sessionConnectionPayload(seats, connectionById, observerRequest ?? undefined),
             iteration: nextState.round,
@@ -1143,10 +1503,17 @@ export default function Home() {
             seatIds: pendingSeatIds,
             contextTurns: protocolPhase === "targeted_debate"
               ? []
-              : phaseContextTurns(transcriptRef.current, nextState.round),
+              : phaseContextTurns(
+                  transcriptRef.current,
+                  nextState.round,
+                  meetingStateRef.current,
+                ),
             ...((protocolPhase === "targeted_debate" || protocolPhase === "synthesis") &&
               activeTargetedDebate(nextState)
               ? { targetedDisputeId: activeTargetedDebate(nextState)?.disputeId }
+              : {}),
+            ...(protocolPhase === "synthesis" && reviewEditCheckpointRef.current
+              ? { reviewEditCheckpoint: reviewEditCheckpointRef.current }
               : {}),
             requestId: activeTransitionId,
           }),
@@ -1163,7 +1530,19 @@ export default function Home() {
           error?: Extract<DiscussEvent, { type: "room.error" }>;
           detail?: string;
         } = {};
-        await readEvents(response.body, (roomEvent) => {
+        await readEvents(response.body, async (roomEvent) => {
+          if (roomEvent.type === "plan.checkpoint" && planRequest) {
+            const parsed = parsePlanArtifact(roomEvent.artifact, planRequest, objective.trim());
+            if (!parsed || parsed.sourceStateVersion !== meetingStateRef.current?.version) throw new Error("The Plan checkpoint does not match this room.");
+            const previous = planRef.current;
+            updatePlan(parsed);
+            try { await flushProtocolRecord(nextState); } catch (storageError) {
+              updatePlan(previous);
+              controller.abort();
+              throw storageError;
+            }
+            return;
+          }
           if (roomEvent.type === "phase.done") phaseBoundary.event = roomEvent;
           if (roomEvent.type === "room.error") phaseBoundary.error = roomEvent;
           if (roomEvent.type === "agent.format_error" && !phaseBoundary.detail) {
@@ -1174,6 +1553,12 @@ export default function Home() {
           }
           if (roomEvent.type === "agent.error" && !phaseBoundary.detail) {
             phaseBoundary.detail = `This seat stopped: ${roomEvent.message}`;
+          }
+          if (roomEvent.type === "review.work.format_error" && !phaseBoundary.detail) {
+            phaseBoundary.detail = `${roomEvent.stage === "editing" ? "Editor" : "Verifier"} returned invalid structured output: ${roomEvent.message}`;
+          }
+          if (roomEvent.type === "review.work.error" && !phaseBoundary.detail) {
+            phaseBoundary.detail = `${roomEvent.stage === "editing" ? "Editor" : "Verifier"} stopped: ${roomEvent.message}`;
           }
           handleEvent(roomEvent);
         });
@@ -1189,6 +1574,19 @@ export default function Home() {
         );
         if (!completion.ok) throw new Error(completion.error);
         nextState = completion.state;
+        if (
+          taskMode === "review" &&
+          (phaseDone.phase === "review" || phaseDone.phase === "targeted_debate") &&
+          nextState.phase === "synthesis" &&
+          nextState.status === "ready"
+        ) {
+          nextState = {
+            ...nextState,
+            phase: "review_checkpoint",
+            status: "paused",
+            updatedAt: new Date().toISOString(),
+          };
+        }
         if (
           (phaseDone.phase === "review" || phaseDone.phase === "targeted_debate") &&
           meetingStateRef.current
@@ -1265,28 +1663,113 @@ export default function Home() {
     } finally {
       abortRef.current = null;
       setRunning(false);
+      setReviewWork(null);
+      setPlanWork(null);
     }
+  }
+
+  async function keepOriginalReview() {
+    const current = protocolStateRef.current;
+    const state = meetingStateRef.current;
+    if (taskMode !== "review" || !reviewInput || !current || !state || running || keepingOriginalRef.current) return;
+    if (reviewResultRef.current || reviewEditCheckpointRef.current) {
+      setError("An artifact already exists. Continue its review instead of replacing it.");
+      return;
+    }
+    const kept = prepareKeptOriginalReview(reviewInput.artifact, state, current);
+    if (!kept.ok) {
+      setError(kept.error);
+      return;
+    }
+    keepingOriginalRef.current = true;
+    setRunning(true);
+    setError("");
+    const brief = buildReviewExecutiveBrief(kept.result);
+    try {
+      // Save the candidate before exposing a new result or approval state.
+      await flushProtocolRecord(kept.protocol, state, { reviewResult: kept.result, memo: brief, decision: "pending", stage: "decision" });
+      updateReviewResult(kept.result);
+      updateMemo(brief);
+      updateDecision("pending");
+      updateProtocol(kept.protocol);
+      setReviewResultView("artifact");
+      setPhaseKey("synthesis");
+      setPhase("Original retained; human decision required");
+      setStage("decision");
+    } catch (storageError) {
+      setError(`The original could not be saved. The review remains at its checkpoint: ${safeClientError(storageError)}`);
+    } finally {
+      keepingOriginalRef.current = false;
+      setRunning(false);
+    }
+  }
+
+  async function resumeSavedPlan() {
+    const plan = planRef.current;
+    const current = protocolStateRef.current;
+    if (!plan || !current || running || abortRef.current || planSavingRef.current || !roomCompositionMatches || planApprovalRef.current) return;
+    const resumed = preparePlanRecovery(plan, current);
+    if (!resumed || plan.sourceStateVersion !== meetingStateRef.current?.version) {
+      setError("This Plan cannot use another recovery, or its source state has changed. No call was made.");
+      return;
+    }
+    const budget = evaluateMeetingBudget(resumed, usageRef.current, resumed.pendingSeatIds);
+    if (!budget.allowed) { setError(`Budget stop: ${budgetStopLabel(budget.reasons)}. No provider call was started.`); return; }
+    planSavingRef.current = true;
+    setPlanSaving(true);
+    try {
+      await flushProtocolRecord(resumed);
+      updateProtocol(resumed);
+    } catch (storageError) {
+      setError(`The recovery allowance could not be saved. No call was made: ${safeClientError(storageError)}`);
+      return;
+    } finally { planSavingRef.current = false; setPlanSaving(false); }
+    void runProtocol(resumed);
   }
 
   async function continueMeeting() {
     const current = protocolStateRef.current;
-    if (!current || running || !roomCompositionMatches) return;
+    if (!current || running) return;
+    if (planRequest && planRef.current && preparePlanRecovery(planRef.current, current)) {
+      await resumeSavedPlan();
+      return;
+    }
+    if (planRequest && planRef.current && planReady(planRef.current) && current.phase === "synthesis") {
+      void runProtocol(current);
+      return;
+    }
+    if (!roomCompositionMatches) return;
+    if (
+      taskMode === "review" &&
+      current.phase === "review_checkpoint" &&
+      acceptedReviewFindings.length === 0
+    ) {
+      setError("Accept at least one Finding before building Artifact v2.");
+      return;
+    }
     const continued = continueProtocol(current, seats.map((seat) => seat.id));
     if (!continued.ok) {
       setError(continued.error);
       return;
     }
     const previousDecision = decisionRef.current;
+    const leaveOriginalResult = current.phase === "human_gate" && reviewResultRef.current?.artifactVersion === 1;
     updateDecision("waiting");
     setStage("meeting");
     setError("");
     try {
-      await flushProtocolRecord(continued.state);
+      await flushProtocolRecord(continued.state, meetingStateRef.current, leaveOriginalResult
+        ? { reviewResult: undefined, memo: "", decision: "waiting", stage: "meeting" }
+        : undefined);
     } catch (storageError) {
       updateDecision(previousDecision);
       if (previousDecision === "pending") setStage("decision");
       setError(`The meeting cannot continue until its recovery state is saved: ${safeClientError(storageError)}`);
       return;
+    }
+    if (leaveOriginalResult) {
+      updateReviewResult(null);
+      updateMemo("");
     }
     updateProtocol(continued.state);
     void runProtocol(continued.state);
@@ -1322,6 +1805,11 @@ export default function Home() {
   }
 
   function handleEvent(event: DiscussEvent) {
+    if (event.type === "plan.work") {
+      setPlanWork(event.stage);
+      if (event.usage) updateUsage((current) => mergeUsage(current, event.usage!));
+      return;
+    }
     if (event.type === "phase.start") {
       setPhase(event.label);
       if (event.phase === "targeted_debate") setPhaseKey("review");
@@ -1344,10 +1832,54 @@ export default function Home() {
     if (event.type === "observer.format_error") {
       setObserverProgress(null);
       updateUsage((current) => mergeUsage(current, event.usage));
+      setError(`Observer returned an invalid Round Brief: ${event.message}`);
       return;
     }
     if (event.type === "observer.error") {
       setObserverProgress(null);
+      setError(`Observer stopped: ${event.message}`);
+      return;
+    }
+    if (event.type === "review.work.start") {
+      setReviewWork({
+        stage: event.stage,
+        progress: "thinking",
+        label: `${event.stage === "editing" ? "Editor" : "Verifier"} · ${event.connectionName}`,
+      });
+      setPhase(event.stage === "editing" ? "Building Artifact v2" : "Verifying changed material");
+      return;
+    }
+    if (event.type === "review.work.progress") {
+      setReviewWork((current) => current?.stage === event.stage
+        ? { ...current, progress: event.progress }
+        : current);
+      return;
+    }
+    if (event.type === "review.work.done") {
+      updateUsage((current) => mergeUsage(current, event.usage));
+      return;
+    }
+    if (event.type === "review.edit.done") {
+      updateReviewEditCheckpoint(event.checkpoint);
+      return;
+    }
+    if (event.type === "review.work.format_error") {
+      updateUsage((current) => mergeUsage(current, event.usage));
+      setReviewWork(null);
+      setError(`${event.stage === "editing" ? "Editor" : "Verifier"} returned invalid structured output: ${event.message}`);
+      return;
+    }
+    if (event.type === "review.work.error") {
+      setReviewWork(null);
+      setError(`${event.stage === "editing" ? "Editor" : "Verifier"} stopped: ${event.message}`);
+      return;
+    }
+    if (event.type === "review.artifact.done") {
+      updateReviewEditCheckpoint(null);
+      updateReviewHumanRevision(null);
+      updateReviewApprovedArtifact(null);
+      updateReviewResult(event.result);
+      setReviewWork(null);
       return;
     }
     if (event.type === "agent.start") {
@@ -1493,10 +2025,16 @@ export default function Home() {
       return;
     }
     if (event.type === "phase.done") {
-      updateUsage((current) => mergeUsage(current, event.usage));
+      if (!event.reviewResult && !event.planArtifact) updateUsage((current) => mergeUsage(current, event.usage));
       return;
     }
     if (event.type === "room.done") {
+      if (event.planArtifact) updatePlan(event.planArtifact);
+      if (event.reviewResult) {
+        updateReviewHumanRevision(null);
+        updateReviewApprovedArtifact(null);
+        updateReviewResult(event.reviewResult);
+      }
       updateMemo(event.memo);
       updateDecision("pending");
       setPhase("Human decision required");
@@ -1509,12 +2047,18 @@ export default function Home() {
   }
 
   async function addChairDirection() {
+    if (planRef.current) { setError("The Plan contract is frozen after generation starts. Start a new room for changed requirements."); return; }
     const currentState = meetingStateRef.current;
     if (!currentState || running || directiveText.trim().length === 0) return;
+    const currentPhase = protocolStateRef.current?.phase;
+    if (directiveKind === "format" && currentPhase !== "proposal" && currentPhase !== "review" && currentPhase !== "synthesis") {
+      setError("A format repair requires a paused proposal, review or synthesis phase."); return;
+    }
     const target = directiveTarget === "all" ? "all" as const : [directiveTarget];
     const directive: ChairDirective = {
       id: `directive-${createRequestId()}`,
       kind: directiveKind,
+      ...(directiveKind === "format" ? { formatScope: { phase: currentPhase as "proposal" | "review" | "synthesis", round: protocolStateRef.current!.round } } : {}),
       target,
       text: directiveText.trim().slice(0, 1_000),
       status: "active",
@@ -1533,6 +2077,7 @@ export default function Home() {
     setError("");
     try {
       await flushProtocolRecord(protocolStateRef.current, result.state);
+      setDirectiveKind("constraint");
     } catch (storageError) {
       meetingStateRef.current = currentState;
       setMeetingState(currentState);
@@ -1541,35 +2086,257 @@ export default function Home() {
     }
   }
 
+  async function decideFinding(claimId: string, decision: ClaimDecision) {
+    const currentState = meetingStateRef.current;
+    if (!currentState || running) return;
+    const result = decideClaimByChair(
+      currentState,
+      claimId,
+      decision,
+      `choice-${createRequestId()}`,
+    );
+    if (!result.ok) {
+      setError(result.error);
+      return;
+    }
+    if (result.duplicate) return;
+    meetingStateRef.current = result.state;
+    setMeetingState(result.state);
+    setError("");
+    try {
+      await flushProtocolRecord(protocolStateRef.current, result.state);
+    } catch (storageError) {
+      meetingStateRef.current = currentState;
+      setMeetingState(currentState);
+      setError(`The Finding decision could not be saved: ${safeClientError(storageError)}`);
+    }
+  }
+
+  function openChairFindingComposer(claimId = "") {
+    const finding = reviewFindings.find((item) => item.id === claimId);
+    setChairFindingTargetId(finding?.id ?? "");
+    setChairFindingText(finding?.text ?? "");
+    setChairFindingSourceKind(finding?.reviewSource?.kind ?? "truth_constraint");
+    setChairFindingExcerpt(finding?.reviewSource?.excerpt ?? "");
+    setChairFindingOpen(true);
+    setError("");
+  }
+
+  function closeChairFindingComposer() {
+    setChairFindingOpen(false);
+    setChairFindingText("");
+    setChairFindingExcerpt("");
+    setChairFindingTargetId("");
+  }
+
+  async function addChairFinding() {
+    const currentState = meetingStateRef.current;
+    const currentProtocol = protocolStateRef.current;
+    if (
+      !currentState ||
+      !currentProtocol ||
+      currentProtocol.phase !== "review_checkpoint" ||
+      !reviewInput ||
+      running
+    ) return;
+    const source = validateReviewFindingSource(reviewInput, {
+      kind: chairFindingSourceKind,
+      excerpt: chairFindingExcerpt,
+    });
+    if (!source.ok) {
+      setError(source.error);
+      return;
+    }
+    const result = addChairFindingByChair(
+      currentState,
+      {
+        text: chairFindingText.trim(),
+        source: source.source,
+        ...(chairFindingTargetId ? { supersedesClaimId: chairFindingTargetId } : {}),
+      },
+      `choice-${createRequestId()}`,
+    );
+    if (!result.ok) {
+      setError(result.error);
+      return;
+    }
+    meetingStateRef.current = result.state;
+    setMeetingState(result.state);
+    setError("");
+    try {
+      await flushProtocolRecord(currentProtocol, result.state);
+      closeChairFindingComposer();
+    } catch (storageError) {
+      meetingStateRef.current = currentState;
+      setMeetingState(currentState);
+      setError(`The Chair Finding could not be saved: ${safeClientError(storageError)}`);
+    }
+  }
+
   function requestSafePause() {
     raiseHandRef.current = true;
     setRaiseHandRequested(true);
   }
 
-  async function recordHumanDecision(next: "approved" | "rejected") {
-    const current = protocolStateRef.current;
-    const previousDecision = decisionRef.current;
-    updateDecision(next);
-    if (current) {
-      const completed = finishProtocol(current);
-      updateProtocol(completed);
-      setPhase(decisionLabel(next));
-      try {
-        await flushProtocolRecord(completed);
-      } catch (storageError) {
-        updateDecision(previousDecision);
-        updateProtocol(current);
-        setPhase("Human decision required");
-        setError(`The decision was not applied because it could not be saved: ${safeClientError(storageError)}`);
+  async function savePlanAmendment(next: PlanArtifact) {
+    const parsed = parsePlanArtifact(next, next.request, next.objective);
+    if (!parsed) throw new Error("The amendment checkpoint is invalid.");
+    const brief = planBrief(modelRevisedPlan(parsed));
+    await flushProtocolRecord(protocolStateRef.current, meetingStateRef.current, { planArtifact: parsed, memo: brief, decision: "pending", stage: "decision" });
+    updatePlan(parsed); updateMemo(brief); setCopied(false);
+    return parsed;
+  }
+
+  async function runPlanAmendment(selected?: number[]) {
+    let plan = planRef.current;
+    if (!plan || abortRef.current || running || planSavingRef.current || editingPlanDay || planHumanRevisionRef.current ||
+        planApprovalRef.current || decisionRef.current !== "pending") return;
+    if (!roomCompositionMatches || plan.objective !== objective.trim() || plan.sourceStateVersion !== meetingStateRef.current?.version) {
+      setError("Restore the original meeting and its model Seats before amending."); return;
+    }
+    if (selected ? plan.amendment || !validPlanConcernSelection(selected, plan) : plan.amendment?.status !== "amended") return;
+    if ([plan.builder, plan.reviewer].some((snapshot) => !seats.some((seat) => seat.id === snapshot.seatId && seat.model === snapshot.model && seat.provider === snapshot.provider))) {
+      setError("Reconnect the original Builder and Reviewer before amending."); return;
+    }
+    const controller = new AbortController();
+    abortRef.current = controller;
+    planSavingRef.current = true;
+    setPlanSaving(true); setRunning(true); setError("");
+    let inFlight: "amend" | "recheck" | null = null;
+    try {
+      if (selected) plan = await savePlanAmendment({ ...plan, amendment: { selected, status: "amending", startedAt: new Date().toISOString() } });
+      for (const action of (selected ? ["amend", "recheck"] : ["recheck"]) as Array<"amend" | "recheck">) {
+        if (controller.signal.aborted) throw new Error("Amendment stopped. No further model call was started.");
+        if (action === "recheck") plan = await savePlanAmendment({ ...plan, amendment: { ...plan.amendment!, status: "rechecking" } });
+        inFlight = action;
+        const response = await fetch("/api/discuss", {
+          method: "POST", headers: { "Content-Type": "application/json" }, signal: controller.signal,
+          body: JSON.stringify({ objective: plan.objective, taskMode: "decide", planRequest: plan.request,
+            planArtifact: plan, planAmendmentAction: action, seats,
+            connections: sessionConnectionPayload(seats, connectionById), meetingState: meetingStateRef.current, requestId: createRequestId() }),
+        });
+        const result = await response.json();
+        if (result.usage) updateUsage((current) => mergeUsage(current, result.usage));
+        if (!response.ok) throw new Error(`${result.error ?? "The amendment failed."}${result.usageUnknown ? " Provider usage is unknown; check your provider account." : ""}`);
+        const next = parsePlanArtifact(result.artifact, plan.request, plan.objective);
+        if (!next || JSON.stringify({ ...next, amendment: undefined }) !== JSON.stringify({ ...plan, amendment: undefined }) ||
+            next.amendment?.startedAt !== plan.amendment!.startedAt ||
+            JSON.stringify(next.amendment?.selected) !== JSON.stringify(plan.amendment!.selected) ||
+            next.amendment?.status !== (action === "amend" ? "amended" : "complete")) throw new Error("The amendment response changed its source or stage.");
+        plan = await savePlanAmendment(next);
+        inFlight = null;
       }
+    } catch (failure) {
+      let storageNotice = "";
+      if (inFlight && plan.amendment) {
+        try { await savePlanAmendment({ ...plan, amendment: { ...plan.amendment, status: inFlight === "amend" ? "amendment_failed" : "recheck_failed" } }); }
+        catch { storageNotice = " The latest result could not be saved; the original and last checkpoint remain."; }
+      }
+      setError(`${safeClientError(failure)}${storageNotice} No automatic retry. Interrupted-call usage may be incomplete.`);
+    } finally {
+      abortRef.current = null; planSavingRef.current = false;
+      setPlanSaving(false); setRunning(false);
+    }
+  }
+
+  async function dismissPlanAmendment() {
+    const plan = planRef.current;
+    if (!plan?.amendment || running || planSavingRef.current || editingPlanDay || planHumanRevisionRef.current || decisionRef.current !== "pending") return;
+    planSavingRef.current = true; setPlanSaving(true); setError("");
+    try { await savePlanAmendment({ ...plan, amendment: { ...plan.amendment, status: "dismissed" } }); }
+    catch (failure) { setError(`The original could not be restored: ${safeClientError(failure)}`); }
+    finally { planSavingRef.current = false; setPlanSaving(false); }
+  }
+
+  async function savePlanDayEdit() {
+    const original = planRef.current;
+    if (!original || !editingPlanDay || running || planSavingRef.current || decisionRef.current !== "pending" || planApprovalRef.current) return;
+    if (original.sourceStateVersion !== meetingStateRef.current?.version || original.objective !== objective.trim()) {
+      setError("The meeting changed while editing. The original plan has not been modified.");
+      return;
+    }
+    const result = createPlanHumanRevision(original, editingPlanDay, planHumanRevisionRef.current);
+    if (!result.ok) { setError(result.error); return; }
+    planSavingRef.current = true;
+    setPlanSaving(true);
+    setError("");
+    try {
+      await flushProtocolRecord(protocolStateRef.current, meetingStateRef.current, {
+        reviewResult: undefined, planHumanRevision: result.revision ?? undefined,
+        memo: memoRef.current, decision: "pending", stage: "decision",
+      });
+      updatePlanHumanRevision(result.revision);
+      setEditingPlanDay(null);
+      setCopied(false);
+    } catch (storageError) {
+      setError(`The day revision was not saved. Your draft is still open: ${safeClientError(storageError)}`);
+    } finally {
+      planSavingRef.current = false;
+      setPlanSaving(false);
+    }
+  }
+
+  async function recordHumanDecision(next: "approved" | "rejected") {
+    if (running || editingPlanDay || planSavingRef.current || decisionRef.current !== "pending") return;
+    const current = protocolStateRef.current;
+    if (!current) {
+      setError("The room protocol is unavailable, so this decision cannot be saved safely.");
+      return;
+    }
+    const previousDecision = decisionRef.current;
+    const previousApprovedArtifact = reviewApprovedArtifactRef.current;
+    const previousPlanApproval = planApprovalRef.current;
+    if (next === "approved" && planRequest) {
+      const artifact = planRef.current && parsePlanArtifact(planRef.current, planRequest, objective.trim());
+      if (!artifact || !planReady(artifact)) { setError("Complete the daily plan and its independent review before approval."); return; }
+      const revision = planHumanRevisionRef.current;
+      const approval = parsePlanApproval({ artifact: revisedPlan(artifact, revision), ...(artifact.amendment ? { sourceArtifact: artifact } : {}), ...(revision ? { humanRevision: revision } : {}), approvedAt: new Date().toISOString() }, artifact, revision);
+      if (!approval) { setError("The revised plan could not be frozen for approval."); return; }
+      updatePlanApproval(approval);
+    }
+    if (next === "approved" && reviewResultRef.current && reviewInput) {
+      const approved = createReviewApprovedArtifact(
+        reviewResultRef.current,
+        reviewInput.artifact,
+        reviewHumanRevisionRef.current,
+        new Date().toISOString(),
+      );
+      if (!approved.ok) {
+        setError(`The Review artifact could not be frozen for approval: ${approved.error}`);
+        return;
+      }
+      updateReviewApprovedArtifact(approved.artifact);
+    }
+    updateDecision(next);
+    const completed = finishProtocol(current);
+    updateProtocol(completed);
+    setPhase(decisionLabel(next));
+    try {
+      await flushProtocolRecord(completed);
+    } catch (storageError) {
+      updateReviewApprovedArtifact(previousApprovedArtifact);
+      updatePlanApproval(previousPlanApproval);
+      updateDecision(previousDecision);
+      updateProtocol(current);
+      setPhase("Human decision required");
+      setError(`The decision was not applied because it could not be saved: ${safeClientError(storageError)}`);
     }
   }
 
   async function resetRoom() {
+    if (editingPlanDay || planSavingRef.current) { setError("Save or cancel the day edit before resetting this meeting."); return; }
     if (running) return;
     await saveCurrentMeetingNow();
+    updatePlan(null);
+    updatePlanApproval(null);
     updateTranscript([]);
     updateMemo("");
+    updateReviewEditCheckpoint(null);
+    updateReviewResult(null);
+    updateReviewHumanRevision(null);
+    updateReviewApprovedArtifact(null);
+    closeChairFindingComposer();
+    setReviewWork(null);
     updateUsage(emptyUsage);
     updateDecision("waiting");
     updateObserver(null);
@@ -1592,6 +2359,85 @@ export default function Home() {
     await navigator.clipboard.writeText(memo);
     setCopied(true);
     window.setTimeout(() => setCopied(false), 1_600);
+  }
+
+  async function copyReviewArtifact() {
+    if (!displayedReviewArtifact) return;
+    await navigator.clipboard.writeText(displayedReviewArtifact);
+    setCopied(true);
+    window.setTimeout(() => setCopied(false), 1_600);
+  }
+
+  function beginReviewChangeEdit(changeId: string) {
+    if (decision !== "pending") return;
+    const change = effectiveReviewChanges.find((item) => item.id === changeId);
+    if (!change) return;
+    setEditingReviewChangeId(changeId);
+    setReviewChangeDraft(change.after);
+    setError("");
+  }
+
+  function currentHumanReviewEdits() {
+    const revision = reviewHumanRevisionRef.current;
+    if (!revision) return {} as Record<string, string>;
+    return Object.fromEntries(
+      revision.editedChangeIds.map((changeId) => [
+        changeId,
+        revision.changeSet.find((change) => change.id === changeId)?.after ?? "",
+      ]),
+    );
+  }
+
+  async function persistReviewHumanRevision(next: ReviewHumanRevision | null) {
+    const previous = reviewHumanRevisionRef.current;
+    updateReviewHumanRevision(next);
+    try {
+      await flushProtocolRecord();
+      setError("");
+    } catch (storageError) {
+      updateReviewHumanRevision(previous);
+      setError(`The human revision could not be saved: ${safeClientError(storageError)}`);
+    }
+  }
+
+  async function saveReviewChangeEdit(changeId: string) {
+    if (!reviewResult || !reviewInput || decision !== "pending") return;
+    const edits = currentHumanReviewEdits();
+    edits[changeId] = reviewChangeDraft;
+    const created = createReviewHumanRevision(
+      reviewResult,
+      reviewInput.artifact,
+      edits,
+      new Date().toISOString(),
+      reviewHumanRevisionRef.current ?? undefined,
+    );
+    if (!created.ok) {
+      setError(created.error);
+      return;
+    }
+    await persistReviewHumanRevision(created.revision);
+  }
+
+  async function restoreModelReviewChange(changeId: string) {
+    if (!reviewResult || !reviewInput || decision !== "pending") return;
+    const edits = currentHumanReviewEdits();
+    delete edits[changeId];
+    if (Object.keys(edits).length === 0) {
+      await persistReviewHumanRevision(null);
+      return;
+    }
+    const created = createReviewHumanRevision(
+      reviewResult,
+      reviewInput.artifact,
+      edits,
+      new Date().toISOString(),
+      reviewHumanRevisionRef.current ?? undefined,
+    );
+    if (!created.ok) {
+      setError(created.error);
+      return;
+    }
+    await persistReviewHumanRevision(created.revision);
   }
 
   return (
@@ -1638,21 +2484,76 @@ export default function Home() {
         {stage === "agenda" ? (
           <form className="agenda-workspace" onSubmit={submitMeeting}>
             <section className="objective-panel">
-              <div className="section-kicker">Meeting objective</div>
-              <h1>What must this room decide?</h1>
+              <div className="task-mode-heading">
+                <span className="section-kicker">Task pack</span>
+                <div className="segmented-control task-mode-control" aria-label="Task pack">
+                  <button type="button" className={taskMode === "review" ? "active" : ""} onClick={() => setTaskMode("review")} disabled={running}>Review</button>
+                  <button type="button" className={taskMode === "decide" ? "active" : ""} onClick={() => setTaskMode("decide")} disabled={running}>Decide / Plan</button>
+                </div>
+              </div>
+              <div className="section-kicker">{taskMode === "review" ? "Review objective" : "Meeting objective"}</div>
+              <h1>{taskMode === "review" ? "What should this review improve?" : "What must this room decide?"}</h1>
               <p className="supporting-copy">
-                Give the participants a decision, not a broad topic. The human chair keeps final authority.
+                {taskMode === "review"
+                  ? "Independent reviewers inspect the same artifact before cross-checking material differences."
+                  : "Give the participants a decision, not a broad topic. The human chair keeps final authority."}
               </p>
               <textarea
+                className={`objective-input${taskMode === "review" ? " compact" : ""}`}
                 id="objective"
                 value={objective}
                 onChange={(event) => setObjective(event.target.value)}
-                placeholder="Define the decision and its constraints..."
+                placeholder={taskMode === "review" ? "Define the review outcome and audience..." : "Define the decision and its constraints..."}
                 maxLength={4_000}
-                rows={7}
+                rows={taskMode === "review" ? 3 : 7}
                 disabled={running}
-                autoFocus
               />
+              {taskMode === "decide" ? <fieldset className="plan-settings">
+                <label className="plan-toggle"><input type="checkbox" checked={planEnabled} onChange={(event) => { setPlanEnabled(event.target.checked); if (event.target.checked) setMaxRounds(1); }} />Detailed LeetCode plan</label>
+                {planEnabled ? <div className="plan-settings-fields">
+                  <label>Days<input type="number" min={10} max={15} value={planSettings.days} onChange={(event) => setPlanSettings((current) => ({ ...current, days: Number(event.target.value) }))} /></label>
+                  <label>Minimum MEU / day<input type="number" min={1} max={15} value={planSettings.dailyMeu} onChange={(event) => setPlanSettings((current) => ({ ...current, dailyMeu: Number(event.target.value) }))} /></label>
+                  <label>Minutes / day<input type="number" min={60} max={720} step={30} value={planSettings.dailyMinutes} onChange={(event) => setPlanSettings((current) => ({ ...current, dailyMinutes: Number(event.target.value) }))} /></label>
+                  <p>Hard = 2 Medium · 3 Easy = 1 Medium. The Plan Builder creates the full artifact first; the independent Review Seat audits that artifact. Two initial calls, no generic proposal round or automatic retry.</p>
+                </div> : null}
+              </fieldset> : null}
+              {taskMode === "review" ? (
+                <div className="review-agenda-fields">
+                  <label>
+                    <span>Artifact v1 <small>{reviewArtifact.length}/{reviewTaskLimits.artifact}</small></span>
+                    <textarea
+                      value={reviewArtifact}
+                      onChange={(event) => setReviewArtifact(event.target.value)}
+                      placeholder="Paste the resume, product document, requirements, or technical plan..."
+                      maxLength={reviewTaskLimits.artifact}
+                      rows={8}
+                      disabled={running}
+                    />
+                  </label>
+                  <label>
+                    <span>Reference material <small>{reviewReferences.length}/{reviewTaskLimits.references}</small></span>
+                    <textarea
+                      value={reviewReferences}
+                      onChange={(event) => setReviewReferences(event.target.value)}
+                      placeholder="Paste the job description, requirements, rubric, or explicitly state that no external reference is supplied."
+                      maxLength={reviewTaskLimits.references}
+                      rows={5}
+                      disabled={running}
+                    />
+                  </label>
+                  <label>
+                    <span>Truth constraints <small>{reviewTruthConstraints.length}/{reviewTaskLimits.truthConstraints}</small></span>
+                    <textarea
+                      value={reviewTruthConstraints}
+                      onChange={(event) => setReviewTruthConstraints(event.target.value)}
+                      placeholder="Example: do not invent metrics, experience, citations, or requirements; label inference explicitly."
+                      maxLength={reviewTaskLimits.truthConstraints}
+                      rows={3}
+                      disabled={running}
+                    />
+                  </label>
+                </div>
+              ) : null}
               <div className="objective-footer">
                 <span>{objective.length}/4,000</span>
                 <span>Discuss only</span>
@@ -1772,7 +2673,7 @@ export default function Home() {
                   <span className="section-kicker">Maximum rounds</span>
                   <div className="segmented-control round-limit-control">
                     {[1, 2, 3].map((rounds) => (
-                      <button type="button" className={maxRounds === rounds ? "active" : ""} onClick={() => setMaxRounds(rounds)} key={rounds}>{rounds}</button>
+                      <button type="button" disabled={Boolean(planRequest) && rounds !== 1} className={maxRounds === rounds ? "active" : ""} onClick={() => setMaxRounds(rounds)} key={rounds}>{rounds}</button>
                     ))}
                   </div>
                 </div>
@@ -1832,13 +2733,13 @@ export default function Home() {
 
               <div className="launch-zone">
                 <div>
-                  <strong>{seats.length >= 2 ? "Room is composed" : "Choose two or three seats"}</strong>
+                  <strong>{seats.length >= 2 ? (taskMode === "review" ? "Review team is composed" : "Room is composed") : "Choose two or three seats"}</strong>
                   <span>{maximumProviderCalls > 0
-                    ? `${maximumProviderCalls} calls · ${formatTokens(setupBudget.maxOutputTokens)} output · ${formatDuration(setupBudget.maxModelTimeMs)} model time max`
+                    ? `${maximumProviderCalls} calls · ${formatTokens(setupBudget.maxOutputTokens)} output · ${setupBudget.maxModelTimeMs ? `${formatDuration(setupBudget.maxModelTimeMs)} model time max` : "No cumulative time cutoff"}`
                     : "Bounded by rounds and seats"}</span>
                 </div>
                 <button className="primary-button" type="submit" disabled={!canStart}>
-                  Start meeting
+                  {taskMode === "review" ? "Start review" : "Start meeting"}
                 </button>
               </div>
             </aside>
@@ -1851,7 +2752,7 @@ export default function Home() {
               <div className="phase-progress" aria-label="Protocol progress">
                 {(["proposal", "review", "synthesis"] as const).map((item, index) => (
                   <span className={phaseState(item, phaseKey)} key={item}>
-                    <i>{index + 1}</i>{phaseLabel(item)}
+                    <i>{index + 1}</i>{phaseLabel(item, taskMode)}
                   </span>
                 ))}
               </div>
@@ -1876,8 +2777,18 @@ export default function Home() {
                 <small>Canonical State + Process Report only</small>
               </div>
             ) : null}
+            {reviewWork ? (
+              <div className="review-work-live" role="status" aria-live="polite">
+                <span className="turn-progress-mark" aria-hidden="true" />
+                <div>
+                  <span className="section-kicker">{reviewWork.stage === "editing" ? "Artifact Editor" : "Changed-material Verifier"}</span>
+                  <strong>{turnProgressLabel(reviewWork.progress)}</strong>
+                </div>
+                <small>{reviewWork.label}</small>
+              </div>
+            ) : null}
 
-            {transcriptMode === "focus" ? (
+            {displayedPlan && transcriptMode === "focus" ? <PlanView plan={displayedPlan} work={planWork} editedDays={planEditedDays} original={planArtifact ?? undefined} approved={Boolean(planApproval)} /> : transcriptMode === "focus" ? (
               <div className="focus-layout">
                 <article className={`speaker-stage ${activeTranscriptItem?.provider ?? "host"}`}>
                   {activeTranscriptItem ? (
@@ -1979,6 +2890,7 @@ export default function Home() {
                   <select value={directiveKind} onChange={(event) => setDirectiveKind(event.target.value as ChairDirective["kind"])} aria-label="Directive type">
                     <option value="constraint">Constraint</option>
                     <option value="correction">Correction</option>
+                    <option value="format" disabled={!["proposal", "review", "synthesis"].includes(protocolState.phase)}>Format repair · this phase only</option>
                     <option value="question">Question</option>
                     <option value="priority">Priority</option>
                     <option value="veto">Veto</option>
@@ -1993,8 +2905,129 @@ export default function Home() {
                 {meetingState?.activeChairDirectives.length ? (
                   <div className="directive-list">
                     {meetingState.activeChairDirectives.map((directive) => (
-                      <span key={directive.id}><strong>{directive.kind}</strong>{directive.text}</span>
+                      <span key={directive.id}><strong>{directive.kind}{directive.formatScope ? ` · ${directive.formatScope.phase} / round ${directive.formatScope.round}` : " · whole meeting"}</strong>{directive.text}</span>
                     ))}
+                  </div>
+                ) : null}
+                {taskMode === "review" && reviewFindings.length > 0 ? (
+                  <section className="finding-board" aria-label="Independent Findings">
+                    <header>
+                      <div>
+                        <span className="section-kicker">Independent Findings</span>
+                        <strong>{reviewFindings.length} material observation{reviewFindings.length === 1 ? "" : "s"}</strong>
+                      </div>
+                      <div className="finding-board-tools">
+                        <span>Artifact v1 remains unchanged</span>
+                        {protocolState.phase === "review_checkpoint" ? (
+                          <button type="button" onClick={() => openChairFindingComposer()}>Add Finding</button>
+                        ) : null}
+                      </div>
+                    </header>
+                    {chairFindingOpen && protocolState.phase === "review_checkpoint" ? (
+                      <div className="chair-finding-composer" aria-label="Chair Finding amendment">
+                        <div>
+                          <span className="section-kicker">{chairFindingTargetId ? "Amend Finding" : "Add missed Finding"}</span>
+                          <strong>{chairFindingTargetId ? "Create a traceable replacement" : "Add a source-linked requirement before editing"}</strong>
+                        </div>
+                        <textarea
+                          value={chairFindingText}
+                          onChange={(event) => setChairFindingText(event.target.value)}
+                          maxLength={500}
+                          placeholder="State the issue and the required correction"
+                          aria-label="Chair Finding text"
+                        />
+                        <select
+                          value={chairFindingSourceKind}
+                          onChange={(event) => setChairFindingSourceKind(event.target.value as ReviewFindingSourceKind)}
+                          aria-label="Chair Finding source"
+                        >
+                          <option value="artifact">Artifact v1</option>
+                          <option value="reference">Reference material</option>
+                          <option value="truth_constraint">Truth constraints</option>
+                        </select>
+                        <textarea
+                          value={chairFindingExcerpt}
+                          onChange={(event) => setChairFindingExcerpt(event.target.value)}
+                          maxLength={500}
+                          placeholder="Paste an exact excerpt from the selected source"
+                          aria-label="Chair Finding source excerpt"
+                        />
+                        <div className="chair-finding-actions">
+                          <button type="button" onClick={closeChairFindingComposer}>Cancel</button>
+                          <button
+                            type="button"
+                            className="primary"
+                            onClick={() => void addChairFinding()}
+                            disabled={chairFindingText.trim().length < 8 || !chairFindingExcerpt.trim()}
+                          >
+                            {chairFindingTargetId ? "Save amendment" : "Add accepted Finding"}
+                          </button>
+                        </div>
+                      </div>
+                    ) : null}
+                    <div className="finding-list">
+                      {reviewFindings.map((finding, index) => {
+                        const sourceTurn = finding.sourceMessageIds.flatMap((sourceId) => {
+                          const turn = transcript.find((item) => item.id === sourceId && item.phase === "proposal");
+                          return turn ? [turn] : [];
+                        })[0];
+                        return (
+                          <article className="finding-row" key={finding.id}>
+                            <span className={`finding-index ${finding.status}`}>{index + 1}</span>
+                            <div>
+                              <p>{finding.text}</p>
+                              <footer>
+                                <span>{finding.reviewSource
+                                  ? `Human Chair · ${reviewFindingSourceLabel(finding.reviewSource.kind)}`
+                                  : sourceTurn
+                                    ? `${roleLabels[sourceTurn.role as RoleId]} · ${sourceTurn.providerName}`
+                                    : "Published Finding"}</span>
+                                <span>{finding.assumptionLevel === "low" ? "Source-bounded" : `${finding.assumptionLevel} inference`}</span>
+                                <span>{claimStatusLabel(finding.status)}</span>
+                              </footer>
+                              <div className="finding-actions" aria-label={`Human decision for Finding ${index + 1}`}>
+                                <button
+                                  type="button"
+                                  className={finding.status === "accepted_by_chair" ? "active accept" : ""}
+                                  aria-pressed={finding.status === "accepted_by_chair"}
+                                  onClick={() => void decideFinding(finding.id, "accept")}
+                                  disabled={running || finding.status === "superseded"}
+                                >
+                                  Accept
+                                </button>
+                                <button
+                                  type="button"
+                                  className={finding.status === "rejected_by_chair" ? "active reject" : ""}
+                                  aria-pressed={finding.status === "rejected_by_chair"}
+                                  onClick={() => void decideFinding(finding.id, "reject")}
+                                  disabled={running || finding.status === "superseded"}
+                                >
+                                  Reject
+                                </button>
+                                {protocolState.phase === "review_checkpoint" && finding.status !== "superseded" ? (
+                                  <button type="button" onClick={() => openChairFindingComposer(finding.id)} disabled={running}>
+                                    Amend
+                                  </button>
+                                ) : null}
+                              </div>
+                            </div>
+                          </article>
+                        );
+                      })}
+                    </div>
+                  </section>
+                ) : null}
+                {taskMode === "review" && protocolState.phase === "review_checkpoint" ? (
+                  <div className="review-artifact-route" aria-label="Artifact production roles">
+                    <span>
+                      <strong>Editor</strong>
+                      {reviewArtifactRoleLabel(reviewArtifactSeatIds[0], seats)}
+                    </span>
+                    <span>
+                      <strong>Verifier</strong>
+                      {reviewArtifactRoleLabel(reviewArtifactSeatIds[1], seats)}
+                    </span>
+                    <span>{acceptedReviewFindings.length} accepted Finding{acceptedReviewFindings.length === 1 ? "" : "s"}</span>
                   </div>
                 ) : null}
                 {latestProcessReport && latestProcessReport.round === protocolState.round ? (
@@ -2065,10 +3098,35 @@ export default function Home() {
                   </section>
                 ) : null}
                 <div className="checkpoint-actions">
-                  <button className="primary-button" type="button" onClick={() => void continueMeeting()} disabled={!roomCompositionMatches}>
-                    {protocolContinueLabel(protocolState)}
+                  <button
+                    className="primary-button"
+                    type="button"
+                    onClick={() => void continueMeeting()}
+                    disabled={
+                      (!roomCompositionMatches && !(planArtifact && planReady(planArtifact) && protocolState.phase === "synthesis")) ||
+                      (taskMode === "review" && protocolState.phase === "review_checkpoint" && acceptedReviewFindings.length === 0) ||
+                      savedPlanRecoveryUnavailable
+                    }
+                  >
+                    {savedPlanRecoveryLabel ?? (taskMode === "review" && protocolState.phase === "review_checkpoint"
+                      ? "Build Artifact v2"
+                      : planRequest && protocolState.phase === "synthesis" ? (planArtifact && planReady(planArtifact) ? "Open reviewed plan" : planArtifact && !missingPlanDays(planArtifact).length ? "Resume plan review" : "Build missing plan days") : protocolContinueLabel(protocolState))}
                   </button>
-                  {!roomCompositionMatches ? <p>Reconnect the saved providers, models, and roles before continuing.</p> : null}
+                  {taskMode === "review" && protocolState.phase === "review_checkpoint" && acceptedReviewFindings.length === 0
+                    ? <>
+                        <button type="button" onClick={() => void keepOriginalReview()}
+                          disabled={running || !meetingState || !prepareKeptOriginalReview(reviewInput?.artifact ?? "", meetingState, protocolState).ok}>
+                          Keep original
+                        </button>
+                        <p>{reviewFindings.some((finding) => finding.status !== "rejected_by_chair" && finding.status !== "superseded")
+                          ? "Accept or reject the remaining Findings."
+                          : "No accepted changes. Retaining the original makes no additional model calls."}</p>
+                      </>
+                    : null}
+                  {!roomCompositionMatches ? <p>Reconnect the saved providers, models, and roles before running more models.</p> : null}
+                  {savedPlanRecoveryUnavailable && savedPlanRecoveryBudgetStatus
+                    ? <p>Saved work is preserved, but recovery cannot run because {budgetStopLabel(savedPlanRecoveryBudgetStatus.reasons)}. No provider call will start.</p>
+                    : null}
                 </div>
               </section>
             ) : null}
@@ -2077,10 +3135,13 @@ export default function Home() {
               <div>
                 <strong>Round {iteration}/{protocolState?.maxRounds ?? maxRounds}</strong>
                 <span>{seats.length} seats / {transcript.filter((item) => item.status === "done").length} turns complete</span>
-                {activeBudgetStatus ? <span>{activeBudgetStatus.remainingAgentTurns} calls · {formatTokens(activeBudgetStatus.remainingOutputTokens)} output · {formatDuration(activeBudgetStatus.remainingModelTimeMs)} model time left</span> : null}
+                {activeBudgetStatus ? <span>{activeBudgetStatus.remainingAgentTurns} call slots · {formatTokens(activeBudgetStatus.remainingOutputTokens)} output · {protocolState?.budget.maxModelTimeMs ? `${formatDuration(activeBudgetStatus.remainingModelTimeMs)} model time left` : "No cumulative time cutoff"}</span> : null}
               </div>
               {error ? <p className="control-error">{error}</p> : null}
               <div className="control-actions">
+                {!running && savedPlanRecovery && protocolState?.phase === "stopped" ? <button type="button" onClick={() => void resumeSavedPlan()} disabled={!roomCompositionMatches || planSaving || savedPlanRecoveryUnavailable}>
+                  {savedPlanRecoveryLabel}
+                </button> : null}
                 {running && protocolState?.controlMode === "auto" ? <button type="button" onClick={requestSafePause} disabled={raiseHandRequested}>{raiseHandRequested ? "Pause requested" : "Raise hand"}</button> : null}
                 {running ? <button className="danger-button" type="button" onClick={() => abortRef.current?.abort()}>Stop meeting</button> : null}
                 {!running && memo ? <button type="button" onClick={() => setStage("decision")}>Open decision</button> : null}
@@ -2095,15 +3156,158 @@ export default function Home() {
             <article className="memo-surface">
               <header>
                 <div>
-                  <span className="section-kicker">Decision artifact / Round {iteration}</span>
-                  <h1>Decision memo</h1>
+                  <span className="section-kicker">{reviewResult ? `Review artifact / v${displayedReviewVersion}` : `Decision artifact / Round ${iteration}`}</span>
+                  <h1>{planArtifact ? "Study plan" : reviewResult ? `Artifact v${displayedReviewVersion}` : "Decision memo"}</h1>
                 </div>
                 <span className={`decision-pill ${decision}`}>{decisionLabel(decision)}</span>
               </header>
-              <pre>{memo || "The room has not produced a decision memo."}</pre>
+              {planArtifact ? <>
+                {planApproval ? <p>Approved plan · {new Date(planApproval.approvedAt).toLocaleString()}</p> : null}
+                {editingPlanDay ? <PlanDayEditor
+                  draft={editingPlanDay} request={planArtifact.request} saving={planSaving} error={error}
+                  concerns={planArtifact.review?.concerns.filter((item) => item.day === editingPlanDay.day) ?? []}
+                  onChange={setEditingPlanDay} onSave={() => void savePlanDayEdit()}
+                  onCancel={() => { if (!planSavingRef.current) { setEditingPlanDay(null); setError(""); } }}
+                  onRestore={() => { const original = modelRevisedPlan(planArtifact).days.find((day) => day.day === editingPlanDay.day); if (original) setEditingPlanDay(structuredClone(original)); }}
+                /> : <PlanView plan={displayedPlan ?? planArtifact} approved={Boolean(planApproval)} editedDays={planEditedDays} original={planArtifact} initialDay={lastEditedPlanDay}
+                  onEdit={decision === "pending" && !running && planDecisionReady(planArtifact) ? (day) => { setLastEditedPlanDay(day.day); setEditingPlanDay(structuredClone(day)); setError(""); } : undefined} />}
+                <PlanAmendmentPanel key={`${currentRoomId}:${planArtifact.createdAt}`} plan={planArtifact} busy={running}
+                  disabled={decision !== "pending" || planSaving || Boolean(editingPlanDay) || Boolean(planHumanRevision)}
+                  onStart={(selected) => void runPlanAmendment(selected)} onRecheck={() => void runPlanAmendment()} onDismiss={() => void dismissPlanAmendment()} />
+                {planHumanRevision ? <p className="plan-limit-note">Human edits are active. Model amendment is unavailable for this version; its model review does not cover your edits.</p> : null}
+                {running ? <button type="button" className="danger-button" onClick={() => abortRef.current?.abort()}>Stop amendment</button> : null}
+              </> : reviewResult ? (
+                <div className="review-result-body">
+                  <div className="segmented-control review-result-tabs" aria-label="Review result view">
+                    {([
+                      ["artifact", `Artifact v${displayedReviewVersion}`],
+                      ["changes", `Change Set ${displayedReviewChanges.length}`],
+                      ["verification", "Verification"],
+                      ["brief", "Brief"],
+                    ] as Array<[ReviewResultView, string]>).map(([view, label]) => (
+                      <button
+                        type="button"
+                        className={reviewResultView === view ? "active" : ""}
+                        onClick={() => setReviewResultView(view)}
+                        key={view}
+                      >
+                        {label}
+                      </button>
+                    ))}
+                  </div>
+                  {reviewResultView === "artifact" ? (
+                    <div className="approved-artifact-view">
+                      {reviewResult.artifactVersion === 1 ? <p>Original retained without changes. Editor and Verifier were not run.</p> : null}
+                      {reviewApprovedArtifact ? (
+                        <div className="approved-artifact-notice">
+                          <strong>Approved snapshot · Artifact v{reviewApprovedArtifact.artifactVersion}</strong>
+                          <span>{new Date(reviewApprovedArtifact.approvedAt).toLocaleString()}</span>
+                        </div>
+                      ) : null}
+                      <pre className="artifact-v2-output">{displayedReviewArtifact}</pre>
+                    </div>
+                  ) : null}
+                  {reviewResultView === "changes" ? (
+                    <div className="change-set-view">
+                      {reviewResult.artifactVersion === 1 ? <p>No changes applied. Rejected Findings remain in the meeting history.</p> : null}
+                      {reviewHumanRevision ? (
+                        <div className="human-revision-notice">
+                          <strong>Human revision · Artifact v3</strong>
+                          <p>{reviewHumanRevision.editedChangeIds.length} replacement{reviewHumanRevision.editedChangeIds.length === 1 ? "" : "s"} changed by the Chair. Model verification remains attached to v2.</p>
+                        </div>
+                      ) : null}
+                      {reviewApprovedArtifact ? (
+                        <div className="approved-artifact-notice">
+                          <strong>Immutable approved Change Set</strong>
+                          <span>Frozen with Artifact v{reviewApprovedArtifact.artifactVersion}</span>
+                        </div>
+                      ) : null}
+                      {displayedReviewChanges.map((change) => {
+                        const check = reviewResult.verification.checks.find((item) => item.changeId === change.id);
+                        const humanEdited = reviewApprovedArtifact?.humanEditedChangeIds.includes(change.id) ??
+                          reviewHumanRevision?.editedChangeIds.includes(change.id) ?? false;
+                        return (
+                          <div className="change-set-row" key={change.id}>
+                            <header>
+                              <strong>{change.location}</strong>
+                              <div className="change-row-actions">
+                                <span className={`verification-status ${humanEdited ? "human-edited" : check?.status ?? "unverifiable"}`}>{humanEdited ? "Human edited" : verificationStatusLabel(check?.status)}</span>
+                                {decision === "pending" ? (
+                                  <button type="button" onClick={() => beginReviewChangeEdit(change.id)}>{editingReviewChangeId === change.id ? "Editing" : "Edit"}</button>
+                                ) : null}
+                              </div>
+                            </header>
+                            <div className="change-diff">
+                              <div><span>Before</span><pre>{change.before}</pre></div>
+                              <div>
+                                <span>{humanEdited ? "After · Chair revision" : "After"}</span>
+                                {editingReviewChangeId === change.id ? (
+                                  <div className="change-edit-composer">
+                                    <textarea
+                                      value={reviewChangeDraft}
+                                      onChange={(event) => setReviewChangeDraft(event.target.value)}
+                                      maxLength={4_000}
+                                      aria-label={`Replacement text for ${change.location}`}
+                                    />
+                                    <small>{reviewChangeDraft.length}/4000</small>
+                                    <div>
+                                      <button type="button" onClick={() => { setEditingReviewChangeId(""); setReviewChangeDraft(""); setError(""); }}>Cancel</button>
+                                      <button type="button" className="primary-small" onClick={() => void saveReviewChangeEdit(change.id)}>Save revision</button>
+                                    </div>
+                                  </div>
+                                ) : <pre>{change.after || "[Removed]"}</pre>}
+                              </div>
+                            </div>
+                            <p>{change.rationale}</p>
+                            <footer>
+                              <span>{change.id}</span>
+                              <span>{change.findingIds.join(", ")}</span>
+                              <span>{change.basis}</span>
+                              {humanEdited && decision === "pending" ? <button type="button" onClick={() => void restoreModelReviewChange(change.id)}>Restore model text</button> : null}
+                            </footer>
+                          </div>
+                        );
+                      })}
+                    </div>
+                  ) : null}
+                  {reviewResultView === "verification" ? (
+                    <div className="verification-view">
+                      {reviewHumanRevision ? (
+                        <div className="human-revision-notice verification-scope-notice">
+                          <strong>Verification scope</strong>
+                          <p>The model checks below cover Artifact v2. Chair-edited replacements in Artifact v3 require human review before approval.</p>
+                        </div>
+                      ) : null}
+                      <header>
+                        <span className={`verification-verdict ${reviewResult.verification.verdict}`}>{reviewResult.verification.verdict === "not_run" ? "Not run" : reviewResult.verification.verdict === "pass" ? "Passed" : "Needs revision"}</span>
+                        <p>{reviewResult.verification.summary}</p>
+                      </header>
+                      {reviewResult.verification.checks.map((check) => (
+                        <div className="verification-row" key={check.changeId}>
+                          <strong>{check.changeId}</strong>
+                          <span className={`verification-status ${check.status}`}>{verificationStatusLabel(check.status)}</span>
+                          <div className="verification-dimensions">
+                            <span>Lineage · {verificationStatusLabel(check.lineage)}</span>
+                            <span>Semantics · {verificationStatusLabel(check.semantics)}</span>
+                          </div>
+                          <p>{check.note}</p>
+                        </div>
+                      ))}
+                      {reviewResult.verification.unresolved.length > 0 ? (
+                        <div className="verification-unresolved">
+                          <strong>Human checks</strong>
+                          {reviewResult.verification.unresolved.map((item) => <p key={item}>{item}</p>)}
+                        </div>
+                      ) : null}
+                    </div>
+                  ) : null}
+                  {reviewResultView === "brief" ? <pre>{memo}</pre> : null}
+                </div>
+              ) : <pre>{memo || "The room has not produced a decision memo."}</pre>}
               <footer>
                 <button type="button" onClick={() => { setTranscriptMode("overview"); setStage("meeting"); }}>Review transcript</button>
-                <button type="button" onClick={() => void copyMemo()} disabled={!memo}>{copied ? "Copied" : "Copy memo"}</button>
+                {planArtifact ? <button type="button" disabled={Boolean(editingPlanDay) || planSaving} onClick={async () => { try { await navigator.clipboard.writeText(planText(displayedPlan ?? planArtifact, planEditedDays, planArtifact)); setCopied(true); } catch { setError("Clipboard unavailable."); } }}>{copied ? "Copied" : "Copy full plan"}</button> : null}
+                {!planArtifact ? <button type="button" onClick={() => void (reviewResult ? copyReviewArtifact() : copyMemo())} disabled={!memo}>{copied ? "Copied" : reviewResult ? `Copy Artifact v${displayedReviewVersion}` : "Copy memo"}</button> : null}
               </footer>
             </article>
 
@@ -2111,11 +3315,14 @@ export default function Home() {
               <section>
                 <span className="section-kicker">Human gate</span>
                 <h2>The room advises. You decide.</h2>
-                <p>Approve the artifact, reject it, or add a scoped direction before spending another bounded round.</p>
+                <p>{planArtifact ? `${planArtifact.days.length} days · ${planArtifact.review?.concerns.length ?? 0} review concerns · ${planApproval ? "approved snapshot" : "awaiting your decision"}` : reviewResult ? reviewApprovedArtifact
+                  ? `Artifact v${reviewApprovedArtifact.artifactVersion} frozen at approval · ${reviewApprovedArtifact.changeSet.length} changes`
+                  : `${effectiveReviewChanges.length} changes · ${reviewHumanRevision ? "Chair revision requires human review" : reviewResult.verification.verdict === "not_run" ? "original retained, not model-verified" : reviewResult.verification.verdict === "pass" ? "verification passed" : "verification needs attention"}`
+                  : "Approve the artifact, reject it, or add a scoped direction before spending another bounded round."}</p>
                 <div className="decision-actions">
-                  <button className="approve-button" type="button" onClick={() => void recordHumanDecision("approved")} disabled={running || decision !== "pending"}>{decision === "approved" ? "Memo approved" : "Approve memo"}</button>
+                  <button className="approve-button" type="button" onClick={() => void recordHumanDecision("approved")} disabled={running || decision !== "pending" || Boolean(editingReviewChangeId) || Boolean(editingPlanDay) || planSaving || Boolean(planArtifact && !planDecisionReady(planArtifact))}>{decision === "approved" ? (planArtifact ? "Plan approved" : reviewResult ? `Artifact v${displayedReviewVersion} approved` : "Memo approved") : (planArtifact ? "Approve plan" : reviewResult ? `Approve Artifact v${displayedReviewVersion}` : "Approve memo")}</button>
                   <button type="button" onClick={() => void continueMeeting()} disabled={running || decision !== "pending" || !memo || !protocolState || protocolState.phase !== "human_gate" || protocolState.round >= protocolState.maxRounds || !roomCompositionMatches}>Request another round</button>
-                  <button className="reject-button" type="button" onClick={() => void recordHumanDecision("rejected")} disabled={running || decision !== "pending"}>{decision === "rejected" ? "Memo rejected" : "Reject memo"}</button>
+                  <button className="reject-button" type="button" onClick={() => void recordHumanDecision("rejected")} disabled={running || decision !== "pending" || Boolean(editingPlanDay) || planSaving}>{decision === "rejected" ? (planArtifact ? "Plan rejected" : reviewResult ? "Artifact rejected" : "Memo rejected") : (planArtifact ? "Reject plan" : reviewResult ? `Reject Artifact v${displayedReviewVersion}` : "Reject memo")}</button>
                 </div>
                 {decision === "pending" && protocolState && protocolState.round < protocolState.maxRounds && !roomCompositionMatches ? (
                   <p className="revision-note">Reconnect seats with the original providers, models, and roles to request another round.</p>
@@ -2123,7 +3330,7 @@ export default function Home() {
                 {decision === "pending" && protocolState && protocolState.round >= protocolState.maxRounds ? (
                   <p className="revision-note">The declared round budget is exhausted. Approve, reject, or start a new room.</p>
                 ) : null}
-                {decision === "pending" ? (
+                {decision === "pending" && !planArtifact ? (
                   <div className="directive-composer decision-directive-composer">
                     <select value={directiveKind} onChange={(event) => setDirectiveKind(event.target.value as ChairDirective["kind"])} aria-label="Directive type">
                       <option value="constraint">Constraint</option>
@@ -2146,7 +3353,7 @@ export default function Home() {
                 <dl>
                   <div><dt>Input</dt><dd>{formatTokens(usage.inputTokens)}</dd></div>
                   <div><dt>Output</dt><dd>{formatTokens(usage.outputTokens)}</dd></div>
-                  <div><dt>Estimated cost</dt><dd>{formatMoney(usage.estimatedUsd)}</dd></div>
+                  <div title="Advisory estimate; model pricing is not verified."><dt>Estimated cost</dt><dd>{formatMoney(usage.estimatedUsd)}</dd></div>
                   <div><dt>Model time</dt><dd>{formatDuration(usage.latencyMs)}</dd></div>
                 </dl>
                 <p>Estimate only. Provider billing is authoritative.</p>
@@ -2193,7 +3400,7 @@ export default function Home() {
                       <span className={`history-status ${record.decision}`} />
                       <span className="history-record-copy">
                         <strong>{record.objective}</strong>
-                        <small>{formatRoomDate(record.updatedAt)} · {record.participants.length} seats · {meetingRecordStatus(record)}</small>
+                        <small>{record.taskMode === "review" ? "Review" : "Decide / Plan"} · {formatRoomDate(record.updatedAt)} · {record.participants.length} seats · {meetingRecordStatus(record)}</small>
                       </span>
                     </button>
                     <div className="history-row-actions">
@@ -2352,6 +3559,95 @@ export default function Home() {
                   </section>
                 );
               })}
+              {process.env.NODE_ENV !== "production" ? (
+              <section className="stage-replay-panel">
+                <div>
+                  <span className="section-kicker">Development / Stage replay</span>
+                  <strong>{replayKind === "review_verifier_v1" ? "Review Verifier fixture v2" : "S1 baseline / resume-truth-v1"}</strong>
+                  <small>One paid provider call, {replayKind === "review_verifier_v1" ? "600" : "2,400"} output-token cap, no retry, and no Meeting write.</small>
+                </div>
+                <label>
+                  <span>Probe</span>
+                  <select aria-label="Probe" value={replayKind} disabled={replayRunning} onChange={(event) => {
+                    setReplayKind(event.target.value as typeof replayKind);
+                    setReplayResult(null);
+                    setReplayError("");
+                  }}>
+                    <option value="review_verifier_v1">Verifier fixture v2</option>
+                    <option value="review_baseline_resume_v1">S1 resume baseline</option>
+                  </select>
+                </label>
+                <label>
+                  <span>Connection</span>
+                  <select
+                    value={replayConnection?.id ?? ""}
+                    onChange={(event) => {
+                      const connection = connectionById.get(event.target.value);
+                      setReplayConnectionId(event.target.value);
+                      setReplayModelId(connection?.models[0]?.id ?? "");
+                      setReplayResult(null);
+                      setReplayError("");
+                    }}
+                    disabled={replayRunning || connections.length === 0}
+                  >
+                    {connections.map((connection) => (
+                      <option key={connection.id} value={connection.id}>{connection.name}</option>
+                    ))}
+                  </select>
+                </label>
+                <label>
+                  <span>Model</span>
+                  <select
+                    value={effectiveReplayModel}
+                    onChange={(event) => {
+                      setReplayModelId(event.target.value);
+                      setReplayResult(null);
+                      setReplayError("");
+                    }}
+                    disabled={replayRunning || !replayConnection}
+                  >
+                    {(replayConnection?.models ?? []).map((model) => (
+                      <option key={model.id} value={model.id}>{modelOptionLabel(model)}</option>
+                    ))}
+                  </select>
+                </label>
+                <button
+                  className="primary-button"
+                  type="button"
+                  onClick={() => void runReviewReplay()}
+                  disabled={replayRunning || !replayConnection || !effectiveReplayModel}
+                >
+                  {replayRunning ? "Running one call..." : replayKind === "review_verifier_v1" ? "Replay Verifier" : "Run S1 baseline"}
+                </button>
+                {replayResult ? (
+                  <div className={!replayResult.ok ? "stage-replay-result failed" : replayResult.stage === "review_baseline" ? "stage-replay-result unscored" : "stage-replay-result passed"}>
+                    <strong>{replayResult.stage === "review_baseline"
+                      ? replayResult.ok ? "Response captured / not scored" : "Request failed / not scored"
+                      : replayResult.ok ? "Contract passed" : "Contract rejected"}</strong>
+                    <span>{replayResult.provider} / {replayResult.model}</span>
+                    {replayResult.usage ? <span>
+                      {formatTokens(replayResult.usage.inputTokens)} input · {formatTokens(replayResult.usage.outputTokens)} output · {formatMoney(replayResult.usage.estimatedUsd)} estimated · {formatDuration(replayResult.usage.latencyMs)}
+                    </span> : <span>Usage and cost unknown; the provider may have billed this request.</span>}
+                    <span>{replayResult.costEstimate
+                      ? `Provider-rate estimate: $${replayResult.costEstimate.inputUsdPerMTok}/M input (${replayResult.costEstimate.inputRateSource === "runtime_override" ? "runtime override" : "provider default"}), $${replayResult.costEstimate.outputUsdPerMTok}/M output (${replayResult.costEstimate.outputRateSource === "runtime_override" ? "runtime override" : "provider default"}). Not model-verified; not an invoice.`
+                      : "Estimate basis was not recorded for this receipt. Not model-verified; not an invoice."}</span>
+                    <p>{replayResult.ok ? replayResult.verification?.summary : replayResult.diagnostic}</p>
+                    {replayResult.outputAtCap ? <p className="inline-error">Output limit reached; inspect for truncation.</p> : null}
+                    {replayResult.stage === "review_baseline" ? (
+                      <>
+                        <button className="text-button" type="button" onClick={downloadBaselineReceipt}>Download evidence</button>
+                        <ReplayReceipt key={replayResult.requestId} receipt={replayResult} />
+                      </>
+                    ) : null}
+                    <details open={replayResult.stage === "review_baseline"}>
+                      <summary>Raw provider output</summary>
+                      <pre>{replayResult.rawOutput}</pre>
+                    </details>
+                  </div>
+                ) : null}
+                {replayError ? <p className="inline-error">{replayError}</p> : null}
+              </section>
+              ) : null}
             </div>
             {connectionError ? <p className="inline-error">{connectionError}</p> : null}
             <footer className="dialog-footer">
@@ -2385,7 +3681,7 @@ export default function Home() {
   );
 }
 
-async function readEvents(stream: ReadableStream<Uint8Array>, onEvent: (event: DiscussEvent) => void) {
+async function readEvents(stream: ReadableStream<Uint8Array>, onEvent: (event: DiscussEvent) => void | Promise<void>) {
   const reader = stream.getReader();
   const decoder = new TextDecoder();
   let buffer = "";
@@ -2395,10 +3691,10 @@ async function readEvents(stream: ReadableStream<Uint8Array>, onEvent: (event: D
     buffer += decoder.decode(value, { stream: true });
     const lines = buffer.split("\n");
     buffer = lines.pop() ?? "";
-    for (const line of lines) if (line.trim()) onEvent(JSON.parse(line) as DiscussEvent);
+    for (const line of lines) if (line.trim()) await onEvent(JSON.parse(line) as DiscussEvent);
   }
   buffer += decoder.decode();
-  if (buffer.trim()) onEvent(JSON.parse(buffer) as DiscussEvent);
+  if (buffer.trim()) await onEvent(JSON.parse(buffer) as DiscussEvent);
 }
 
 function createRequestId() {
@@ -2449,15 +3745,24 @@ function observerMatches(
   );
 }
 
-function phaseContextTurns(transcript: TranscriptItem[], round: number) {
+function phaseContextTurns(
+  transcript: TranscriptItem[],
+  round: number,
+  state: MeetingState | null,
+) {
+  const appliedTurnIds = state ? new Set(state.appliedTurnIds) : null;
+  const includedTurnIds = new Set<string>();
   return transcript.flatMap((item) => {
     if (
       item.status !== "done" ||
       !item.envelope ||
       !item.seatId ||
       item.round !== round ||
-      (item.phase !== "proposal" && item.phase !== "review")
+      (item.phase !== "proposal" && item.phase !== "review") ||
+      (appliedTurnIds && !appliedTurnIds.has(item.id)) ||
+      includedTurnIds.has(item.id)
     ) return [];
+    includedTurnIds.add(item.id);
     return [{
       id: item.id,
       seatId: item.seatId,
@@ -2521,7 +3826,9 @@ function protocolStatusLabel(state: MeetingProtocolState) {
   if (state.phase === "review_checkpoint") return "Cross-review checkpoint";
   if (state.phase === "human_gate") return "Human decision required";
   if (state.phase === "complete") return "Meeting complete";
-  if (state.phase === "stopped") return "Stopped by the Human Chair";
+  if (state.phase === "stopped" && state.stopReason === "budget") return "Budget exhausted";
+  if (state.phase === "stopped" && state.stopReason === "human") return "Stopped by the Human Chair";
+  if (state.phase === "stopped") return "Meeting stopped";
   if (state.phase === "proposal" && state.status === "paused") return "Proposal turn paused";
   if (state.phase === "review" && state.status === "paused") return "Cross-review turn paused";
   if (state.phase === "targeted_debate" && state.status === "paused") return "Targeted debate paused";
@@ -2581,14 +3888,6 @@ function createConnectionId(provider: ProviderId) {
   return `session-${provider}-${suffix}`;
 }
 
-function inferProvider(apiKey: string): ProviderId | null {
-  const value = apiKey.trim();
-  if (/^sk-ant-/i.test(value)) return "anthropic";
-  if (/^AIza/.test(value)) return "gemini";
-  if (/^sk-(?:proj-|svcacct-|admin-|[a-zA-Z0-9])/i.test(value)) return "openai";
-  return null;
-}
-
 function defaultSeatModel(connection: ConnectionRecord) {
   return connection.models.length === 1 ? connection.models[0].id : "";
 }
@@ -2632,10 +3931,22 @@ function decisionLabel(status: DecisionStatus) {
   return "Waiting";
 }
 
-function phaseLabel(phase: "proposal" | "review" | "synthesis") {
+function phaseLabel(phase: "proposal" | "review" | "synthesis", taskMode: TaskMode) {
+  if (taskMode === "review") {
+    if (phase === "proposal") return "Findings";
+    if (phase === "review") return "Cross-check";
+    return "Artifact v2";
+  }
   if (phase === "proposal") return "Proposals";
   if (phase === "review") return "Cross-review";
   return "Memo";
+}
+
+function claimStatusLabel(status: MeetingState["claims"][number]["status"]) {
+  if (status === "provisionally_supported") return "Provisionally supported";
+  if (status === "accepted_by_chair") return "Accepted by Chair";
+  if (status === "rejected_by_chair") return "Rejected by Chair";
+  return status.charAt(0).toUpperCase() + status.slice(1);
 }
 
 function phaseState(phase: "proposal" | "review" | "synthesis", current: "agenda" | "proposal" | "review" | "synthesis") {
@@ -2643,6 +3954,117 @@ function phaseState(phase: "proposal" | "review" | "synthesis", current: "agenda
   if (order[phase] < order[current]) return "complete";
   if (phase === current) return "active";
   return "";
+}
+
+function reviewArtifactRoleLabel(seatId: string | undefined, seats: SeatRequest[]) {
+  const index = seats.findIndex((seat) => seat.id === seatId);
+  const seat = seats[index];
+  return seat ? `Seat ${index + 1} · ${roleLabels[seat.role]}` : "Unavailable";
+}
+
+function verificationStatusLabel(
+  status: ReviewArtifactResult["verification"]["checks"][number]["status"] | undefined,
+) {
+  if (status === "supported") return "Supported";
+  if (status === "unsupported") return "Unsupported";
+  return "Unverifiable";
+}
+
+function reviewFindingSourceLabel(kind: ReviewFindingSourceKind) {
+  if (kind === "artifact") return "Artifact v1";
+  if (kind === "reference") return "Reference material";
+  return "Truth constraints";
+}
+
+function createReviewArtifactBudget(
+  base: ReturnType<typeof createDefaultMeetingBudget>,
+  maxRounds: number,
+) {
+  return {
+    maxAgentTurns: base.maxAgentTurns + maxRounds * 2,
+    maxInputTokens: base.maxInputTokens + maxRounds * 18_000,
+    maxOutputTokens: base.maxOutputTokens + maxRounds * 6_000,
+    maxModelTimeMs: base.maxModelTimeMs + maxRounds * 180_000,
+  };
+}
+
+function createDecisionPackageBudget(
+  base: ReturnType<typeof createDefaultMeetingBudget>,
+  maxRounds: number,
+) {
+  return {
+    maxAgentTurns: base.maxAgentTurns + maxRounds,
+    maxInputTokens: base.maxInputTokens + maxRounds * 6_000,
+    // The initial synthesis uses 4,800 tokens instead of the base 1,200,
+    // and one explicit synthesis recovery receives the same bounded cap.
+    maxOutputTokens: base.maxOutputTokens + maxRounds * 8_400,
+    maxModelTimeMs: base.maxModelTimeMs + maxRounds * 90_000,
+  };
+}
+
+function createPlanBudget() {
+  return {
+    maxAgentTurns: 2,
+    maxInputTokens: 50_000,
+    maxOutputTokens: planLimits.builderTokens + planLimits.reviewerTokens,
+    maxModelTimeMs: 0,
+  };
+}
+
+function ensureReviewArtifactBudget(state: MeetingProtocolState, seatCount: number) {
+  const required = createReviewArtifactBudget(
+    createDefaultMeetingBudget(seatCount, state.maxRounds, state.observerEnabled),
+    state.maxRounds,
+  );
+  return {
+    ...state,
+    budget: {
+      maxAgentTurns: Math.max(state.budget.maxAgentTurns, required.maxAgentTurns),
+      maxInputTokens: Math.max(state.budget.maxInputTokens, required.maxInputTokens),
+      maxOutputTokens: Math.max(state.budget.maxOutputTokens, required.maxOutputTokens),
+      maxModelTimeMs: Math.max(state.budget.maxModelTimeMs, required.maxModelTimeMs),
+    },
+  };
+}
+
+function ensureDecisionPackageBudget(
+  state: MeetingProtocolState,
+  seatCount: number,
+  transcript: TranscriptItem[] = [],
+) {
+  const required = createDecisionPackageBudget(
+    createDefaultMeetingBudget(seatCount, state.maxRounds, state.observerEnabled),
+    state.maxRounds,
+  );
+  const latestTransition = state.transitions.at(-1);
+  const failedBeforeProviderStart = Boolean(
+    latestTransition?.phase === "synthesis" &&
+    latestTransition.status === "interrupted" &&
+    !transcript.some((item) => item.id.startsWith(`${latestTransition.id}-`)),
+  );
+  const usedAgentTurns = state.transitions.reduce(
+    (total, transition) => total + (
+      transition.phase === "synthesis" || transition.phase === "observer"
+        ? Math.max(1, transition.seatIds.length)
+        : transition.seatIds.length
+    ),
+    0,
+  );
+  return {
+    ...state,
+    budget: {
+      // A rejected local phase request never reached a provider and therefore
+      // must not consume the room's provider-call allowance.
+      maxAgentTurns: Math.max(
+        state.budget.maxAgentTurns,
+        required.maxAgentTurns,
+        failedBeforeProviderStart ? usedAgentTurns + 1 : 0,
+      ),
+      maxInputTokens: Math.max(state.budget.maxInputTokens, required.maxInputTokens),
+      maxOutputTokens: Math.max(state.budget.maxOutputTokens, required.maxOutputTokens),
+      maxModelTimeMs: Math.max(state.budget.maxModelTimeMs, required.maxModelTimeMs),
+    },
+  };
 }
 
 function budgetStopLabel(reasons: ReturnType<typeof evaluateMeetingBudget>["reasons"]) {

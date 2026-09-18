@@ -4,14 +4,37 @@
 
 ## 当前定位
 
-- **本地产品版本：** v0.10c。
+- **供应商key提示已更新（D-063）：** Setup现在除`AIza`外也识别Gemini `AQ.`授权key，同时保留Anthropic/OpenAI有序判断及明确手选回退。规则只在本地运行，绝不跨供应商试探。构建、63项测试和lint通过，零真实调用。当前Gemini自动识别缺陷已关闭；这不验证凭证，也不增加供应商。
+- **PLAN-06新Plan请求回执已关闭（D-062）：** 每个Builder/Reviewer阶段现在会在供应商工作前记录usage未知的`started`，并由终态原位替换。没有Reviewer回执表示未进入该阶段；保存的started表示可能产生用量，不能当成零。构建、62项测试和lint通过，零真实调用。历史歧义与供应商账单权威不变；没有增加通用计费平台。
+- **PLAN-11恢复真实性已关闭（D-061）：** stopped快照现在区分预算停止和人工停止，旧房间保持中性。保存Plan在保留输入/输出用量已耗尽时，会在执行前禁用恢复；两个控件都不能启动供应商调用。构建、62项测试和lint通过，零真实调用。D-062另行关闭新Plan阶段回执；PLAN-12持久运行仍待处理。
+- **PLAN-13本地契约收尾（D-060）：** 受支持Anthropic实际Plan Reviewer现使用原生JSON Schema，任务语义仍由本地权威决定。严格围栏/说明文字及不支持模型兼容测试通过；构建、62项测试及lint通过，零真实调用。PLAN-13为本地修复（真实未验证），不是完成；PLAN-10继续待处理。下一步最多单独授权一次Fable Reviewer-only调用读取已保存Live014 Plan，绝不再生成Builder。
+- **产物优先真实实验014，草稿完整/审阅拒绝：** 刷新的两调用授权下，Sol与Fable各运行一次。Sol交付12/12有效天；Fable完成但返回非法JSON，因此审阅/Human Gate/多模型改进失败，完整草稿仍保存。见[评估及产物](evaluations/2026-08-29-plan-artifact-first-live-014.md)。D-059及PLAN-17/18机械验证通过；D-060现已本地修复PLAN-13，PLAN-10和真实验证仍待处理。
+- **产物优先真实实验012，机械失败后本地修复（D-059）：** Detailed Plan现直接按Sol Builder -> Fable实际产物Reviewer启动，首次严格两调用/22K预算。历史12被旧通用synthesis Gate在供应商前拒绝；历史13拒绝合法version-zero空checkpoint，Sol是否启动/计费未知，Fable未运行。两项契约现通过构建、61项离线测试和lint。见[评估](evaluations/2026-08-29-plan-artifact-first-live-012.md)和18项问题清单。再次两调用需刷新授权，不作质量声明。
+- **PLAN-03本地配置，待证据（D-058）：** 已识别原始GPT-5 Builder请求low，Plan语义判断继续medium，其他供应商/模型保持默认；请求档位与用量分开保存。构建、59项测试和lint通过，零真实调用。退出证据仍是一次新授权Builder阶段结果；M2.13继续当前。
+- **PLAN-01/02本地修复（D-057）：** 有限初始Plan尝试诊断、新格式指令阶段/轮次作用域。构建、59项离线测试、lint通过，零真实调用。见[16项问题清单](PLAN_ISSUE_REGISTER.md)；011历史证据仍缺失、旧correction未改，M2.13质量仍为当前。
+- **最新续接011失败：** D-056等待/恢复修复通过构建、54项离线测试及lint。同一010记录新增一次GPT调用，没有新有效天数，审阅未运行；保留6/12天，历史11。本次不是时间截止，输出耗尽还是解析拒收仍不可观察。见[011报告及有序待办](evaluations/2026-08-27-plan-wait-continuation-011.md)。未新增$5授权或自动重试。
+- **最新Plan Gate失败：** [质量实测010](evaluations/2026-08-27-plan-quality-live-010.md)在新授权$5下实际调用GPT-5/Opus4.7共6次。一次格式恢复通过，但Builder在180秒超时，仅6/12天；补缺失天数被共享调用预留额度拦截，未新增请求。实际计划审阅及D-055修改未测。已归档原稿与失败，历史11条，实际账单/失败用量不全。
+- **本地产品版本：** v0.11j 加首个详细 Plan 切片（尚未提交的工作区）。
 - **可运行基线：** 真实流式 Discuss、可复用模型席位、会话 BYOK、人工决定 Gate、不含凭证的 IndexedDB Event Store、确定性 Canonical Meeting State，以及持久化、由人主持的可恢复编排器。
 - **真实证据 Gate：** 已于 2026-08-04 使用 OpenAI `gpt-5-mini` 与 Anthropic `claude-haiku-4-5-20251001` 完成；见[真实基线 001](evaluations/2026-08-04-v0.6-live-baseline.md)。
-- **立即证据 Gate：** M2.10c 由 Chair 选择的 Dispute 路由已通过确定性 fixture；下一步运行一次有限真实供应商 Observer + 定向辩论烟雾评测，之后停止扩建通用编排器。
+- **立即证据 Gate：** [Artifact v2 Benchmark 005](evaluations/2026-08-26-v0.11-artifact-v2-benchmark-005.md) 以六次混合供应商调用和 `$0.046` 应用估算到达待决定 Human Gate。机械路径通过，但质量 Gate 失败：明确指标约束被漏掉，Verifier 又通过了语义薄弱的改写。不扩建其他范围。
+- **Decide / Plan 预览证据：** [Smoke 006](evaluations/2026-08-27-v0.11-decide-plan-smoke-006.md) 以 $0.044 总估算完成协议恢复，但遗漏具体题目，产物质量 Gate 仍为失败；新结构化路径只有离线证据。
+- **详细 Plan 证据：** [Smoke 007](evaluations/2026-08-27-v0.11-detailed-plan-smoke-007.md) 拒绝了一份缺少 Day 2 的 2,092-token synthesis。按天寻址 Plan、逐天校验/检查点、另一席位审阅实际计划、只补缺失天，以及不可变批准现已本地实现。真实供应商质量和浏览器验收尚未验证。
+- **最新有限证据：** [Verifier v2 Stage Replay 008](evaluations/2026-08-27-v0.11-verifier-v2-stage-replay-008.md) 在恰好一次 Anthropic Haiku 调用中通过双重 lineage/semantics 契约：597 input tokens、224 output tokens、3.1 秒和 `$0.0034` 应用估算。Meeting History 保持 10 条。
+- **校正 Gate：** [开发校正循环](DEVELOPMENT_CORRECTION_LOOP.md) 现在是实现、付费评测和里程碑收尾前的强制流程。最近失败会分别按机械、语义、Artifact、Human Gate、体验、经济性和差异化价值记录。
+- **M2.12 证据：** [Review 对照包](evaluations/M2.12_REVIEW_COMPARISON.md) 已有三个固定案例及已评分的 [S1 简历基线 009](evaluations/2026-08-27-m2.12-s1-resume-baseline-009.md)：修复 3/3，可用性 2/2，人工核实项偏弱，回执元数据不全。一次调用标准价估算 $0.00547，页面通用估价 $0.0038。M3/R6 和其他案例未运行，比较优势未知。
 - **已批准产品方向：** 一个 Shared Core 通过经过验证的纵向 Task Pack 生长。Review 是第一条以 Artifact 为中心的产品线；见[产品方向定稿](PRODUCT_DIRECTION.md)。
-- **关键路径：** 有限 v0.10c 真实检查 -> Review Task Pack -> 三案例比较 -> Decide / Plan Pack -> Shared Core 收束 -> 证据驱动扩张。
+- **关键路径（D-060/D-061/D-062）：** Live014已提供保存的完整产物，Reviewer格式可靠性、恢复控件真实性及新阶段回执现均本地通过。下一步只验证保存产物Fable审阅，再按意见是否有据、修改、复核与采用判断PLAN-07-10。PLAN-03仍是单独未验证的GPT-5 Builder配置假设，不能阻挡当前产物，也不能由Sol结果反推。不加席、不重生成Plan、不扩建界面或评测工具；M2.13质量/价值仍未通过。
 
 当前基础足以开始第一条产品切片。没有明确 Task Pack 需求，不再启动通用协议、Observer、路由、Agent 自治或广泛界面基础设施工作。任何大型前端修改前仍必须创建命名备份。
+
+## 立即校正路径
+
+1. **M2.11 收尾：** 逐项编辑、Artifact v3、不可变批准及有限 Verifier v2 供应商 Gate 已完成。Keep original 补齐零已接受 Finding 的结束路径，保留准确 v1、明确未验证并等待人工批准。更广 Review 机器仍冻结。
+2. **M2.12 产品对照 - 暂缓：** 保留 S1 和既有工具包，不扩建工具或自动跑 M3/R6。明确新的信息增益并获新预算后再返回；这不等于比较成功。
+3. **M2.13 Artifact-first 进入，当前：** 结构化 Plan、恢复、人工编辑、显式模型修改/复核现已实现。D-060不重生成保存Plan，已本地关闭Fable审阅格式边界。脚本化第2天意见能只改第2天，并保留原版、拒绝理由与剩余意见。下一步证明一份有据真实审阅，再进入修改/复核及人工采用；不扩展通用编辑器/配置或新评测平台。离线闭环不代表教学质量和比较成功。
+4. **模型证据：** 在每次只改变一个变量的前提下，对比强单模型、有限多模型路径、较强独立 Artifact Builder 和分阶段 reasoning 设置。
+5. **体验阶段：** Artifact 路径通过后，显示阶段进度和已完成 Artifact 单元，不暴露流式传输 JSON。广泛视觉重设计不属于本次校正路径。
 
 ## M0 产品机会与主张 - 已完成
 
@@ -105,11 +128,11 @@
 
 完成条件：每个额外 turn 都对应具体未解决问题；硬限制自动终止；软质量停止对 Chair 可见且可覆盖；Observer 不能修改状态或批准 Decision。
 
-实现进度：M2.10a 已加入向后兼容的 Meeting Budget、精确调用前 agent-turn Gate、已观测 token/时间边界停止、失败 turn 用量、带来源 Process Report、可逆结构警告和精简预算显示；验证后 Turn 呈现会把原始 JSON 留在舞台之外。M2.10b 已加入不占 Seat 的可选用户指定 Observer、每个启用轮次恰好一次可恢复的 Review 后调用、5,000 字符 Canonical State + Process Report 上下文边界、严格来源引用校验、不自动重试的 300 output-token 上限、带来源 Round Brief、预检计数，以及不含凭证的 event/artifact 持久化。M2.10c 已加入 Human Chair Dispute 选择器、最多两个相关 Seat 的确定性路由、持久化且可恢复的 targeted-debate plan、只使用明确 Dispute、关联 Claim、active Directive 与有限来源 ID 的 250 output-token Review Envelope，以及只针对该轮增量的新 Process Report 和可选 Round Brief。旧房间会安全默认新增字段并保持可读。真实供应商语义质量评测、用户可编辑多维限制和权威费用执行仍未完成。
+实现进度：M2.10a 已加入向后兼容的 Meeting Budget、精确调用前 agent-turn Gate、已观测 token/时间边界停止、失败 turn 用量、带来源 Process Report、可逆结构警告和精简预算显示；验证后 Turn 呈现会把原始 JSON 留在舞台之外。M2.10b 已加入不占 Seat 的可选用户指定 Observer、每个启用轮次恰好一次可恢复的 Review 后调用、5,000 字符 Canonical State + Process Report 上下文边界、严格来源引用校验、不自动重试的 300 output-token 上限、带来源 Round Brief、预检计数，以及不含凭证的 event/artifact 持久化。M2.10c 已加入 Human Chair Dispute 选择器、最多两个相关 Seat 的确定性路由、持久化且可恢复的 targeted-debate plan，以及只使用明确 Dispute、关联 Claim、active Directive 与有限来源 ID 的专用 400-output-token 最小 targeted Envelope；随后仍生成只针对该轮增量的新 Process Report 和可选 Round Brief。逐 phase parser 上限与最坏情况 Canonical State 容量现在可容纳完整有限三席 Proposal/Review 批次。旧房间会安全默认新增字段并保持可读。2026-08-25 烟雾评测验证了混合供应商 Proposal/Review，但未完成最终 targeted-debate/Observer/synthesis 链。真实语义质量评测、用户可编辑多维限制和权威费用执行仍未完成。
 
-**范围冻结：** 一次明确预算的真实供应商烟雾房间是 M2.10 最后 Gate。更广泛的 Observer 语义、语义路由、基于 embedding 的 novelty、权威价格和更多预算控制退出关键路径，除非本次评测发现阻塞缺陷。
+**范围冻结：** 通用 M2.10 扩建已经结束。第一项小型 M2.11 Review benchmark 可以恰好验证一次修正后的最小 targeted Envelope；成功则关闭证据 Gate，再次失败则把 targeted debate 降为 Review Pack 可选项，而不是开启新的编排里程碑。更广泛的 Observer 语义、语义路由、embedding novelty、权威价格和更多预算控制继续退出关键路径。
 
-## M2.11 Review Task Pack - 计划中
+## M2.11 Review Task Pack - 进行中
 
 依赖：M2.10。
 
@@ -119,23 +142,31 @@
 
 首批 benchmark：简历对照职位描述、产品或需求文档，以及技术计划。
 
+实现进度：v0.11a 新增 Review Task 输入与 canonical 独立 Finding；v0.11b 新增可信时间、有约束力的 Chair 决定和 canonical-only synthesis；v0.11c 新增严格 Change Set、由应用生成的 Artifact v2、改动部分验证、结果视图、预算/进度处理和恢复。Benchmark 002 随后证明 Editor 成功，但 Verifier 格式和组合恢复失败。v0.11d 新增具体 Verifier 响应骨架、字段诊断、持久化 `ReviewEditCheckpoint`、Verifier-only Resume 和一项预检可见恢复额度。v0.11e 新增仅开发环境可见的固定 Verifier Stage Replay，以单调用、无重试、无持久化边界验证格式兼容。Stage Replay 003 与 Mechanical Smoke 004 已通过，真实 Benchmark 005 也到达 Human Gate，同时暴露漏掉 Finding 与 Verifier 独立性失败。v0.11f 加入追加式带来源 Chair Finding 新增/supersede、客户端与服务器来源校验、lineage/semantics 双维检查，以及确定性 Remaining Human Checks。v0.11i 新增零调用逐项 replacement 编辑、由应用派生的 Artifact v3、不可变模型 lineage、明确的 v2 verification scope 与不含凭证的 revision 持久化。v0.11j 新增带来源的不可变批准 snapshot 与原子决定回滚。Stage Replay 008 在一次有限 Anthropic Haiku 调用中通过 v2 双重 lineage/semantics 契约。独立系统角色配置和 Finding 聚类保留为待 M2.12 证据支持的提案，不会自动进入实现。
+
 完成条件：用户可以提供 Artifact v1 与来源，获得关键独立 Finding 和详细 Artifact v2；每个被接受修改都能追溯到 Finding 以及来源或明确推断；用户逐项决定改动；无需阅读完整 transcript，也不把整个详细 Artifact 重放给每个模型请求。
 
 Durable transition runner 保持在本切片之外，除非页面导航导致有限 Review 案例无法完成。任何“离开页面后付费工作仍安全继续”的承诺前必须实现它，但它不能替代 Artifact 结果成为本里程碑目标。
 
-## M2.12 Review 评测与 Shared Core 收束 - 计划中
+## M2.12 Review 评测与 Shared Core 收束 - 暂缓
 
 依赖：M2.11。
 
 基线进度：真实基线 001 已完成，发现跨模型有效增量、输出过长、任意生成阈值进入 memo、仅最终阶段有人类控制，以及 OpenAI 模型参数兼容缺口。
 
+准备完成：现有三个案例、离线导出、S1 入口、回执访问及估价来源已经够用。009 已评分，没有第二个配对分组。D-052 关闭工具扩建，暂缓对照，先修正有明确边界的主流程失败；不因格式通过就宣称 M2.11 产品完成。
+
+S1 已完成但有限制：[009](evaluations/2026-08-27-m2.12-s1-resume-baseline-009.md) 用一次固定 GPT-4.1 调用修复全部预设问题。完整可见输出已保存，服务器回执元数据不全，人工核实项偏弱，通用估价不同于模型价格。零调用回执修正不追溯补齐元数据。M3/R6 未运行，后续对照需明确信息增益和新授权。
+
 交付：保存单模型基线；记录一份手动 GPT-to-Claude 式复制审阅基线；在三个 benchmark 上运行 Review Task Pack；任务 rubric；交叉审阅独有且被接受的修改；被拒绝或无依据的 Finding；人工 edit distance；调用、token、延迟、费用和阅读负担；协调失败分类；低价值协议功能的删除或简化决定。
 
 完成条件：证据识别出结构化交叉审阅独有且被接受的重要改进，说明它们是否值得成本和投入，并只留下 Review 与至少一个明确第二使用者需要的抽象。未通过评测的功能被简化、改成可选或删除。
 
-## M2.13 Decide / Plan Task Pack - 计划中
+## M2.13 Decide / Plan Task Pack - 当前
 
-依赖：M2.12。
+依赖：广泛 Task Pack 扩展仍依赖 M2.12。D-052 允许在对照暂缓时修正已观察到的详细 Plan 失败，不代表 M2.12 完成。
+
+本地实现：默认12天/10 MEU/360分钟；产物优先Builder后接独立实际计划Reviewer，有界缺天/Reviewer-only恢复。D-054加入人工逐天编辑和准确批准；D-055加入显式受影响天模型修改/复核、不可变来源/审计、拒绝依据、剩余意见和任务化质量配置；D-060仅对明确受支持的Anthropic Plan Reviewer使用原生JSON Schema，同时保留本地语义校验和不重试。真实Reviewer接受、教学质量、修改/复核采用、浏览器/存储及更广案例仍未验证。见[质量闭环简报](correction-briefs/2026-08-27-plan-quality-closure.md)。
 
 交付：Decision 与 Plan Agenda 变体；推荐 Role Pack；备选路径、成立条件、风险、checkpoint 和反转触发条件；详细决策包或可执行计划；有范围追问；符合 Artifact 的 Human Gate。
 

@@ -1,7 +1,7 @@
 # 会议协议蓝图 v1
 
-状态：已批准设计；已实现至 M2.10c 由 Chair 选择的定向辩论
-日期：2026-08-22
+状态：已批准设计；Shared Core 已实现至 M2.10c，并包含 Review 扩展与首个有界 M2.13 详细 Plan 切片
+日期：2026-08-27
 
 ## 目的
 
@@ -19,7 +19,7 @@
 
 ## 当前事实
 
-### 截至 v0.10c 已实现
+### 已实现 Shared Core 与 Task Pack 扩展
 
 - OpenAI、Anthropic、Gemini 直接流式适配。
 - 当前页面 BYOK 与工作区托管凭证。
@@ -46,13 +46,39 @@
 - Human Chair 在 Review checkpoint 选择一个开放 Dispute，并保存带来源的 targeted-debate plan。
 - 确定性路由最多两个相关 Seat，不增加付费路由模型调用。
 - 可恢复 targeted-debate transition 只使用明确 Dispute、关联 Claim、active Chair Directive 与有限来源 Message ID；不重放 transcript 或 prior Memo。
-- 与 Review 兼容的定向增量最多 250 transport output tokens，随后生成仅针对该增量的 Process Report 与可选第二份 Round Brief。
-- 十八项自动测试和生产构建通过。
+- 与 Review 兼容的定向增量最多 400 transport output tokens，随后生成仅针对该增量的 Process Report 与可选第二份 Round Brief。
+- Review 专用可信当前日期，以及对 canonical Finding 的逐项 Human Chair Accept/Reject。
+- Append-only `human.choice` 事件，以及后续模型 delta 无法覆盖的确定性 Chair 决定 Claim 状态。
+- Review checkpoint 支持带来源的 Human Chair Finding 新增与 supersede；来自 Artifact、参考资料或真实性边界的精确原文同时经过客户端和服务器校验。
+- 只从 Canonical State 生成 Review synthesis，强制排除 rejected Claim，并由代码执行五段 Review Brief 契约。
+- 严格带来源的 Review Change Set；应用代码把数量有限、互不重叠的精确替换应用到不可变 Artifact v1。
+- 独立改动部分 Verifier；它读取用户来源、真实性边界、已接受 Finding 与声明的 Change，不接收未修改 Artifact 文本或 transcript。
+- 分离的 Artifact v2、Change Set、Verification 与 Executive Brief 视图，并且可在不含凭证的 Meeting History 中保存与恢复。
+- 全部活跃 Finding 已明确拒绝（或没有 Finding）后可本地 Keep original，保留准确 v1、空 Change Set、无 Editor/Verifier 及 `not_run`。先保存再进入 Human Gate，批准冻结 v1；开始下一轮先保存再清除当前结果，保留历史产物。
+- 持久化、带来源版本的 Review Editor checkpoint 和 Verifier-only 显式恢复；预检可见一次有限恢复调用。
+- Verifier 独立判断来源授权链与语义正确性；应用推导整体状态，并确定性地把每项 unsupported 或 unverifiable Change 加入 Remaining Human Checks。
+- 分离的旧版 Decide 用户产物边界：最多 4,800 synthesis output tokens、固定顺序 Decision 段落、一次有限显式恢复，并禁止 synthesis 修改 canonical Claim。下述可选结构化 Plan 使用独立上限。
+- Review Human Gate 逐项编辑保持 Change 身份和 Finding 来源链不可变，把 Chair 编辑后的 replacement 文本重新应用到 Artifact v1 生成 Artifact v3，不含凭证地持久化 revision，并明确限制模型 verification 只覆盖 Artifact v2。人工 revision 不调用供应商。
+- Review 批准把当前可见 v2 或 v3 文本、Change Set、来源身份、原模型 verification、人工编辑 Change ID 和批准时间冻结为独立不含凭证的 Artifact。Snapshot 与房间决定共享一个回滚边界；拒绝不创建 approved Artifact。
+- 恢复 phase context 时以 Canonical State 过滤，废弃 transcript turn 不能进入后续 provider prompt；本地且未启动 provider 的拒绝不消耗 provider 调用额度。
+- 日程型 Decide 产物会检查请求单元；明确要求具体题目的 LeetCode 计划必须给出题号，不能用类别标签代替。
+- 旧 MEU 检查因缺天拒绝 Smoke 007；新实现不代表该质量 Gate 被追溯改为通过。
+- 可选 Detailed LeetCode plan：冻结 10-15 天的 MEU/时间契约，一轮讨论，由 Builder 流式输出各自校验的 JSONL 每日记录（最多 16,000 output tokens），再由另一席位审阅实际完整 Plan（6,000 tokens）。按天视图展示题目、计算工作量/时间、完成检查、调整、疑虑和假设，不暴露传输 JSON，也不随生成自动切换选中日期。
+- Plan 检查点保留有效天数。一次显式恢复额度（最多两次额外调用）只补缺失天；全部天数已有时只重跑审阅。已保存审阅结果的检查点无需 key 即可本地结束。详细/已批准产物存储在 canonical context 之外；未完成/未审阅不能批准。另一席位不一定意味着另一模型家族。
+- D-056取消Plan产物固定截止及累计时间停止（预算0），仍统计耗时；普通讨论仍90秒。显式保存计划恢复可补足前置格式恢复后缺少的最小调用名额，不清除旧预留、不增加输入/输出额度。仅一次中断产物尝试符合资格；第二次尝试后不再续额。保留调用前保存、来源/席位匹配及不自动重试。stopped/status complete不代表交付完成。D-061可选保存停止来自人工还是预算；旧记录来源保持未知，任何恢复都会清除旧原因。恢复控件会在启用前评估保留的输入/输出用量，不会承诺一个本地预算Gate必然拒绝的调用。界面计时是当前视图等待时间，不是已证实的供应商思考；供应商/网络/宿主仍可能中断。
+- D-062为每个付费Plan阶段记录一条生命周期回执。Builder或Reviewer调用供应商前先发出严格`started`尝试，finish与usage未知，再由同请求/阶段终态原位替换。可以区分Reviewer未启动和Reviewer已启动/未知。回执绝不保存凭证、供应商原始输出或私有推理；未知用量不等于零、账单或退款依据。
+- Plan 校验证明算术/覆盖并拒绝重复/矛盾标签，不证明真实题目身份/难度、教学质量或可行性。没有外部题库核验、自动批准、模型自动改写或重试；改变 Plan 契约仍需新房间。
+- D-057在既有Plan产物保存最近四次初始Builder/Reviewer诊断，每次最多十二条逐行逐天拒收，不存原始响应或私有推理。已知用量/结束状态与校验结果分开，未知仍未知，诊断不进入Plan prompt。新格式专用Chair指令绑定阶段/轮次，普通及旧correction保留原义，不迁移归档/冻结上下文。见[Plan问题清单](PLAN_ISSUE_REGISTER.md)。
+- D-058把已识别原始GPT-5 Builder设为`low`推理，实际Plan判断阶段继续`medium`，其他模型/供应商保持默认；请求档位与实际报告reasoning用量分开保存。不改输出上限、重试或调用预算；PLAN-03仍须一次获准Builder阶段结果以结束/用量证据交付可用天数才算完成。
+- 人工逐天编辑重新校验整份派生 Plan，保留原 AI 内容/审阅，先保存带来源修订再展示，并准确冻结修订批准。原版对照及复制/视图明确人工修改未经模型复审。保存失败留草稿，未保存编辑阻止批准/替换房间，无供应商调用或新 store。
+- D-055 为每份原计划增加一次人控闭环：最多选三条意见 -> 保存修改意图 -> 一次 Editor 调用（12K 上限）-> 保存已校验的受影响天修改/拒绝 -> 保存复核意图 -> 一次不同席位复核（6K 上限）-> 人工决定。不改原天数/审阅，派生计划保留未选/未解决意见。失败不重试；未完成循环可放弃并保留原版，已保存且未调用的复核可显式继续。批准冻结准确输出及来源/修改。客户端守卫不等于服务端账单 exactly-once；有界质量配置见模型蓝图。
+- 五十九项离线测试和构建/lint通过，仍有三处既有Cloudflare声明错误。新诊断/作用域界面只有渲染测试，完整浏览器/IndexedDB故障验收仍待完成。真实010/011保留六天但完整交付质量失败，适配器fixture通过不消除该负面证据。
 
 ### 本蓝图已批准但尚未实现
 
 - 超出当前推导式 turn/token/时间边界的用户可编辑多维限制与权威费用执行。
 - 单独选择的 Final Synthesizer。
+- 独立配置的 Review Editor 与 Verifier 系统角色；v0.11c 暂时显式复用两个参与 Seat。
 - 超出确定性 fixture 的 Observer 语义偏题与非精确重复判断真实供应商评测。
 - Claim 级追问和版本化 Decision Memo。
 - 基于账号的 D1 持久化、同步与协作。
@@ -131,6 +157,24 @@ Setup
 
 第一轮在任何共享综合前保留独立提案。后续轮只把明确的未解决分歧交给相关席位。Final Synthesis 默认只运行一次；若被批准的追问改变结论，再生成新 Memo 版本。
 
+### Review Artifact 边界
+
+Chair 至少接受一个 canonical Finding 后，Review synthesis 进入有限 Artifact 分支：
+
+```text
+已接受 Finding，包括带来源的 Chair 新增或 supersede
+  -> Editor Change Set
+  -> 应用校验精确且互不重叠的替换
+  -> 应用从不可变 Artifact v1 生成 Artifact v2
+  -> Verifier 根据来源和边界核验声明的改动部分
+  -> Artifact v2 + Change Set + Verification + Executive Brief
+  -> Human Gate
+```
+
+在 Editor 工作前，Chair 可以追加一条新的已接受 Finding 来修复 reviewer 遗漏；它必须引用 Artifact v1、用户参考资料或真实性边界中的精确原文。修订现有 Finding 会生成新 Claim，并把旧 Claim 标记为 superseded，绝不静默重写审计历史。客户端负责即时反馈，服务器会在任何付费调用前重新校验每项 Chair 来源。
+
+Editor 不能提交不透明的整篇改写。Rejected 或未知 Finding ID、歧义原文、Change 重叠、未覆盖已接受 Finding、JSON 格式错误和超限输出都会让 transition 显式停止，且不自动重试。经过验证的 Editor 结果会在 Verifier 工作前持久化。若 Verifier 失败，显式 Resume 必须匹配同一来源 State、已接受 Finding、Artifact v1 和 Editor 快照，然后只在一项预检可见恢复额度内调用 Verifier。Verifier 不接收完整 transcript 或未修改文档内容。它会分别判断每项 Change 是否获得已接受 Finding 来源链授权，以及改动文本对照用户证据是否在语义上正确；Chair 接受不能代替真实性核验。应用代码推导组合状态，并把每项 unsupported 或 unverifiable Change 送入 Remaining Human Checks。详细 Artifact 是用户交付物，后续模型上下文不能用它替代有限 Canonical State。
+
 ## 数据契约
 
 ### RoomConfig
@@ -176,7 +220,7 @@ interface TurnEnvelope {
 }
 ```
 
-默认限制为一段短 statement、最多三个新 Claim、三个 Claim update、两个 objection 和一个 Chair question。Novelty 由系统计算，不能让模型自己给自己打分。
+应用按 phase 强制上限：均为一段短 statement；Proposal 最多三个新 Claim、不允许 Claim update、一个 objection 和一个 Chair question；Review 最多一个新 Claim、两个 Claim update、一个 objection 和一个 Chair question。Targeted debate 使用更小的专用契约。Novelty 由系统计算，不能让模型自己给自己打分。
 
 ### Canonical MeetingState
 
@@ -204,9 +248,9 @@ Discuss 中的 Claim 默认未验证。状态区分 proposed、contested、provi
 
 - 8 个活跃提案。
 - 12 个活跃 Claim。
-- 6 个活跃 Dispute。
-- 6 个活跃 assumption。
-- 4 个未解决 human choice。
+- 8 个活跃 Dispute。
+- 12 个活跃 assumption。
+- 8 个活跃 open question。
 - 8 条活跃 Chair Directive。
 - 渲染后约 1,200～1,500 个工作上下文 token。
 
@@ -291,8 +335,8 @@ Follow-up:
 
 - Proposal：300～450 output tokens。
 - Review：200～300 output tokens。
-- Targeted debate turn：150～250 output tokens。
-- Observer：严格 JSON envelope 的 transport output 上限为 300 tokens；可见 summary 仍保持 2～4 句。
+- Targeted debate turn：完整严格 JSON envelope 的 transport output 上限为 400 tokens。
+- Observer：严格 JSON envelope 的 transport output 上限为 300 tokens；可见 summary 保持 1～2 句，且最多引用两个 focus Claim、两个 remaining Dispute 和一个 Chair question。
 - Final Memo：600～900 output tokens。
 
 界面以卡片为主。供应商 delta 属于传输数据，绝不能作为实时发言显示；在验证后的 statement 准备好前，舞台只显示有限的 Thinking、Generating 与 Validating 状态。公开原文仍可为审计展开。
@@ -420,7 +464,7 @@ Human Gate 操作变为 Approve、Add Chair Direction、Request Targeted Revisio
 
 ## 剩余开放决定
 
-- 供应商原生 structured-output 模式是否能显著提高可靠性，值得在逐供应商 adapter 内替换跨供应商 JSON prompt。
+- D-060现仅为明确受支持的Anthropic实际Plan Reviewer使用供应商原生structured output。需要真实证据决定是否保留，以及第二个产物契约是否足以证明扩大adapter采用；其余位置继续默认使用跨供应商JSON。
 - 第一次真实供应商测量后的 token 上限。
 - Observer 提取 fallback 默认开启还是仅由 Chair 批准。
 - Export 格式，以及从 IndexedDB 迁移到账号存储的路径。

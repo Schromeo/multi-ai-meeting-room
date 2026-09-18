@@ -3,6 +3,18 @@ import type { UsageSummary } from "./discuss-protocol";
 export type TurnPhase = "proposal" | "review" | "synthesis";
 export type AssumptionLevel = "low" | "medium" | "high";
 export type ClaimUpdateAction = "support" | "oppose" | "revise" | "withdraw";
+export type ReviewFindingSourceKind = "artifact" | "reference" | "truth_constraint";
+
+export type ReviewFindingSource = {
+  kind: ReviewFindingSourceKind;
+  excerpt: string;
+};
+
+export type ChairFindingAmendment = {
+  text: string;
+  source: ReviewFindingSource;
+  supersedesClaimId?: string;
+};
 
 export type TurnEnvelope = {
   statement: string;
@@ -36,6 +48,7 @@ export type Claim = {
   sourceMessageIds: string[];
   supportingSeatIds: string[];
   opposingSeatIds: string[];
+  reviewSource?: ReviewFindingSource;
 };
 
 export type Dispute = {
@@ -67,12 +80,13 @@ export type OpenQuestion = {
 
 export type ChairDirective = {
   id: string;
-  kind: "constraint" | "correction" | "question" | "priority" | "veto";
+  kind: "constraint" | "correction" | "question" | "priority" | "veto" | "format";
   target: "all" | string[];
   text: string;
   status: "active" | "satisfied" | "superseded";
   createdAfterMessageId?: string;
   supersededBy?: string;
+  formatScope?: { phase: TurnPhase; round: number };
 };
 
 export type HumanChoice = {
@@ -147,12 +161,18 @@ export type ChairDirectiveResult =
   | { ok: true; state: MeetingState; duplicate: boolean }
   | { ok: false; state: MeetingState; error: string };
 
+export type ClaimDecision = "accept" | "reject";
+
+export type ClaimDecisionResult =
+  | { ok: true; state: MeetingState; duplicate: boolean }
+  | { ok: false; state: MeetingState; error: string };
+
 export const meetingStateCaps = {
   claims: 12,
-  disputes: 6,
-  assumptions: 6,
-  openQuestions: 6,
-  humanChoices: 4,
+  disputes: 8,
+  assumptions: 12,
+  openQuestions: 8,
+  humanChoices: 12,
   chairDirectives: 8,
   renderedContextCharacters: 6_000,
 } as const;
@@ -196,7 +216,7 @@ export function parseTurnEnvelope(
 ): { ok: true; value: TurnEnvelope } | { ok: false; error: string } {
   let candidate = value;
   if (typeof value === "string") {
-    if (value.length > 30_000) return { ok: false, error: "The turn output exceeds the format limit." };
+    if (value.length > 50_000) return { ok: false, error: "The turn output exceeds the format limit." };
     const serialized = unwrapWholeJsonFence(value);
     try {
       candidate = JSON.parse(serialized);
@@ -207,7 +227,7 @@ export function parseTurnEnvelope(
   if (!isRecord(candidate) || !hasOnlyKeys(candidate, ["statement", "card"])) {
     return { ok: false, error: "The turn envelope must contain only statement and card." };
   }
-  const statementLimit = phase === "synthesis" ? 12_000 : 4_000;
+  const statementLimit = phase === "synthesis" ? 24_000 : 4_000;
   if (!isBoundedString(candidate.statement, 1, statementLimit) || !isRecord(candidate.card)) {
     return { ok: false, error: "The turn statement or card is invalid." };
   }
@@ -228,9 +248,22 @@ export function parseTurnEnvelope(
     return { ok: false, error: "The turn stance or thesis is invalid." };
   }
 
-  const newClaims = parseArray(card.newClaims ?? [], 3, parseNewClaim);
-  const claimUpdates = parseArray(card.claimUpdates ?? [], 3, parseClaimUpdate);
-  const objections = parseArray(card.objections ?? [], 2, parseObjection);
+  const phaseLimits = phase === "proposal"
+    ? { newClaims: 3, claimUpdates: 0, objections: 1 }
+    : phase === "review"
+      ? { newClaims: 1, claimUpdates: 2, objections: 1 }
+      : { newClaims: 3, claimUpdates: 3, objections: 2 };
+  // Synthesis is a user-facing artifact, not a state mutation. Discard any
+  // administrative deltas the model includes instead of losing a valid memo.
+  const newClaims = phase === "synthesis"
+    ? []
+    : parseArray(card.newClaims ?? [], phaseLimits.newClaims, parseNewClaim);
+  const claimUpdates = phase === "synthesis"
+    ? []
+    : parseArray(card.claimUpdates ?? [], phaseLimits.claimUpdates, parseClaimUpdate);
+  const objections = phase === "synthesis"
+    ? []
+    : parseArray(card.objections ?? [], phaseLimits.objections, parseObjection);
   const confidence = parseConfidence(card.confidence);
   if (!newClaims || !claimUpdates || !objections || !confidence) {
     return { ok: false, error: "The turn card exceeds its limits or contains invalid records." };
@@ -335,9 +368,15 @@ export function reduceTurnEnvelope(state: MeetingState, event: TurnReductionEven
     claim.sourceMessageIds = appendUnique(claim.sourceMessageIds, event.sourceMessageId);
     if (update.action === "support") {
       claim.supportingSeatIds = appendUnique(claim.supportingSeatIds, event.seatId);
-      claim.status = claim.opposingSeatIds.length > 0 ? "contested" : "provisionally_supported";
     } else if (update.action === "oppose" || update.action === "revise") {
       claim.opposingSeatIds = appendUnique(claim.opposingSeatIds, event.seatId);
+    }
+    if (claim.status === "accepted_by_chair" || claim.status === "rejected_by_chair") {
+      continue;
+    }
+    if (update.action === "support") {
+      claim.status = claim.opposingSeatIds.length > 0 ? "contested" : "provisionally_supported";
+    } else if (update.action === "oppose" || update.action === "revise") {
       claim.status = "contested";
     } else {
       archivedRecordIds.push(claim.id);
@@ -376,23 +415,25 @@ export function reduceTurnEnvelope(state: MeetingState, event: TurnReductionEven
   envelope.card.objections.forEach((objection, index) => {
     const id = stableRecordId("dispute", event.sourceMessageId, index);
     newDisputeIds.push(id);
+    const targetClaim = objection.targetClaimId
+      ? claims.find((item) => item.id === objection.targetClaimId)
+      : undefined;
+    const targetIsChairDecided = targetClaim?.status === "accepted_by_chair" ||
+      targetClaim?.status === "rejected_by_chair";
     disputes.push({
       id,
       ...(objection.targetClaimId ? { targetClaimId: objection.targetClaimId } : {}),
       text: objection.text,
       severity: objection.severity,
-      status: "open",
+      status: targetIsChairDecided ? "resolved" : "open",
       raisedBySeatId: event.seatId,
       sourceMessageIds: [event.sourceMessageId],
     });
-    if (objection.targetClaimId) {
-      const claim = claims.find((item) => item.id === objection.targetClaimId);
-      if (claim) {
-        claim.status = "contested";
-        claim.opposingSeatIds = appendUnique(claim.opposingSeatIds, event.seatId);
-        claim.sourceMessageIds = appendUnique(claim.sourceMessageIds, event.sourceMessageId);
-        changedClaimIds.add(claim.id);
-      }
+    if (targetClaim) {
+      if (!targetIsChairDecided) targetClaim.status = "contested";
+      targetClaim.opposingSeatIds = appendUnique(targetClaim.opposingSeatIds, event.seatId);
+      targetClaim.sourceMessageIds = appendUnique(targetClaim.sourceMessageIds, event.sourceMessageId);
+      changedClaimIds.add(targetClaim.id);
     }
   });
 
@@ -461,11 +502,149 @@ export function appendChairDirective(
   };
 }
 
+export function decideClaimByChair(
+  state: MeetingState,
+  claimId: string,
+  decision: ClaimDecision,
+  choiceId: string,
+): ClaimDecisionResult {
+  if (!isIdentifier(claimId) || !isIdentifier(choiceId)) {
+    return { ok: false, state, error: "The Finding decision is invalid." };
+  }
+  const claim = state.claims.find((item) => item.id === claimId);
+  if (!claim) return { ok: false, state, error: "The Finding is not present in Canonical State." };
+  const nextStatus = decision === "accept" ? "accepted_by_chair" : "rejected_by_chair";
+  if (claim.status === nextStatus) return { ok: true, state, duplicate: true };
+  if (state.humanChoices.length >= meetingStateCaps.humanChoices) {
+    return { ok: false, state, error: `The Human Choice cap is ${meetingStateCaps.humanChoices}.` };
+  }
+
+  return {
+    ok: true,
+    duplicate: false,
+    state: {
+      ...state,
+      version: state.version + 1,
+      claims: state.claims.map((item) =>
+        item.id === claimId ? { ...cloneClaim(item), status: nextStatus } : cloneClaim(item),
+      ),
+      disputes: state.disputes.map((item) =>
+        item.targetClaimId === claimId ? { ...item, status: "resolved" as const } : { ...item },
+      ),
+      assumptions: state.assumptions.map((item) =>
+        decision === "reject" && item.claimId === claimId
+          ? { ...item, status: "resolved" as const, sourceMessageIds: [...item.sourceMessageIds] }
+          : { ...item, sourceMessageIds: [...item.sourceMessageIds] },
+      ),
+      humanChoices: [
+        ...state.humanChoices,
+        {
+          id: choiceId,
+          question: `Review Finding ${claimId}`,
+          status: "decided" as const,
+          choice: decision,
+          sourceMessageIds: [...claim.sourceMessageIds],
+        },
+      ],
+    },
+  };
+}
+
+export function addChairFindingByChair(
+  state: MeetingState,
+  amendment: ChairFindingAmendment,
+  choiceId: string,
+): ClaimDecisionResult {
+  if (
+    !isIdentifier(choiceId) ||
+    !isBoundedString(amendment.text, 8, 500) ||
+    !parseReviewFindingSource(amendment.source)
+  ) {
+    return { ok: false, state, error: "The Chair Finding is invalid." };
+  }
+  if (state.humanChoices.some((choice) => choice.id === choiceId)) {
+    return { ok: true, state, duplicate: true };
+  }
+  const target = amendment.supersedesClaimId
+    ? state.claims.find((claim) => claim.id === amendment.supersedesClaimId)
+    : undefined;
+  if (amendment.supersedesClaimId && !target) {
+    return { ok: false, state, error: "The Finding to amend is not present in Canonical State." };
+  }
+  if (target?.status === "superseded") {
+    return { ok: false, state, error: "The selected Finding has already been superseded." };
+  }
+  if (state.claims.length >= meetingStateCaps.claims) {
+    return { ok: false, state, error: `The active Claim cap is ${meetingStateCaps.claims}.` };
+  }
+  if (state.humanChoices.length >= meetingStateCaps.humanChoices) {
+    return { ok: false, state, error: `The Human Choice cap is ${meetingStateCaps.humanChoices}.` };
+  }
+
+  const source = parseReviewFindingSource(amendment.source)!;
+  const claimId = `claim-${choiceId}`;
+  const sourceMessageIds = [choiceId, ...(target?.sourceMessageIds ?? [])].slice(0, 20);
+  const newClaim: Claim = {
+    id: claimId,
+    text: amendment.text.trim(),
+    status: "accepted_by_chair",
+    assumptionLevel: "low",
+    sourceMessageIds,
+    supportingSeatIds: ["human-chair"],
+    opposingSeatIds: [],
+    reviewSource: source,
+  };
+
+  return {
+    ok: true,
+    duplicate: false,
+    state: {
+      ...state,
+      version: state.version + 1,
+      claims: [
+        ...state.claims.map((claim) =>
+          claim.id === target?.id
+            ? { ...cloneClaim(claim), status: "superseded" as const }
+            : cloneClaim(claim),
+        ),
+        newClaim,
+      ],
+      disputes: state.disputes.map((item) =>
+        item.targetClaimId === target?.id
+          ? { ...item, status: "resolved" as const, sourceMessageIds: [...item.sourceMessageIds] }
+          : { ...item, sourceMessageIds: [...item.sourceMessageIds] },
+      ),
+      assumptions: state.assumptions.map((item) =>
+        item.claimId === target?.id
+          ? { ...item, status: "resolved" as const, sourceMessageIds: [...item.sourceMessageIds] }
+          : { ...item, sourceMessageIds: [...item.sourceMessageIds] },
+      ),
+      humanChoices: [
+        ...state.humanChoices,
+        {
+          id: choiceId,
+          question: target ? `Amend Review Finding ${target.id}` : "Add Review Finding",
+          status: "decided" as const,
+          choice: target ? `supersede:${target.id}` : "add",
+          sourceMessageIds: [choiceId],
+        },
+      ],
+    },
+  };
+}
+
+export function chairDirectivesForPhase(state: MeetingState, scope?: ChairDirective["formatScope"]) {
+  return state.activeChairDirectives.filter((item) => item.status === "active" && (!item.formatScope ||
+    (item.formatScope.phase === scope?.phase && item.formatScope.round === scope.round)));
+}
+
 export function renderMeetingStateContext(
   state: MeetingState,
-  maximumCharacters = meetingStateCaps.renderedContextCharacters,
+  maximumCharacters: number = meetingStateCaps.renderedContextCharacters,
+  formatScope?: ChairDirective["formatScope"],
 ) {
   const limit = Math.max(1_000, Math.min(maximumCharacters, 12_000));
+  const directives = chairDirectivesForPhase(state, formatScope);
   const context = {
     version: state.version,
     objective: boundedText(state.objective, Math.min(1_200, Math.floor(limit / 4))),
@@ -480,7 +659,7 @@ export function renderMeetingStateContext(
     humanChoices: [] as unknown[],
     omitted: {
       constraints: state.constraints.length,
-      chairDirectives: state.activeChairDirectives.length,
+      chairDirectives: directives.length,
       claims: state.claims.length,
       disputes: state.disputes.length,
       assumptions: state.assumptions.length,
@@ -490,24 +669,27 @@ export function renderMeetingStateContext(
   };
 
   addWhileWithin(context, "constraints", state.constraints.map((item) => boundedText(item, 240)), limit);
-  addWhileWithin(context, "chairDirectives", state.activeChairDirectives.map((item) => ({
+  addWhileWithin(context, "chairDirectives", directives.map((item) => ({
     id: item.id,
     kind: item.kind,
     target: item.target,
     text: boundedText(item.text, 320),
     status: item.status,
+    ...(item.formatScope ? { formatScope: item.formatScope } : {}),
   })), limit);
   addWhileWithin(context, "claims", state.claims.map((item) => ({
     id: item.id,
     text: boundedText(item.text, 420),
     status: item.status,
     sources: item.sourceMessageIds,
+    ...(item.reviewSource ? { reviewSource: item.reviewSource } : {}),
   })), limit);
   addWhileWithin(context, "disputes", state.disputes.map((item) => ({
     id: item.id,
     targetClaimId: item.targetClaimId,
     text: boundedText(item.text, 360),
     severity: item.severity,
+    status: item.status,
     sources: item.sourceMessageIds,
   })), limit);
   addWhileWithin(context, "assumptions", state.assumptions.map((item) => ({
@@ -524,6 +706,8 @@ export function renderMeetingStateContext(
     id: item.id,
     question: boundedText(item.question, 280),
     status: item.status,
+    choice: item.choice,
+    sources: item.sourceMessageIds,
   })), limit);
   return JSON.stringify(context);
 }
@@ -605,6 +789,10 @@ function parseClaim(value: unknown): Claim | null {
   if (!isRecord(value) || !isIdentifier(value.id) || !isBoundedString(value.text, 1, 500)) return null;
   if (!isClaimStatus(value.status) || !isAssumptionLevel(value.assumptionLevel)) return null;
   if (!isIdentifierArray(value.sourceMessageIds, 20) || !isIdentifierArray(value.supportingSeatIds, 20) || !isIdentifierArray(value.opposingSeatIds, 20)) return null;
+  const reviewSource = value.reviewSource === undefined
+    ? undefined
+    : parseReviewFindingSource(value.reviewSource);
+  if (value.reviewSource !== undefined && !reviewSource) return null;
   return {
     id: value.id,
     text: value.text,
@@ -613,6 +801,7 @@ function parseClaim(value: unknown): Claim | null {
     sourceMessageIds: [...value.sourceMessageIds],
     supportingSeatIds: [...value.supportingSeatIds],
     opposingSeatIds: [...value.opposingSeatIds],
+    ...(reviewSource ? { reviewSource } : {}),
   };
 }
 
@@ -635,7 +824,12 @@ function parseOpenQuestion(value: unknown): OpenQuestion | null {
 function parseDirective(value: unknown): ChairDirective | null {
   if (!isRecord(value) || !isIdentifier(value.id) || !isDirectiveKind(value.kind) || !(value.target === "all" || isIdentifierArray(value.target, 20)) || !isBoundedString(value.text, 1, 1_000) || !isDirectiveStatus(value.status)) return null;
   if ((value.createdAfterMessageId !== undefined && !isIdentifier(value.createdAfterMessageId)) || (value.supersededBy !== undefined && !isIdentifier(value.supersededBy))) return null;
-  return { id: value.id, kind: value.kind, target: value.target === "all" ? "all" : [...value.target], text: value.text, status: value.status, ...(typeof value.createdAfterMessageId === "string" ? { createdAfterMessageId: value.createdAfterMessageId } : {}), ...(typeof value.supersededBy === "string" ? { supersededBy: value.supersededBy } : {}) };
+  const scope = value.formatScope;
+  if (value.kind === "format") {
+    if (!isRecord(scope) || !["proposal", "review", "synthesis"].includes(scope.phase as string) || !Number.isInteger(scope.round) || Number(scope.round) < 1 || Number(scope.round) > 3) return null;
+  } else if (scope !== undefined) return null;
+  return { id: value.id, kind: value.kind, target: value.target === "all" ? "all" : [...value.target], text: value.text, status: value.status, ...(typeof value.createdAfterMessageId === "string" ? { createdAfterMessageId: value.createdAfterMessageId } : {}), ...(typeof value.supersededBy === "string" ? { supersededBy: value.supersededBy } : {}),
+    ...(isRecord(scope) ? { formatScope: { phase: scope.phase as TurnPhase, round: Number(scope.round) } } : {}) };
 }
 
 function parseHumanChoice(value: unknown): HumanChoice | null {
@@ -661,7 +855,23 @@ function stableRecordId(prefix: string, sourceMessageId: string, index: number) 
 }
 
 function cloneClaim(claim: Claim): Claim {
-  return { ...claim, sourceMessageIds: [...claim.sourceMessageIds], supportingSeatIds: [...claim.supportingSeatIds], opposingSeatIds: [...claim.opposingSeatIds] };
+  return {
+    ...claim,
+    sourceMessageIds: [...claim.sourceMessageIds],
+    supportingSeatIds: [...claim.supportingSeatIds],
+    opposingSeatIds: [...claim.opposingSeatIds],
+    ...(claim.reviewSource ? { reviewSource: { ...claim.reviewSource } } : {}),
+  };
+}
+
+function parseReviewFindingSource(value: unknown): ReviewFindingSource | null {
+  if (
+    !isRecord(value) ||
+    !hasOnlyKeys(value, ["kind", "excerpt"]) ||
+    !isReviewFindingSourceKind(value.kind) ||
+    !isBoundedString(value.excerpt, 1, 500)
+  ) return null;
+  return { kind: value.kind, excerpt: value.excerpt.trim() };
 }
 
 function appendUnique(values: string[], value: string) {
@@ -764,9 +974,13 @@ function isClaimStatus(value: unknown): value is Claim["status"] {
 }
 
 function isDirectiveKind(value: unknown): value is ChairDirective["kind"] {
-  return value === "constraint" || value === "correction" || value === "question" || value === "priority" || value === "veto";
+  return value === "constraint" || value === "correction" || value === "question" || value === "priority" || value === "veto" || value === "format";
 }
 
 function isDirectiveStatus(value: unknown): value is ChairDirective["status"] {
   return value === "active" || value === "satisfied" || value === "superseded";
+}
+
+function isReviewFindingSourceKind(value: unknown): value is ReviewFindingSourceKind {
+  return value === "artifact" || value === "reference" || value === "truth_constraint";
 }

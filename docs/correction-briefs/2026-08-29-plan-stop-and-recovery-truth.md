@@ -1,0 +1,8 @@
+# Plan Stop and Recovery Truth Correction Brief
+
+- **Observed failure:** an exhausted Plan room can still present `Build missing plan days` or `Resume saved plan`, even when the renewed recovery state remains over its input/output-token ceiling. After reload, every `stopped` protocol is labeled `Stopped by the Human Chair`, including a deterministic budget stop.
+- **User artifact:** preserve every accepted Plan day and attempt receipt. This correction changes only whether another action is truthfully available and why the room stopped.
+- **Smallest hypothesis:** protocol state loses stop provenance, and the UI derives recovery availability from structural eligibility without evaluating the proposed recovery against recorded usage.
+- **Change boundary:** add an optional backward-compatible protocol `stopReason` of `human` or `budget`; budget gates persist `budget`, explicit cancellation persists `human`, and legacy stopped rooms remain `unknown` rather than being mislabeled. Evaluate the exact proposed Plan recovery against saved usage before enabling or labeling either recovery control.
+- **Acceptance:** old protocol records without `stopReason` still parse; invalid or non-stopped reason combinations fail; budget and human stops round-trip distinctly; a recovered state clears its old stop reason; exhausted input/output recovery is visible as unavailable and cannot invoke the handler; a structurally eligible recovery with remaining budget remains enabled.
+- **Cost and stop boundary:** zero provider calls, no budget increase, no recovery-policy expansion, no record rewrite and no UI redesign. Stop after offline build/tests/lint/type checks and bilingual documentation.

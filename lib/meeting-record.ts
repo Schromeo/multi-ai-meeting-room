@@ -17,6 +17,17 @@ import {
   parseMeetingProtocolState,
   recoverProtocolAfterReload,
 } from "./meeting-orchestrator";
+import {
+  parseReviewArtifactResult,
+  parseReviewApprovedArtifact,
+  parseReviewEditCheckpoint,
+  parseReviewHumanRevision,
+  ReviewApprovedArtifact,
+  ReviewArtifactResult,
+  ReviewEditCheckpoint,
+  ReviewHumanRevision,
+} from "./review-artifact";
+import { parsePlanRequest, parsePlanArtifact, parsePlanApproval, parsePlanHumanRevision, planReady, type PlanRequest, type PlanArtifact, type PlanApproval, type PlanHumanRevision } from "./plan-artifact";
 
 export type TranscriptItem = {
   id: string;
@@ -39,6 +50,20 @@ export type TranscriptItem = {
 
 export type DecisionStatus = "waiting" | "pending" | "approved" | "rejected";
 
+export type TaskMode = "decide" | "review";
+
+export type ReviewTaskInput = {
+  artifact: string;
+  references: string;
+  truthConstraints: string;
+};
+
+export const reviewTaskLimits = {
+  artifact: 12_000,
+  references: 12_000,
+  truthConstraints: 2_000,
+} as const;
+
 export type ParticipantSnapshot = {
   provider: ProviderId;
   providerName: string;
@@ -56,6 +81,16 @@ export type MeetingRecord = {
   version: 1;
   id: string;
   objective: string;
+  taskMode: TaskMode;
+  reviewInput?: ReviewTaskInput;
+  planRequest?: PlanRequest;
+  planArtifact?: PlanArtifact;
+  planApproval?: PlanApproval;
+  planHumanRevision?: PlanHumanRevision;
+  reviewEditCheckpoint?: ReviewEditCheckpoint;
+  reviewResult?: ReviewArtifactResult;
+  reviewHumanRevision?: ReviewHumanRevision;
+  reviewApprovedArtifact?: ReviewApprovedArtifact;
   stage: "meeting" | "decision";
   transcript: TranscriptItem[];
   memo: string;
@@ -83,12 +118,50 @@ export const emptyUsage: UsageSummary = {
 export function parseMeetingRecord(value: unknown): MeetingRecord | null {
   if (!value || typeof value !== "object" || Array.isArray(value)) return null;
   const record = value as Record<string, unknown>;
+  const taskMode = record.taskMode === undefined ? "decide" : parseTaskMode(record.taskMode);
+  const reviewInput = record.reviewInput === undefined
+    ? undefined
+    : parseReviewTaskInput(record.reviewInput);
   const transcript = parseTranscript(record.transcript);
+  const planRequest = record.planRequest === undefined ? undefined : parsePlanRequest(record.planRequest);
+  const planArtifact = record.planArtifact === undefined ? undefined : planRequest && typeof record.objective === "string"
+    ? parsePlanArtifact(record.planArtifact, planRequest, record.objective) : null;
+  const planHumanRevision = record.planHumanRevision === undefined ? undefined : planArtifact ? parsePlanHumanRevision(record.planHumanRevision, planArtifact) : null;
+  const planApproval = record.planApproval === undefined ? undefined : planArtifact ? parsePlanApproval(record.planApproval, planArtifact, planHumanRevision) : null;
   const participants = parseParticipants(record.participants);
   const observer = record.observer === undefined ? undefined : parseObserver(record.observer);
   const usage = parseUsage(record.usage);
   const meetingState =
     record.meetingState === undefined ? undefined : parseMeetingState(record.meetingState);
+  const acceptedFindingIds = meetingState?.claims
+    .filter((claim) => claim.status === "accepted_by_chair")
+    .map((claim) => claim.id) ?? [];
+  const reviewEditCheckpoint = record.reviewEditCheckpoint === undefined
+    ? undefined
+    : reviewInput
+      ? parseReviewEditCheckpoint(record.reviewEditCheckpoint, reviewInput.artifact, acceptedFindingIds)
+      : null;
+  const reviewResult = record.reviewResult === undefined
+    ? undefined
+    : parseReviewArtifactResult(
+        record.reviewResult,
+        reviewInput?.artifact,
+      );
+  const reviewHumanRevision = record.reviewHumanRevision === undefined
+    ? undefined
+    : reviewInput && reviewResult
+      ? parseReviewHumanRevision(record.reviewHumanRevision, reviewInput.artifact, reviewResult)
+      : null;
+  const reviewApprovedArtifact = record.reviewApprovedArtifact === undefined
+    ? undefined
+    : reviewInput && reviewResult
+      ? parseReviewApprovedArtifact(
+          record.reviewApprovedArtifact,
+          reviewInput.artifact,
+          reviewResult,
+          reviewHumanRevision ?? undefined,
+        )
+      : null;
   const protocolState =
     record.protocolState === undefined
       ? undefined
@@ -98,6 +171,24 @@ export function parseMeetingRecord(value: unknown): MeetingRecord | null {
     record.version !== 1 ||
     !isBoundedString(record.id, 1, 200) ||
     !isBoundedString(record.objective, 1, 4_000) ||
+    !taskMode ||
+    (record.planRequest !== undefined && (!planRequest || taskMode !== "decide")) ||
+    (record.planArtifact !== undefined && (!planArtifact || !meetingState || planArtifact.sourceStateVersion !== meetingState.version || record.iteration !== 1)) ||
+    (record.planApproval !== undefined && (!planApproval || record.decision !== "approved")) ||
+    (record.planHumanRevision !== undefined && (!planHumanRevision || !["pending", "approved", "rejected"].includes(String(record.decision)))) ||
+    (planRequest && record.decision === "approved" && (!planApproval || !planArtifact || !planReady(planArtifact))) ||
+    (planArtifact && record.decision === "pending" && !planReady(planArtifact)) ||
+    (taskMode === "review" && !reviewInput) ||
+    (taskMode !== "review" && record.reviewInput !== undefined) ||
+    (record.reviewEditCheckpoint !== undefined && (!reviewEditCheckpoint || taskMode !== "review")) ||
+    (record.reviewResult !== undefined && (!reviewResult || taskMode !== "review")) ||
+    (reviewResult?.artifactVersion === 1 && (!meetingState ||
+      reviewResult.sourceStateVersion > meetingState.version ||
+      meetingState.claims.some((claim) => claim.status !== "rejected_by_chair" && claim.status !== "superseded") ||
+      record.reviewEditCheckpoint !== undefined || record.reviewHumanRevision !== undefined)) ||
+    (record.reviewHumanRevision !== undefined && (!reviewHumanRevision || taskMode !== "review")) ||
+    (record.reviewApprovedArtifact !== undefined &&
+      (!reviewApprovedArtifact || taskMode !== "review" || record.decision !== "approved")) ||
     (record.stage !== "meeting" && record.stage !== "decision") ||
     transcript === null ||
     typeof record.memo !== "string" ||
@@ -121,6 +212,16 @@ export function parseMeetingRecord(value: unknown): MeetingRecord | null {
     version: 1,
     id: record.id,
     objective: record.objective,
+    taskMode,
+    ...(planRequest ? { planRequest } : {}),
+    ...(planArtifact ? { planArtifact } : {}),
+    ...(planApproval ? { planApproval } : {}),
+    ...(planHumanRevision ? { planHumanRevision } : {}),
+    ...(reviewInput ? { reviewInput } : {}),
+    ...(reviewEditCheckpoint ? { reviewEditCheckpoint } : {}),
+    ...(reviewResult ? { reviewResult } : {}),
+    ...(reviewHumanRevision ? { reviewHumanRevision } : {}),
+    ...(reviewApprovedArtifact ? { reviewApprovedArtifact } : {}),
     stage: record.stage,
     transcript,
     memo: record.memo,
@@ -133,6 +234,26 @@ export function parseMeetingRecord(value: unknown): MeetingRecord | null {
     ...(protocolState ? { protocolState } : {}),
     createdAt: record.createdAt,
     updatedAt: record.updatedAt,
+  };
+}
+
+export function parseTaskMode(value: unknown): TaskMode | null {
+  return value === "decide" || value === "review" ? value : null;
+}
+
+export function parseReviewTaskInput(value: unknown): ReviewTaskInput | null {
+  if (!value || typeof value !== "object" || Array.isArray(value)) return null;
+  const input = value as Record<string, unknown>;
+  if (
+    !isBoundedString(input.artifact, 20, reviewTaskLimits.artifact) ||
+    input.artifact.trim().length < 20 ||
+    !isBoundedString(input.references, 8, reviewTaskLimits.references) ||
+    !isBoundedString(input.truthConstraints, 8, reviewTaskLimits.truthConstraints)
+  ) return null;
+  return {
+    artifact: input.artifact,
+    references: input.references.trim(),
+    truthConstraints: input.truthConstraints.trim(),
   };
 }
 

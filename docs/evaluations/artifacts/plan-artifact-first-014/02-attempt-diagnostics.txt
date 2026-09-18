@@ -1,0 +1,34 @@
+Live 014 attempt diagnostics
+
+Builder / gpt-5.6-sol / accepted
+- Provider completion: completed
+- Reason: unknown
+- Latency: 78s
+- Requested reasoning: provider_default
+- Reported input: 1111 tokens
+- Reported output: 7766 tokens
+- Reported reasoning: 3057 tokens
+- Output cap: 16000 tokens
+- Text received: 14655 characters
+- Accepted days: 1-12
+- Rejected records: 0
+- Attempt ID: b62d048d-d128-4acd-b654-5ad1384dcac1
+- Created: 2026-08-29T10:02:10.347Z
+
+Reviewer / claude-fable-5 / rejected
+- Provider completion: completed
+- Reason: other
+- Latency: 86s
+- Requested reasoning: provider_default
+- Reported input: 9388 tokens
+- Reported output: 5191 tokens
+- Reported reasoning: unknown
+- Output cap: 6000 tokens
+- Text received: 2720 characters
+- Accepted days: none
+- Rejected records: 1
+- Rejection: line 1, Invalid JSON
+- Attempt ID: b62d048d-d128-4acd-b654-5ad1384dcac1
+- Created: 2026-08-29T10:03:36.687Z
+
+Reported tokens are not a provider invoice. Raw responses and private reasoning were not retained. No automatic retry followed.

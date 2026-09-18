@@ -1,0 +1,9 @@
+{
+  "objective": "Review this synthetic resume against the supplied role brief. Deliver a complete revised resume, a concise account of material changes, and remaining human checks. Prioritize truthful evidence and preserve supported work.",
+  "taskMode": "review",
+  "reviewInput": {
+    "artifact": "# Alex Example\n\n## Education\nMS Computer Science, December 2024.\n\n## Experience\nInternal Tools Engineer, June-December 2025.\n- Built and documented an internal API for the support team.\n- Reduced manual triage time by approximately 50%.\n- Used AI tools to [FILL IN OR DELETE: quantify productivity gain].\n\n## Projects\nSignalSearch: Added query filters to reduce false positives.\nBatchIndex: Eliminated redundant computation across all indexing jobs.\n\n## Skills\nPython, TypeScript, SQL, Linux.",
+    "references": "Synthetic role brief: relevant CS education, programming, information retrieval, and practical software delivery. No graduation-window eligibility rule is supplied.\nCandidate notes: built and documented the internal API. Triage became easier, but no measurement supports a 50% saving. There is no verified AI-tool workflow or impact example. SignalSearch query filters reduce false positives in the evaluated examples; no claim of eliminating them is made. BatchIndex reuses intermediate results in some jobs; other jobs still repeat computation. The listed education, dates, and skills are confirmed.",
+    "truthConstraints": "Use only supplied evidence. Do not invent metrics, AI-tool work, dates, qualifications, or eligibility rules. Remove unresolved template text. Preserve supported specifics and bounded claims; vaguer wording alone is not evidence of improvement. Put unresolved checks outside the revised resume. Write the deliverables in English."
+  }
+}

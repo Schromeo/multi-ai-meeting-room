@@ -1,0 +1,161 @@
+- main:
+  - button "M Meeting Room":
+    - generic: M
+    - strong: Meeting Room
+  - navigation "Meeting stages":
+    - button "1 Setup":
+      - generic: "1"
+      - text: Setup
+    - button "2 Agenda":
+      - generic: "2"
+      - text: Agenda
+    - button "3 Meeting":
+      - generic: "3"
+      - text: Meeting
+    - button "4 Decision" [disabled]:
+      - generic: "4"
+      - text: Decision
+  - button "Meetings 11":
+    - text: Meetings
+    - generic: "11"
+  - button "2 connections": 2 connections
+  - generic "Protocol progress":
+    - generic: "1"
+    - text: Proposals
+    - generic: "2"
+    - text: Cross-review
+    - generic: "3"
+    - text: Memo
+  - generic: Interrupted at a recoverable boundary
+  - generic "Transcript view":
+    - button "Focus"
+    - button "Overview"
+  - region "Detailed LeetCode plan":
+    - heading "12-day LeetCode plan" [level=2]
+    - paragraph: 6/12 days ready · 10 MEU/day · 360 min/day
+    - text: Day
+    - combobox "Plan day":
+      - option "Day 1" [selected]
+      - option "Day 2"
+      - option "Day 3"
+      - option "Day 4"
+      - option "Day 5"
+      - option "Day 6"
+      - option "Day 7 · pending"
+      - option "Day 8 · pending"
+      - option "Day 9 · pending"
+      - option "Day 10 · pending"
+      - option "Day 11 · pending"
+      - option "Day 12 · pending"
+    - status: "Pending days: 7, 8, 9, 10, 11, 12"
+    - heading "Day 1 · 数组/哈希与双指针基础：高频模板与区分场景（去重、窗口、区间合并）的入门日" [level=3]
+    - generic: 10.00 MEU
+    - generic: 286 min total
+    - generic: 12 new / 0 redo
+    - table:
+      - rowgroup:
+        - row "Problem Difficulty Work Minutes":
+          - columnheader "Problem"
+          - columnheader "Difficulty"
+          - columnheader "Work"
+          - columnheader "Minutes"
+      - rowgroup:
+        - row "#1 Two Sum easy new 8":
+          - cell "#1 Two Sum"
+          - cell "easy"
+          - cell "new"
+          - cell "8"
+        - row "#49 Group Anagrams medium new 22":
+          - cell "#49 Group Anagrams"
+          - cell "medium"
+          - cell "new"
+          - cell "22"
+        - row "#238 Product of Array Except Self medium new 22":
+          - cell "#238 Product of Array Except Self"
+          - cell "medium"
+          - cell "new"
+          - cell "22"
+        - row "#347 Top K Frequent Elements medium new 22":
+          - cell "#347 Top K Frequent Elements"
+          - cell "medium"
+          - cell "new"
+          - cell "22"
+        - row "#15 3Sum medium new 24":
+          - cell "#15 3Sum"
+          - cell "medium"
+          - cell "new"
+          - cell "24"
+        - row "#11 Container With Most Water medium new 22":
+          - cell "#11 Container With Most Water"
+          - cell "medium"
+          - cell "new"
+          - cell "22"
+        - row "#56 Merge Intervals medium new 22":
+          - cell "#56 Merge Intervals"
+          - cell "medium"
+          - cell "new"
+          - cell "22"
+        - row "#75 Sort Colors medium new 20":
+          - cell "#75 Sort Colors"
+          - cell "medium"
+          - cell "new"
+          - cell "20"
+        - row "#3 Longest Substring Without Repeating Characters medium new 24":
+          - cell "#3 Longest Substring Without Repeating Characters"
+          - cell "medium"
+          - cell "new"
+          - cell "24"
+        - row "#209 Minimum Size Subarray Sum medium new 22":
+          - cell "#209 Minimum Size Subarray Sum"
+          - cell "medium"
+          - cell "new"
+          - cell "22"
+        - row "#704 Binary Search easy new 8":
+          - cell "#704 Binary Search"
+          - cell "easy"
+          - cell "new"
+          - cell "8"
+        - row "#53 Maximum Subarray easy new 10":
+          - cell "#53 Maximum Subarray"
+          - cell "easy"
+          - cell "new"
+          - cell "10"
+    - paragraph:
+      - strong: Review · 60 min
+      - text: 当日完成≥10 MEU；新题AC≥8/9且每题在预算内；记录错因与模板要点，输出题型对照卡1页。若查看题解，需标注并加入次日T+1重做。题号与难度仅据记忆，元数据需用户在LeetCode官网二次确认。
+    - paragraph:
+      - strong: Adjustment
+      - text: 若超出360分钟或新题AC<80%，将最后1道新Medium替换为2道Easy或1道已选同模板redo Medium（各≤14分钟），保持MEU不变；未完成的新题顺延至明日并设为T+1必做；本日不得新增Hard。
+    - paragraph: "MEU: Hard = 2 Medium; 3 Easy = 1 Medium. Problem identities and difficulties are model-supplied, not externally verified. Review is advisory. Interrupted-call usage may be incomplete."
+  - region "Human Chair checkpoint":
+    - generic: Human Chair checkpoint
+    - heading "Interrupted · explicit resume required" [level=2]
+    - paragraph: The previous transition is recorded as interrupted. Its provider call may still have incurred cost. Continuing creates a new explicit transition; nothing retries automatically.
+    - combobox "Directive type":
+      - option "Constraint" [selected]
+      - option "Correction"
+      - option "Question"
+      - option "Priority"
+      - option "Veto"
+    - combobox "Directive audience":
+      - option "All seats" [selected]
+      - option "Seat 1 · Strategist"
+      - option "Seat 2 · Critical Reviewer"
+    - textbox "Add a constraint, correction, priority, question, or veto"
+    - button "Add direction" [disabled]
+    - strong: correction
+    - text: 本阶段只提交合法、精简的Turn Envelope JSON，不写Markdown或JSON外文字。statement不超过120个中文字，简短包含优点、缺点、无依据之处、建议和结论；thesis与confidence.reason各一句；newClaims=[]，claimUpdates最多1条，仅使用已有claimId，objections最多1条；省略questionForChair和recommendedAction。不要输出逐日题单，完整计划由随后Builder生成。
+    - generic "Deterministic process report":
+      - generic: Process report · State v5
+      - strong: Structural progress detected
+      - generic: 7 claims
+      - generic: 4 updates
+      - generic: 4 objections
+      - generic: 4 open disputes
+    - button "Build missing plan days"
+  - strong: Round 1/1
+  - generic: 2 seats / 5 turns complete
+  - generic: 0 call slots · 37K output · No cumulative time cutoff
+  - paragraph: "Plan incomplete: Days 7, 8, 9, 10, 11, 12 are missing or fail workload/time/duplicate checks. Valid days were retained; explicitly resume to repair only these days."
+  - button "Return to agenda"
+Observed: 2026-08-27T14:46:50.126Z

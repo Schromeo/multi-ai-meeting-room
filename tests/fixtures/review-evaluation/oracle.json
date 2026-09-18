@@ -1,0 +1,102 @@
+{
+  "schemaVersion": 1,
+  "usage": "Evaluator-only synthetic expectations, not model outputs. Never send this file to a baseline, participant, Editor, or Verifier. Equivalent sound corrections are valid.",
+  "cases": [
+    {
+      "caseId": "resume-truth-v1",
+      "issues": [
+        {
+          "id": "resume-metric", "severity": "blocking",
+          "finding": "The approximately 50% triage saving has no measurement support.",
+          "evidence": [{"kind": "artifact", "excerpt": "Reduced manual triage time by approximately 50%."}, {"kind": "reference", "excerpt": "no measurement supports a 50% saving"}],
+          "acceptance": "Remove the numerical claim or remove the bullet; do not invent another number. The final resume must not retain an unverified metric as fact."
+        },
+        {
+          "id": "resume-placeholder", "severity": "blocking",
+          "finding": "The unresolved AI-tools template is not an evidenced work claim.",
+          "evidence": [{"kind": "artifact", "excerpt": "[FILL IN OR DELETE: quantify productivity gain]"}, {"kind": "reference", "excerpt": "There is no verified AI-tool workflow or impact example."}],
+          "acceptance": "Remove the template bullet without replacing it with invented tool usage; mention missing evidence outside the resume if needed."
+        },
+        {
+          "id": "resume-absolute", "severity": "material",
+          "finding": "Eliminating redundancy across all jobs contradicts the supplied limited scope.",
+          "evidence": [{"kind": "artifact", "excerpt": "Eliminated redundant computation across all indexing jobs."}, {"kind": "reference", "excerpt": "BatchIndex reuses intermediate results in some jobs; other jobs still repeat computation."}],
+          "acceptance": "Describe reuse or reduced redundant work in the supported subset of jobs, without an all-jobs elimination claim."
+        }
+      ],
+      "protectedText": ["MS Computer Science, December 2024.", "Built and documented an internal API for the support team.", "SignalSearch: Added query filters to reduce false positives.", "Python, TypeScript, SQL, Linux."],
+      "falsePositiveTrap": "Calling the bounded phrase reduce false positives absolute, or inventing a graduation eligibility cutoff, is not a valid material Finding. Cosmetic mitigate wording earns no repair credit.",
+      "remainingChecks": ["Ask for measured triage evidence before restoring a numeric saving.", "Ask for a real AI-tool example before adding AI-tool experience."],
+      "goldenChanges": [
+        {"id": "resume-change-1", "findingIds": ["resume-metric"], "location": "Experience", "before": "- Reduced manual triage time by approximately 50%.\n", "after": "", "rationale": "No measurement supports this saving; preserve the supported API bullet instead.", "basis": "reference"},
+        {"id": "resume-change-2", "findingIds": ["resume-placeholder"], "location": "Experience", "before": "- Used AI tools to [FILL IN OR DELETE: quantify productivity gain].\n", "after": "", "rationale": "Remove an unresolved template without inventing experience.", "basis": "reference"},
+        {"id": "resume-change-3", "findingIds": ["resume-absolute"], "location": "Projects", "before": "Eliminated redundant computation across all indexing jobs.", "after": "Reused intermediate results to reduce redundant computation in some indexing jobs.", "rationale": "Match the bounded scope confirmed by candidate notes.", "basis": "reference"}
+      ],
+      "goldenArtifact": "# Alex Example\n\n## Education\nMS Computer Science, December 2024.\n\n## Experience\nInternal Tools Engineer, June-December 2025.\n- Built and documented an internal API for the support team.\n\n## Projects\nSignalSearch: Added query filters to reduce false positives.\nBatchIndex: Reused intermediate results to reduce redundant computation in some indexing jobs.\n\n## Skills\nPython, TypeScript, SQL, Linux."
+    },
+    {
+      "caseId": "requirements-control-v1",
+      "issues": [
+        {
+          "id": "requirements-deletion", "severity": "blocking",
+          "finding": "Hiding a note but retaining searchable content violates the deletion contract.",
+          "evidence": [{"kind": "artifact", "excerpt": "deleting a note only hides it from the list; its content remains searchable"}, {"kind": "reference", "excerpt": "Deleting a note must remove its content from the primary store and search index."}],
+          "acceptance": "Remove primary and indexed content, retain only the disclosed backup window, and reapply deletions before restored data is served. Do not promise immediate backup erasure."
+        },
+        {
+          "id": "requirements-consent", "severity": "blocking",
+          "finding": "Typing an address triggers an external send without explicit owner confirmation.",
+          "evidence": [{"kind": "artifact", "excerpt": "entering a collaborator email immediately sends the note and an invitation"}, {"kind": "reference", "excerpt": "Typing an email must send nothing."}],
+          "acceptance": "Make sending contingent on explicit owner confirmation after recipient/content preview; no send on typing alone."
+        },
+        {
+          "id": "requirements-access", "severity": "material",
+          "finding": "Accessibility acceptance is not testable and omits agreed pilot checks.",
+          "evidence": [{"kind": "artifact", "excerpt": "Accessibility acceptance: the interface is easy for everyone to use."}, {"kind": "reference", "excerpt": "Pilot acceptance requires keyboard-only completion of create, edit, and delete flows, visible focus, and labelled form controls."}],
+          "acceptance": "Require all supplied accessibility checks as pending acceptance tests, without claiming certification or existing test success."
+        }
+      ],
+      "protectedText": ["Audience: single-user workshop organizers.", "Core flow: create a note, edit its title, and find it by title search.", "Storage: notes remain until the owner deletes them.", "Out of scope: billing, organization accounts, and simultaneous editing."],
+      "falsePositiveTrap": "Adding collaboration accounts or deleting title search to simplify implementation violates agreed scope; do not invent a retention law.",
+      "remainingChecks": ["Demonstrate deletion and restore behavior in tests before pilot acceptance.", "Run the keyboard-only flows and verify focus and labels before acceptance."],
+      "goldenChanges": [
+        {"id": "requirements-change-1", "findingIds": ["requirements-deletion"], "location": "Deletion", "before": "Deletion: deleting a note only hides it from the list; its content remains searchable.", "after": "Deletion: remove note content from the primary store and search index. Backups may retain content for up to seven days; reapply deletion records before serving any restored backup. Verify these behaviors before pilot acceptance.", "rationale": "Implement the agreed deletion and backup boundary.", "basis": "reference"},
+        {"id": "requirements-change-2", "findingIds": ["requirements-consent"], "location": "Sharing", "before": "Sharing: entering a collaborator email immediately sends the note and an invitation.", "after": "Sharing: typing an email sends nothing. Show the recipient and note content, then send only after explicit owner confirmation.", "rationale": "Restore the external-send approval boundary.", "basis": "reference"},
+        {"id": "requirements-change-3", "findingIds": ["requirements-access"], "location": "Accessibility", "before": "Accessibility acceptance: the interface is easy for everyone to use.", "after": "Accessibility acceptance: require keyboard-only completion of create, edit, and delete, visible focus, and labelled form controls. These acceptance checks are pending, not certified or already passed.", "rationale": "Replace vague acceptance with the supplied testable criteria.", "basis": "reference"}
+      ],
+      "goldenArtifact": "# Workshop Notes Pilot\n\nAudience: single-user workshop organizers.\nCore flow: create a note, edit its title, and find it by title search.\nStorage: notes remain until the owner deletes them.\nDeletion: remove note content from the primary store and search index. Backups may retain content for up to seven days; reapply deletion records before serving any restored backup. Verify these behaviors before pilot acceptance.\nSharing: typing an email sends nothing. Show the recipient and note content, then send only after explicit owner confirmation.\nAccessibility acceptance: require keyboard-only completion of create, edit, and delete, visible focus, and labelled form controls. These acceptance checks are pending, not certified or already passed.\nOut of scope: billing, organization accounts, and simultaneous editing."
+    },
+    {
+      "caseId": "technical-recovery-v1",
+      "issues": [
+        {
+          "id": "technical-ack", "severity": "blocking",
+          "finding": "Acknowledging before durable storage risks losing the result on a crash.",
+          "evidence": [{"kind": "artifact", "excerpt": "acknowledge the queue message before storing the report"}, {"kind": "reference", "excerpt": "unacknowledged jobs can be redelivered; acknowledged jobs are removed"}],
+          "acceptance": "Persist the result before acknowledgement and handle redelivery through job-ID deduplication. Keep notification recovery distinct from rerendering a completed report."
+        },
+        {
+          "id": "technical-retry", "severity": "blocking",
+          "finding": "Infinite retries of a non-idempotent notification can duplicate effects, especially after ambiguous timeouts.",
+          "evidence": [{"kind": "artifact", "excerpt": "retry every failed notification POST indefinitely"}, {"kind": "reference", "excerpt": "A timeout does not reveal whether it already applied a POST."}],
+          "acceptance": "Persist notification status and stop ambiguous automatic resend for reconciliation. Do not assume an idempotency key or that a local lock proves external delivery. A finite retry count alone does not fix duplicate effects."
+        },
+        {
+          "id": "technical-performance", "severity": "material",
+          "finding": "A local cache benchmark does not support a production latency guarantee.",
+          "evidence": [{"kind": "artifact", "excerpt": "guarantees p95 latency below 20 ms in production"}, {"kind": "reference", "excerpt": "The cache has only a local benchmark; production p95 is unknown."}],
+          "acceptance": "Remove the guarantee, retain the unknown production status, and request representative measurement without inventing a replacement result."
+        }
+      ],
+      "protectedText": ["Worker: consume report jobs, render a report, persist its result, and notify the caller.", "Observability: emit job IDs and processing duration, never report content.", "Rollout: start with a single worker and retain the existing rollback switch."],
+      "falsePositiveTrap": "A local notification flag, finite retry count, or database transaction alone cannot prove exactly-once behavior at a receiver with ambiguous POST outcomes.",
+      "remainingChecks": ["Test crash/redelivery boundaries and notification reconciliation before rollout.", "Measure production-like p95 before making a performance commitment."],
+      "goldenChanges": [
+        {"id": "technical-change-1", "findingIds": ["technical-ack"], "location": "Acknowledgement", "before": "Acknowledgement: acknowledge the queue message before storing the report so retries are avoided.", "after": "Acknowledgement: durably store the report and its pending notification record before acknowledging the queue message. Deduplicate redelivery by job ID; resume notification handling separately without rerendering a stored report. Test crashes before and after persistence and acknowledgement.", "rationale": "Proposed durable ordering avoids losing an acknowledged result.", "basis": "inference"},
+        {"id": "technical-change-2", "findingIds": ["technical-retry"], "location": "Notification recovery", "before": "Notification recovery: retry every failed notification POST indefinitely; the receiver has no idempotency support.", "after": "Notification recovery: persist an attempt-started status before the first POST and a confirmed outcome afterward. Do not automatically resend after a timeout or a crash with an attempt-started record; mark the outcome ambiguous and require manual reconciliation before any further send. Record confirmed delivery separately. Do not claim exactly-once notification. Test the timeout and crash paths.", "rationale": "Proposed conservative recovery respects ambiguous external effects and the manual reconciliation contract.", "basis": "inference"},
+        {"id": "technical-change-3", "findingIds": ["technical-performance"], "location": "Performance", "before": "Performance: the new cache guarantees p95 latency below 20 ms in production.", "after": "Performance: only a local cache benchmark exists; production p95 is unknown. Measure representative production-like latency before making a performance commitment.", "rationale": "Separate measured evidence from an unsupported guarantee.", "basis": "reference"}
+      ],
+      "goldenArtifact": "# Report Job Worker\n\nWorker: consume report jobs, render a report, persist its result, and notify the caller.\nAcknowledgement: durably store the report and its pending notification record before acknowledging the queue message. Deduplicate redelivery by job ID; resume notification handling separately without rerendering a stored report. Test crashes before and after persistence and acknowledgement.\nNotification recovery: persist an attempt-started status before the first POST and a confirmed outcome afterward. Do not automatically resend after a timeout or a crash with an attempt-started record; mark the outcome ambiguous and require manual reconciliation before any further send. Record confirmed delivery separately. Do not claim exactly-once notification. Test the timeout and crash paths.\nPerformance: only a local cache benchmark exists; production p95 is unknown. Measure representative production-like latency before making a performance commitment.\nObservability: emit job IDs and processing duration, never report content.\nRollout: start with a single worker and retain the existing rollback switch."
+    }
+  ]
+}

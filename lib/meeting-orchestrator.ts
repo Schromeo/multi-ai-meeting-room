@@ -16,6 +16,7 @@ export type ProtocolPhase =
   | "stopped";
 
 export type ProtocolStatus = "ready" | "running" | "paused" | "interrupted" | "complete";
+export type ProtocolStopReason = "human" | "budget";
 export type ProtocolWorkPhase = TurnPhase | "observer" | "targeted_debate";
 
 export type ProtocolTransition = {
@@ -32,6 +33,7 @@ export type MeetingBudget = {
   maxAgentTurns: number;
   maxInputTokens: number;
   maxOutputTokens: number;
+  // Zero disables the cumulative time cutoff; elapsed time is still recorded.
   maxModelTimeMs: number;
 };
 
@@ -88,6 +90,7 @@ export type MeetingProtocolState = {
   round: number;
   phase: ProtocolPhase;
   status: ProtocolStatus;
+  stopReason?: ProtocolStopReason;
   pendingSeatIds: string[];
   completedSeatIds: string[];
   transitions: ProtocolTransition[];
@@ -136,6 +139,21 @@ export function createMeetingProtocolState(
   };
 }
 
+export function createArtifactFirstProtocolState(
+  seatIds: string[],
+  controlMode: ControlMode = "checkpoints",
+  now = new Date().toISOString(),
+  budget?: MeetingBudget,
+): MeetingProtocolState {
+  const participants = uniqueSeatIds(seatIds).slice(0, 2);
+  const state = createMeetingProtocolState(participants, controlMode, 1, now, budget, false);
+  return {
+    ...state,
+    phase: "synthesis",
+    pendingSeatIds: participants,
+  };
+}
+
 export function parseMeetingProtocolState(value: unknown): MeetingProtocolState | null {
   if (!isRecord(value) || value.schemaVersion !== 1) return null;
   if (
@@ -153,6 +171,10 @@ export function parseMeetingProtocolState(value: unknown): MeetingProtocolState 
     !Array.isArray(value.transitions) ||
     value.transitions.length > 100 ||
     !isIsoDate(value.updatedAt)
+  ) return null;
+  if (
+    value.stopReason !== undefined &&
+    (!isProtocolStopReason(value.stopReason) || value.phase !== "stopped")
   ) return null;
 
   const transitions: ProtocolTransition[] = [];
@@ -187,6 +209,7 @@ export function parseMeetingProtocolState(value: unknown): MeetingProtocolState 
     round: Number(value.round),
     phase: value.phase as ProtocolPhase,
     status: value.status as ProtocolStatus,
+    ...(isProtocolStopReason(value.stopReason) ? { stopReason: value.stopReason } : {}),
     pendingSeatIds: [...value.pendingSeatIds] as string[],
     completedSeatIds: [...value.completedSeatIds] as string[],
     transitions,
@@ -297,8 +320,8 @@ export function beginProtocolTransition(
     if (selectedSeats.length === 0 || selectedSeats.some((id) => !state.pendingSeatIds.includes(id))) {
       return { ok: false, state, error: "The transition contains a seat that is not pending." };
     }
-  } else if (selectedSeats.length > 1) {
-    return { ok: false, state, error: "Synthesis may select at most one seat." };
+  } else if (selectedSeats.length > 2) {
+    return { ok: false, state, error: "A final artifact phase may select at most two system-role Seats." };
   }
   const transition: ProtocolTransition = {
     id: transitionId,
@@ -495,6 +518,7 @@ export function finishProtocol(
     ...state,
     phase: "complete",
     status: "complete",
+    stopReason: undefined,
     pendingSeatIds: [],
     completedSeatIds: [],
     updatedAt: now,
@@ -503,12 +527,14 @@ export function finishProtocol(
 
 export function stopProtocol(
   state: MeetingProtocolState,
+  reason: ProtocolStopReason = "human",
   now = new Date().toISOString(),
 ): MeetingProtocolState {
   return {
     ...state,
     phase: "stopped",
     status: "complete",
+    stopReason: reason,
     pendingSeatIds: [],
     completedSeatIds: [],
     updatedAt: now,
@@ -561,11 +587,13 @@ export function evaluateMeetingBudget(
 ): BudgetStatus {
   const phase = runnablePhase(state.phase);
   const requestedTurns = phase === "synthesis"
-    ? 1
+    ? Math.max(1, uniqueSeatIds(requestedSeatIds).length)
     : phase ? uniqueSeatIds(requestedSeatIds).length : Math.max(0, requestedSystemTurns);
   const usedAgentTurns = state.transitions.reduce(
     (total, transition) => total + (
-      transition.phase === "synthesis" || transition.phase === "observer" ? 1 : transition.seatIds.length
+      transition.phase === "synthesis"
+        ? Math.max(1, transition.seatIds.length)
+        : transition.phase === "observer" ? 1 : transition.seatIds.length
     ),
     0,
   );
@@ -573,7 +601,7 @@ export function evaluateMeetingBudget(
   if (usedAgentTurns + requestedTurns > state.budget.maxAgentTurns) reasons.push("turn_limit");
   if (usage.inputTokens >= state.budget.maxInputTokens) reasons.push("input_token_limit");
   if (usage.outputTokens >= state.budget.maxOutputTokens) reasons.push("output_token_limit");
-  if (usage.latencyMs >= state.budget.maxModelTimeMs) reasons.push("model_time_limit");
+  if (state.budget.maxModelTimeMs > 0 && usage.latencyMs >= state.budget.maxModelTimeMs) reasons.push("model_time_limit");
   return {
     allowed: reasons.length === 0,
     reasons,
@@ -693,7 +721,7 @@ export function beginObserverTransition(
           seatIds: [],
           status: "running",
           startedAt: now,
-        },
+        } satisfies ProtocolTransition,
       ].slice(-100),
       updatedAt: now,
     },
@@ -787,7 +815,7 @@ function parseMeetingBudget(value: unknown): MeetingBudget | null {
     !isBoundedInteger(value.maxAgentTurns, 1, 100) ||
     !isBoundedInteger(value.maxInputTokens, 1_000, 5_000_000) ||
     !isBoundedInteger(value.maxOutputTokens, 500, 1_000_000) ||
-    !isBoundedInteger(value.maxModelTimeMs, 1_000, 24 * 60 * 60 * 1_000)
+    (value.maxModelTimeMs !== 0 && !isBoundedInteger(value.maxModelTimeMs, 1_000, 24 * 60 * 60 * 1_000))
   ) return null;
   return {
     maxAgentTurns: Number(value.maxAgentTurns),
@@ -1080,6 +1108,10 @@ function isProtocolPhase(value: unknown): value is ProtocolPhase {
 function isProtocolStatus(value: unknown): value is ProtocolStatus {
   return value === "ready" || value === "running" || value === "paused" ||
     value === "interrupted" || value === "complete";
+}
+
+function isProtocolStopReason(value: unknown): value is ProtocolStopReason {
+  return value === "human" || value === "budget";
 }
 
 function isTransitionStatus(value: unknown): value is ProtocolTransition["status"] {

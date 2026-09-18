@@ -1,7 +1,7 @@
 # Meeting Protocol Blueprint v1
 
-Status: Approved design; implemented through M2.10c Chair-selected targeted debate
-Date: 2026-08-22
+Status: Approved design; Shared Core implemented through M2.10c, Review extensions, and the first bounded M2.13 detailed-Plan slice
+Date: 2026-08-27
 
 ## Purpose
 
@@ -19,7 +19,7 @@ This is the implemented Discuss decision protocol and a source of reusable Share
 
 ## Product Truth
 
-### Implemented through v0.10c
+### Implemented Shared Core and Task Pack extensions
 
 - Direct streaming adapters for OpenAI, Anthropic, and Gemini.
 - Session-only BYOK plus workspace-managed credentials.
@@ -46,13 +46,39 @@ This is the implemented Discuss decision protocol and a source of reusable Share
 - Human Chair selection of one open Dispute at a Review checkpoint, with a persisted source-linked targeted-debate plan.
 - Deterministic routing to at most two relevant Seats without a paid routing-model call.
 - A recoverable targeted-debate transition using only the named Dispute, related Claim, active Chair Directives, and bounded source Message IDs; no transcript or prior Memo replay.
-- Review-compatible targeted deltas capped at 250 transport output tokens, followed by a delta-only Process Report and optional second Round Brief.
-- Eighteen passing automated tests and a passing production build.
+- Review-compatible targeted deltas capped at 400 transport output tokens, followed by a delta-only Process Report and optional second Round Brief.
+- Review-specific trusted current-date context and item-level Human Chair Accept/Reject over canonical Findings.
+- Append-only `human.choice` events and deterministic Chair-decided Claim states that later model deltas cannot override.
+- Source-linked Human Chair Finding addition and supersession at the Review checkpoint, with exact Artifact, reference, or truth-constraint excerpts validated by both client and server.
+- Review synthesis from Canonical State only, with binding rejected-Claim exclusion and a code-enforced five-section Review Brief contract.
+- A strict source-linked Review Change Set whose bounded, non-overlapping exact replacements are applied by application code to immutable Artifact v1.
+- A distinct changed-material Verifier that reads supplied sources, truth constraints, accepted Findings, and declared changes without receiving unchanged Artifact text or the transcript.
+- Separate Artifact v2, Change Set, Verification, and executive Brief views with credential-free Meeting History persistence and restoration.
+- A local Keep original outcome after every active Finding is explicitly rejected (or none exist), retaining exact v1 with empty Changes, no Editor/Verifier, and `not_run` verification. It is saved before entering Human Gate; approval freezes v1. Starting another round clears the active result after saving while preserving historical artifacts.
+- A persisted, source-versioned Review Editor checkpoint and Verifier-only explicit resume, with one bounded recovery call visible in preflight.
+- Independent Verifier lineage and semantic-correctness dimensions, with application-derived overall status and deterministic promotion of every unsupported or unverifiable Change to Remaining Human Checks.
+- A separate legacy Decide user-artifact boundary: up to 4,800 synthesis output tokens, ordered Decision sections, one bounded explicit recovery, and no synthesis-driven Canonical Claim mutation. The opt-in structured Plan below has separate caps.
+- Review Human Gate item editing that keeps Change identity and Finding lineage immutable, reapplies Chair-edited replacement text to Artifact v1 as Artifact v3, persists the revision without credentials, and visibly limits model verification to Artifact v2. No provider call is made for the human revision.
+- Review approval that freezes the exact visible v2 or v3 text, Change Set, source identities, original model verification, human-edited Change IDs, and approval time as a separate credential-free Artifact. Snapshot and room decision share one rollback boundary; rejection creates no approved Artifact.
+- Restored phase context is filtered through Canonical State, so abandoned transcript turns cannot enter a later provider prompt; a local pre-provider rejection does not spend the provider-call allowance.
+- Schedule-shaped Decide artifacts are checked for requested units, and LeetCode plans that request concrete problems must include problem IDs rather than category labels.
+- Legacy MEU-aware checks rejected Smoke 007 for a missing day; that failed quality Gate is not retroactively passed by the new implementation.
+- Opt-in Detailed LeetCode plan: frozen 10-15-day MEU/time contract, one discussion round, a Builder streaming independently validated JSONL day records (up to 16,000 output tokens), and a distinct review Seat reading the actual complete Plan (6,000 tokens). The day view shows tasks, computed workload/time, completion checks, adjustments, concerns and assumptions without transport JSON or auto-changing the selected day.
+- Plan checkpoints preserve valid days. One explicit recovery allowance (at most two extra calls) requests only missing days, or only the reviewer when all days exist. A saved reviewed checkpoint finishes locally without keys. Detailed/approved artifacts persist outside canonical context; incomplete/unreviewed artifacts cannot be approved. A distinct Seat does not necessarily mean a different model family.
+- D-056 removes fixed Plan artifact deadlines and cumulative-time stops (budget zero), while recording elapsed time. Ordinary discussion still has a90s deadline. Explicit saved-plan recovery can cover the minimum missing call slots after an earlier format recovery, without clearing prior reservations or increasing input/output limits. Exactly one interrupted artifact attempt is eligible; after a second attempt no renewal is offered. Save-before-call, source/composition validation and no automatic retry remain. Stopped status complete is not artifact completion. D-061 optionally persists whether that stop was human- or budget-caused; legacy provenance remains unknown, and any recovery clears the old reason. Recovery controls evaluate preserved input/output usage before enabling and never promise a call that the local budget Gate will reject. Wait UI measures time in the current view, not confirmed provider thinking; provider/network/host limits remain possible.
+- D-062 records one lifecycle receipt per paid Plan stage. A strict `started` attempt is emitted before Builder or Reviewer provider invocation with finish and usage unknown, then terminal evidence replaces the same request/stage. Reviewer absence is distinguishable from Reviewer started/unknown. Receipts never store credentials, raw provider output or private reasoning; unknown usage is not zero, an invoice or a refund signal.
+- Plan validation proves arithmetic/coverage and rejects duplicate/inconsistent labels, not real problem identity/difficulty, teaching quality or feasibility. No external catalog verification, automatic approval, automatic model rewriting or retry. Changing the Plan contract still requires a new room.
+- D-057 persists the latest four initial Builder/reviewer attempt diagnostics in the existing Plan artifact, at most twelve line/day rejection details each, without raw responses or private reasoning. Known usage and terminal state are separate from validation; unknown stays unknown. These diagnostics never enter Plan prompts. New format-only Chair directions bind to a phase/round; ordinary and legacy corrections retain their semantics. Archived/frozen contexts are not migrated. See [Plan Issue Register](PLAN_ISSUE_REGISTER.md).
+- D-058 assigns recognized original GPT-5 Builder `low` reasoning and actual Plan judgment stages `medium`, while other models/providers keep defaults. The requested setting is persisted separately from reported reasoning usage. No output ceiling, retry or call budget changes; PLAN-03 remains incomplete until one authorized Builder-stage result delivers usable days with terminal/usage evidence.
+- Human day editing revalidates the full derived Plan, preserves original AI content/review, saves source-bound revisions before display and freezes exact revised approval. Original comparison and copy/view mark human edits as not model-reviewed. Failed saves retain drafts; unsaved edits block approval/room replacement. No provider call or new store.
+- D-055 adds one human-triggered cycle per original Plan: select up to3 concerns -> persist amendment intent -> one Editor call (12K cap) -> save validated affected-day replacements/declines -> persist recheck intent -> one different-Seat recheck (6K cap) -> human decision. It never alters original days/review; the derived Plan keeps unselected/unresolved concerns. Failed calls do not retry, incomplete cycles can be dismissed to the original, and a saved unattempted recheck can continue explicitly. Approval freezes exact output and source/amendment. Local guards are not server-side exactly-once billing. See the model blueprint for the bounded quality profile.
+- Fifty-nine offline tests and build/lint pass. Three existing Cloudflare declaration errors remain. New diagnostic/scope UI is rendered-test-only; full browser/IndexedDB-failure acceptance remains open. Live010/011 preserve six days but fail full-artifact quality; passing adapter fixtures does not resolve that evidence.
 
 ### Approved here but not implemented
 
 - User-editable multi-dimensional limits and authoritative-cost enforcement beyond the implemented derived turn/token/time boundaries.
 - Independently selected Final Synthesizer.
+- Independently configured Review Editor and Verifier system roles; v0.11c explicitly reuses two participant Seats.
 - Real-provider evaluation of Observer drift and non-exact repetition judgment beyond deterministic fixtures.
 - Claim-level follow-up and versioned Decision Memos.
 - Account-backed D1 persistence, synchronization, and collaboration.
@@ -131,6 +157,24 @@ Setup
 
 Round 1 preserves independent proposals before any shared synthesis. Later rounds route only named unresolved disputes to relevant Seats. Final synthesis runs once unless an approved follow-up requires a new Memo version.
 
+### Review Artifact Boundary
+
+After the Chair has accepted at least one canonical Finding, Review synthesis uses a bounded artifact branch:
+
+```text
+Accepted Findings, including source-linked Chair additions or supersessions
+  -> Editor Change Set
+  -> Application validates exact, non-overlapping replacements
+  -> Application derives Artifact v2 from immutable Artifact v1
+  -> Verifier checks declared changed material against sources and constraints
+  -> Artifact v2 + Change Set + Verification + Executive Brief
+  -> Human Gate
+```
+
+The Chair may repair reviewer omission before Editor work by appending a new accepted Finding with an exact excerpt from Artifact v1, a supplied reference, or a truth constraint. Amending an existing Finding creates a new Claim and marks the old one superseded; it never rewrites audit history. Client validation gives immediate feedback, and the server revalidates every Chair source before any paid call.
+
+The Editor cannot provide an opaque full rewrite. Rejected or unknown Finding IDs, ambiguous source text, overlapping Changes, uncovered accepted Findings, malformed JSON, and oversized output stop the transition visibly without automatic retry. A validated Editor result is persisted before Verifier work. If Verifier fails, explicit resume must match the same source State, accepted Findings, Artifact v1, and Editor snapshot, then calls only the Verifier within one preflight-visible recovery allowance. The Verifier does not receive the full transcript or unchanged document content. It judges whether each Change is authorized by its accepted Finding lineage separately from whether the changed wording is semantically correct against the supplied evidence. Chair acceptance never substitutes for truth verification. Application code derives the combined status and sends every unsupported or unverifiable Change to Remaining Human Checks. The detailed Artifact is a user deliverable and is never substituted for bounded Canonical State in later model context.
+
 ## Data Contracts
 
 ### RoomConfig
@@ -176,7 +220,7 @@ interface TurnEnvelope {
 }
 ```
 
-Default limits are one short statement, at most three new Claims, three Claim updates, two objections, and one Chair question. Novelty is computed by the system rather than self-scored by the model.
+Application-enforced phase limits are one short statement; Proposal allows at most three new Claims, no Claim updates, one objection, and one Chair question; Review allows at most one new Claim, two Claim updates, one objection, and one Chair question. Targeted debate uses its smaller dedicated contract. Novelty is computed by the system rather than self-scored by the model.
 
 ### Canonical MeetingState
 
@@ -204,9 +248,9 @@ Initial state caps:
 
 - 8 active proposals.
 - 12 active Claims.
-- 6 active Disputes.
-- 6 active assumptions.
-- 4 unresolved human choices.
+- 8 active Disputes.
+- 12 active assumptions.
+- 8 active open questions.
 - 8 active Chair Directives.
 - Approximately 1,200 to 1,500 rendered working-context tokens.
 
@@ -291,8 +335,8 @@ Proposed default output caps to validate with real models:
 
 - Proposal: 300 to 450 output tokens.
 - Review: 200 to 300 output tokens.
-- Targeted debate turn: 150 to 250 output tokens.
-- Observer: at most 300 transport output tokens for the strict JSON envelope; the visible summary remains 2-4 concise sentences.
+- Targeted debate turn: at most 400 transport output tokens for a complete strict JSON envelope.
+- Observer: at most 300 transport output tokens for the strict JSON envelope; the visible summary remains 1-2 concise sentences and references at most two focus Claims, two remaining Disputes, and one Chair question.
 - Final Memo: 600 to 900 output tokens.
 
 The UI is card-first. Provider deltas are transport data and never appear as live speech; the stage shows bounded Thinking, Generating, and Validating states until a validated statement is ready. Raw published output remains expandable for audit.
@@ -420,7 +464,7 @@ The protocol is not complete merely because it runs. It must demonstrate:
 
 ## Remaining Open Decisions
 
-- Whether provider-native structured-output modes improve reliability enough to replace the portable JSON prompt behind individual adapters.
+- D-060 now uses provider-native structured output narrowly for explicitly supported Anthropic actual-Plan Reviewers. Live evidence must determine whether to retain it and whether any second artifact contract justifies broader adapter adoption; portable JSON remains the default elsewhere.
 - Token ceilings after the first real-provider measurements.
 - Whether the Observer extraction fallback is enabled by default or only by Chair approval.
 - Export format and migration path from IndexedDB to account-backed storage.
