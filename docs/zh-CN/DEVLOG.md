@@ -1,5 +1,13 @@
 # 开发日志
 
+## 2026-09-18 - 产品开发计划与详细里程碑已批准
+
+- 项目所有者批准 D-064：一个由人主持的 Multi-AI 工作空间，以 **Ask the Room** 为反复出现的窄入口；Review 是第一个信任 Pack 而不是产品边界；通过一条有限队列交替验证“习惯”和“信任”；占星／游戏／编码上下文先走有时间上限的 Lab；Codex／VS Code 在 Execute 前保持只读。
+- 把中英文[产品开发计划](PRODUCT_DEVELOPMENT_PLAN.md)从草案提升为已批准，并新增 canonical 中英文[详细开发里程碑](DEVELOPMENT_MILESTONES.md)。后者定义 DP-0 到 DP-9、65 个子里程碑、依赖、规模预算、用户交付、验收证据、非目标以及停止／简化决定。
+- 同步更新 Product Direction、Project Charter、Roadmap、Decisions、Handoff、文档索引与中文镜像。历史 M0-M5 实现／评测记录继续有效，但前向优先级改由 DP-0 到 DP-9 决定。
+- DP-0.0 方向与里程碑批准已完成。DP-0.1“产品与仓库真实性基线”为当前里程碑；精确下一步是在改代码前先写 Correction Brief 并进行只读真实性盘点。
+- 本轮仅改文档：没有产品代码、依赖、供应商调用、费用、浏览器记录、部署或 Execute 动作。批准不会恢复保存 Plan 的 Reviewer 调用；Live010-014 保留给 DP-2 证据。
+
 ## 2026-08-30 - 当前供应商 API Key 前缀提示
 
 - D-063把API key前缀推断抽到纯本地模块，新增当前Gemini授权型key的`AQ.`识别，同时保留`AIza`、Anthropic `sk-ant-`及既有受支持OpenAI `sk-`形式。由于两个家族前缀重叠，Anthropic必须先于OpenAI判断。未知或大小写不符的格式保持未决，必须由用户明确选择供应商。

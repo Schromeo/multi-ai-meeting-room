@@ -4,6 +4,7 @@
 
 ## 当前定位
 
+- **开发计划重构已批准（D-064，2026-09-18）：** [产品开发计划](PRODUCT_DEVELOPMENT_PLAN.md)定义一个宽广、由人主持的 Multi-AI 工作空间，以 **Ask the Room** 为窄入口，在“习惯”和“信任”证据之间交替推进，并分阶段进入 Explore、Create、Research、Play、Project Room 与受控 Execute。[详细开发里程碑](DEVELOPMENT_MILESTONES.md)决定前向构建顺序。DP-0 为当前阶段；仅批准方向不授权付费调用、发布或 Execute 动作。
 - **供应商key提示已更新（D-063）：** Setup现在除`AIza`外也识别Gemini `AQ.`授权key，同时保留Anthropic/OpenAI有序判断及明确手选回退。规则只在本地运行，绝不跨供应商试探。构建、63项测试和lint通过，零真实调用。当前Gemini自动识别缺陷已关闭；这不验证凭证，也不增加供应商。
 - **PLAN-06新Plan请求回执已关闭（D-062）：** 每个Builder/Reviewer阶段现在会在供应商工作前记录usage未知的`started`，并由终态原位替换。没有Reviewer回执表示未进入该阶段；保存的started表示可能产生用量，不能当成零。构建、62项测试和lint通过，零真实调用。历史歧义与供应商账单权威不变；没有增加通用计费平台。
 - **PLAN-11恢复真实性已关闭（D-061）：** stopped快照现在区分预算停止和人工停止，旧房间保持中性。保存Plan在保留输入/输出用量已耗尽时，会在执行前禁用恢复；两个控件都不能启动供应商调用。构建、62项测试和lint通过，零真实调用。D-062另行关闭新Plan阶段回执；PLAN-12持久运行仍待处理。
@@ -23,12 +24,24 @@
 - **最新有限证据：** [Verifier v2 Stage Replay 008](evaluations/2026-08-27-v0.11-verifier-v2-stage-replay-008.md) 在恰好一次 Anthropic Haiku 调用中通过双重 lineage/semantics 契约：597 input tokens、224 output tokens、3.1 秒和 `$0.0034` 应用估算。Meeting History 保持 10 条。
 - **校正 Gate：** [开发校正循环](DEVELOPMENT_CORRECTION_LOOP.md) 现在是实现、付费评测和里程碑收尾前的强制流程。最近失败会分别按机械、语义、Artifact、Human Gate、体验、经济性和差异化价值记录。
 - **M2.12 证据：** [Review 对照包](evaluations/M2.12_REVIEW_COMPARISON.md) 已有三个固定案例及已评分的 [S1 简历基线 009](evaluations/2026-08-27-m2.12-s1-resume-baseline-009.md)：修复 3/3，可用性 2/2，人工核实项偏弱，回执元数据不全。一次调用标准价估算 $0.00547，页面通用估价 $0.0038。M3/R6 和其他案例未运行，比较优势未知。
-- **已批准产品方向：** 一个 Shared Core 通过经过验证的纵向 Task Pack 生长。Review 是第一条以 Artifact 为中心的产品线；见[产品方向定稿](PRODUCT_DIRECTION.md)。
-- **关键路径（D-060/D-061/D-062）：** Live014已提供保存的完整产物，Reviewer格式可靠性、恢复控件真实性及新阶段回执现均本地通过。下一步只验证保存产物Fable审阅，再按意见是否有据、修改、复核与采用判断PLAN-07-10。PLAN-03仍是单独未验证的GPT-5 Builder配置假设，不能阻挡当前产物，也不能由Sol结果反推。不加席、不重生成Plan、不扩建界面或评测工具；M2.13质量/价值仍未通过。
+- **已批准产品方向：** 一个 Council Kernel 通过经过验证的 Task Pack 生长。Ask the Room 是日常窄入口，Review 是第一个以 Artifact 为中心的信任 Pack；见[产品方向](PRODUCT_DIRECTION.md)。
+- **保留的 M2.13 证据路径（D-060/D-061/D-062）：** Live014提供保存的完整产物，Reviewer格式可靠性、恢复控件真实性及新阶段回执已本地通过；saved-artifact Fable review仍未运行，M2.13质量／价值仍不完整。D-064已把它移出立即队列；只有DP-2命名信息增益并获得新付费调用授权时才可恢复。不重生成Plan，也不自动重试。
 
-当前基础足以开始第一条产品切片。没有明确 Task Pack 需求，不再启动通用协议、Observer、路由、Agent 自治或广泛界面基础设施工作。任何大型前端修改前仍必须创建命名备份。
+当前基础足以支持已批准产品开发列车。没有明确 Task Pack 需求，不再启动通用协议、Observer、路由、Agent 自治或广泛界面基础设施工作。任何大型前端修改前仍必须创建命名备份。
 
-## 立即校正路径
+## Canonical 开发列车
+
+- **DP-0 - 当前：** 产品／仓库真实性、工程可移植性、首次使用信息架构、免凭证 Demo、导出、公共 API 安全、第一分钟验收。
+- **DP-1 - 计划中：** Quick Council／Ask the Room 日常使用证据。
+- **DP-2 - 计划中：** 有限 Review 信任证据与简化决定。
+- **DP-3 - 计划中：** 从两个已验证消费者形成 Pack contract。
+- **DP-4 到 DP-9 - 计划中：** Explore／Create、Research、Play proof、只读 Project Room、受控 Execute、选择性产品化。
+
+DP-0.0 方向批准已完成。DP-0.1“产品与仓库真实性基线”是唯一当前实现里程碑。具体子里程碑、依赖、预算、验收和停止规则见[详细开发里程碑](DEVELOPMENT_MILESTONES.md)。
+
+## 保留的旧校正路径
+
+以下条目继续保存 Review 与 Plan 证据，只有 DP 开发列车明确命名时才恢复；它们不再覆盖 DP-0 的立即构建顺序。
 
 1. **M2.11 收尾：** 逐项编辑、Artifact v3、不可变批准及有限 Verifier v2 供应商 Gate 已完成。Keep original 补齐零已接受 Finding 的结束路径，保留准确 v1、明确未验证并等待人工批准。更广 Review 机器仍冻结。
 2. **M2.12 产品对照 - 暂缓：** 保留 S1 和既有工具包，不扩建工具或自动跑 M3/R6。明确新的信息增益并获新预算后再返回；这不等于比较成功。

@@ -2,6 +2,14 @@
 
 This chronological log records shipped work, validation, limitations, and the next decision. It is not a place for uncommitted feature ideas; those belong in the roadmap or decision record.
 
+## 2026-09-18 - Product Development Plan and Detailed Milestones Approved
+
+- The owner approved D-064: one human-chaired Multi-AI workspace, **Ask the Room** as the narrow recurring entry, Review as the first trust Pack rather than the product boundary, one bounded queue alternating Habit and Trust evidence, time-boxed Labs for astrology/games/coding context, and read-only Codex/VS Code integration before Execute.
+- Promoted the bilingual [Product Development Plan](PRODUCT_DEVELOPMENT_PLAN.md) from draft to Approved and added canonical bilingual [Detailed Development Milestones](DEVELOPMENT_MILESTONES.md). The latter defines DP-0 through DP-9, 65 sub-milestones, dependencies, size budgets, user deliverables, acceptance evidence, non-goals, and stop/simplify decisions.
+- Updated Product Direction, Project Charter, Roadmap, Decisions, Handoff, documentation indexes, and Chinese mirrors. Historical M0-M5 implementation/evaluation records remain valid, but DP-0 through DP-9 now determine forward priority.
+- DP-0.0 direction and milestone ratification is Complete. DP-0.1 Product and Repository Truth Baseline is Current. Its next action is a Correction Brief and read-only truth inventory before code.
+- Documentation only: no product code, dependency, provider call, spend, browser record, deployment, or Execute action. Approval does not revive the saved Plan Reviewer call; Live010-014 remain preserved for DP-2 evidence.
+
 ## 2026-08-30 - Current Provider Key Prefix Hints
 
 - D-063 moves API-key prefix inference into a pure local module and adds current Gemini authorization-key recognition for `AQ.` while retaining `AIza`, Anthropic `sk-ant-`, and the existing supported OpenAI `sk-` forms. Anthropic is checked before OpenAI because the families overlap. Unknown or wrong-case formats remain unresolved and require an explicit provider choice.

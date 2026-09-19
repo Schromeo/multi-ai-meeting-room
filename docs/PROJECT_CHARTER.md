@@ -24,7 +24,7 @@ These are permission levels inside one product, not separate products.
 
 Review, Decide / Plan, Explore, Create, and future Play Packs define the job being done. They are separate from permission levels: for example, a Review may run in Discuss or Research, while Execute adds authority without becoming a separate product.
 
-Product lines grow as bounded vertical Task Packs over a shared core. [Product Direction](PRODUCT_DIRECTION.md) is canonical for the current build order and direction checks.
+Interaction depth progresses from Solo to Quick Council / **Ask the Room**, Deep Council, and task-shaped Packs. Product lines grow as bounded vertical Task Packs over a shared core. [Product Direction](PRODUCT_DIRECTION.md) defines the approved strategy and [Detailed Development Milestones](DEVELOPMENT_MILESTONES.md) is canonical for the current build order.
 
 ## Product Principles
 
@@ -40,7 +40,7 @@ Product lines grow as bounded vertical Task Packs over a shared core. [Product D
 
 ## Current Scope
 
-The M2 implementation now contains a real Discuss protocol with provider adapters, streaming responses, bounded rounds, cross-review, a decision memo, a human decision gate, usage estimates, a credential-free IndexedDB Event Store, strict Turn Envelopes, deterministic Canonical Meeting State, and a persisted human-chaired resumable orchestrator. Auto, Checkpoints, and Turn-by-turn modes split provider work into explicit phase transitions; Chair Directives, Raise Hand, interruption recovery, duplicate-transition guards, backward-compatible Meeting Budgets, deterministic source-linked Process Reports, an explicit Observer, and Chair-selected Dispute-targeted rounds are implemented. A real OpenAI plus Anthropic meeting passed the pre-structured end-to-end path on 2026-08-04. After one bounded real-provider verification of the latest path, current work shifts to a Review Task Pack that produces a detailed versioned Artifact and accepted Change Set. Generic orchestration expansion is paused until product evidence requires it.
+The implemented foundation contains real provider adapters, session BYOK, composable Seats, bounded streaming, cross-review, Human Gates, usage estimates, a credential-free IndexedDB Event Store, strict Turn Envelopes, deterministic Canonical Meeting State, resumable orchestration, budgets, interruption recovery, an Observer, targeted dispute rounds, Review artifact versions, and a structured Plan path. Review and Plan evidence remains incomplete and is preserved. Under D-064, current forward work is DP-0 product truth and first-minute experience, followed by Quick Council / Ask the Room and bounded Review evidence. Generic orchestration expansion remains paused until a named Pack proves the need.
 
 ## Non-Goals For The First Complete Version
 
@@ -56,4 +56,4 @@ The web application is the control plane for rooms, policies, approvals, and aud
 
 ## Success Definition
 
-The project succeeds when a bounded structured multi-model workflow produces important accepted improvements that a single strong model missed, at acceptable cost, latency, and human effort. Research and Execute later add true multi-agent work only where decomposition, tools, and verification justify it.
+The project succeeds when users repeatedly choose independent AI perspectives for ordinary or enjoyable work, and when consequential Task Packs produce important accepted improvements that a single strong model missed, at acceptable cost, latency, and human effort. Research, Play, Project Rooms, and Execute add specialized state, tools, or authority only where their own verification justifies it.

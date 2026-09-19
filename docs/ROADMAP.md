@@ -4,6 +4,7 @@ Statuses: `Complete`, `Current`, `Planned`, `Deferred`.
 
 ## Current Position
 
+- **Development-plan reframe approved (D-064, 2026-09-18):** [Product Development Plan](PRODUCT_DEVELOPMENT_PLAN.md) defines a broad human-chaired Multi-AI workspace with a narrow **Ask the Room** entry, alternating Habit and Trust evidence, and staged expansion into Explore, Create, Research, Play, Project Rooms, and controlled Execute. [Detailed Development Milestones](DEVELOPMENT_MILESTONES.md) is canonical for forward build order. DP-0 is Current; approval alone authorizes no paid call, publication, or Execute action.
 - **Provider key hints updated (D-063):** Setup now recognizes Gemini `AQ.` authorization keys as well as `AIza`, while preserving ordered Anthropic/OpenAI detection and explicit manual fallback. The rule is local-only and never cross-probes providers. Build, 63 tests and lint pass with zero live calls. This closes the immediate Gemini autodetect defect; it does not verify credentials or add providers.
 - **PLAN-06 request receipts closed for new Plans (D-062):** each Builder/Reviewer stage now records `started` with unknown usage before provider work and replaces it in place with its terminal receipt. An absent Reviewer receipt now means it never reached its stage; a persisted started receipt means usage may exist and is not zero. Build, 62 tests and lint pass with zero live calls. Historical ambiguity and provider invoice authority remain unchanged; no generic billing platform was added.
 - **PLAN-11 recovery truth closed (D-061):** stopped snapshots now distinguish budget and human provenance while old rooms remain neutral. Saved Plan recovery is disabled before invocation when preserved input/output usage is exhausted; no provider call can start through either control. Build, 62 tests and lint pass with zero live calls. D-062 separately closes new-Plan stage receipts; PLAN-12 durable execution remains open.
@@ -23,12 +24,24 @@ Statuses: `Complete`, `Current`, `Planned`, `Deferred`.
 - **Latest bounded evidence:** [Verifier v2 Stage Replay 008](evaluations/2026-08-27-v0.11-verifier-v2-stage-replay-008.md) passed the dual-lineage/semantics contract in exactly one Anthropic Haiku call: 597 input tokens, 224 output tokens, 3.1 seconds, and a `$0.0034` application estimate. Meeting History stayed at 10 records.
 - **Correction Gate:** [Development Correction Loop](DEVELOPMENT_CORRECTION_LOOP.md) is now required before implementation, paid evaluation, and milestone close. Recent failures are classified separately as mechanical, semantic, artifact, Human Gate, experience, economic, and differentiated-value evidence.
 - **M2.12 evidence:** the [Review Comparison Kit](evaluations/M2.12_REVIEW_COMPARISON.md) has three fixed cases and a scored [S1 resume baseline 009](evaluations/2026-08-27-m2.12-s1-resume-baseline-009.md): 3/3 issues repaired, usability 2/2, weak human checks, incomplete receipt metadata. One call, $0.00547 standard-price estimate versus $0.0038 generic app estimate. M3/R6 and other cases are NOT RUN; comparative advantage is unknown.
-- **Approved product direction:** one Shared Core grows through validated vertical Task Packs. Review is the first artifact-centered product line; see [Product Direction](PRODUCT_DIRECTION.md).
-- **Critical path (D-060/D-061/D-062):** Live014 supplies the preserved complete artifact; Reviewer-format reliability, truthful recovery controls and new stage receipts now pass locally. Next validate only the saved-artifact Fable review, then judge PLAN-07-10 on grounded criticism, amendment, recheck and adoption. PLAN-03 remains a separate unverified GPT-5 Builder-profile hypothesis and must not block or be inferred from the Sol result. No more seats, Plan regeneration, broad UI or comparison-tool expansion; M2.13 quality/value remain incomplete.
+- **Approved product direction:** one Council Kernel grows through validated Task Packs. Ask the Room is the narrow daily entry and Review is the first artifact-centered trust Pack; see [Product Direction](PRODUCT_DIRECTION.md).
+- **Preserved M2.13 evidence path (D-060/D-061/D-062):** Live014 supplies the preserved complete artifact; Reviewer-format reliability, truthful recovery controls, and new stage receipts pass locally. The saved-artifact Fable review remains unrun and M2.13 quality/value remain incomplete. D-064 moves this work out of the immediate queue; it may resume only when DP-2 names the information gain and fresh paid-call authority exists. No Plan regeneration or automatic retry.
 
-The current foundation is sufficient for the first product slice. No further generic protocol, Observer, routing, agent-autonomy, or broad interface infrastructure work begins without a named Task Pack need. A named backup remains required before major frontend work.
+The current foundation is sufficient for the approved product train. No further generic protocol, Observer, routing, agent-autonomy, or broad interface infrastructure work begins without a named Task Pack need. A named backup remains required before major frontend work.
 
-## Immediate Correction Path
+## Canonical Development Train
+
+- **DP-0 - Current:** product/repository truth, engineering portability, first-run information architecture, credential-free demo, export, public API safety, and first-minute acceptance.
+- **DP-1 - Planned:** Quick Council / Ask the Room daily-use evidence.
+- **DP-2 - Planned:** bounded Review trust evidence and simplification decision.
+- **DP-3 - Planned:** Pack contract from two validated consumers.
+- **DP-4 through DP-9 - Planned:** Explore/Create, Research, Play proof, read-only Project Room, controlled Execute, and selective productization.
+
+DP-0.0 direction ratification is complete. DP-0.1 Product and Repository Truth Baseline is the only Current implementation milestone. The exact sub-milestones, dependencies, budgets, acceptance checks, and stop rules live in [Detailed Development Milestones](DEVELOPMENT_MILESTONES.md).
+
+## Preserved Legacy Correction Path
+
+The following items preserve Review and Plan evidence and may be resumed only when the DP train names them. They no longer override DP-0 as the immediate build order.
 
 1. **M2.11 close-out:** item-level editing, Artifact v3, immutable approval, and the bounded Verifier v2 provider Gate are complete. Keep original now closes the zero-accepted-Finding path with exact v1, explicit not-run verification, and human approval. Broader Review machinery stays frozen.
 2. **M2.12 product comparison - deferred:** preserve S1 and the existing kit; do not expand tooling or automatically run M3/R6. Return only with a named information gain and fresh budget. This is not comparative success.

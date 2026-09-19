@@ -1,27 +1,36 @@
 # Product Direction
 
 Status: Approved
-Date: 2026-08-25
+Date: 2026-09-18
 
 ## Why This Direction Exists
 
-The project began with a simple observation: one model often commits early to a plausible path, while a second independently prompted model can expose missing constraints, unsupported claims, and better alternatives. The product should turn that manual copy-review-copy workflow into a bounded, inspectable collaboration.
+The project began with a simple observation: one model often commits early to a plausible path, while a second independently prompted model can expose missing constraints, unsupported claims, and better alternatives. The product should turn that manual copy-review-copy workflow into a bounded, inspectable collaboration that can serve both ordinary conversation and consequential work.
 
 The v0.3 through v0.10c work established a credible engineering foundation: real provider adapters, session BYOK, reusable Seats, streaming, local persistence, structured Meeting State, human checkpoints, budgets, interruption recovery, an optional Observer, and Dispute-targeted debate. That work is useful, but infrastructure maturity has moved ahead of evidence that the user receives a materially better result.
 
-The correction is not a rewrite. Stop expanding the generic orchestrator and use the existing foundation to complete a user-visible artifact workflow.
+The 2026-08-25 correction was not a rewrite: it stopped infrastructure-first expansion and forced the existing foundation to produce user-visible artifacts. The 2026-09-18 owner decision keeps that discipline but clarifies the larger product boundary. Review is the first trust Pack, not the whole product. The daily entry is a lighter **Ask the Room** escalation from an ordinary answer, idea, choice, or artifact.
 
 ## North Star
 
-> Give multiple independent AI perspectives one important problem or artifact, make them challenge consequential differences, and return one inspectable result that the human can revise and adopt.
+> When one answer is not enough, ask the room. Preserve useful differences, let the human direct them, and turn them into a better conversation, artifact, decision, or verified action.
 
-The product is not a model switcher, a side-by-side answer grid, or an autonomous organization. Its durable value is the improvement chain:
+The product is not a model switcher, a side-by-side answer grid, a professional-only audit tool, or an autonomous organization. Its durable value is the improvement chain:
 
 > Objective -> Sources -> Artifact -> Finding -> Objection -> Change -> Verification -> Human Decision
 
 ## Product Shape
 
 This remains one product. Task modes define the job being done; permission levels define what tools the room may use.
+
+### Interaction Depths
+
+- **Solo:** one model and ordinary conversation for the lowest-friction answer.
+- **Quick Council:** **Ask the Room** adds one or two independently prompted challengers and returns a compact Difference Map.
+- **Deep Council:** bounded cross-review, one Chair checkpoint, and only a named targeted follow-up when another call has expected information gain.
+- **Task Pack:** a job-specific truth mode, role composition, context policy, state, artifact, Human Gate, budget, and rubric.
+
+Depth is progressive. A user may promote selected context from an answer to a Council or Pack without replaying the entire transcript or restarting the task.
 
 ### Task Modes
 
@@ -58,9 +67,11 @@ Each Pack owns its agenda schema, recommended Role Pack, phase protocol, state a
 
 Use the **Rule of Two**: an abstraction moves into Shared Core only after at least two validated Task Packs need it. Pack-specific needs remain local until then.
 
-## First Product Line: Review
+## Product Entry And First Trust Pack
 
-Review is the first complete vertical slice because it directly tests the differentiated hypothesis and produces an outcome that can be compared with a single strong model.
+**Ask the Room** is the narrow daily-use entry. It tests whether ordinary users deliberately seek and reuse an independent second perspective without paying the interaction cost of a full meeting. The existing answer is view one; Challengers remain independent until the Difference Map.
+
+Review remains the first complete trust Pack because it directly tests the differentiated hypothesis and produces an outcome that can be compared with a single strong model. Review evidence and artifact machinery are preserved; the Pack no longer defines the whole audience or home experience.
 
 The first Review workflow is:
 
@@ -77,15 +88,20 @@ Initial benchmarks are a resume against a job description, a product or requirem
 
 ## What Comes Next
 
-1. Preserve the current v0.10c recovery point and run one explicitly budgeted real-provider smoke evaluation of the implemented Observer plus targeted-debate path.
-2. Build Review as the first end-to-end Task Pack. Do not expand Observer, semantic routing, generic agent autonomy, or broad UI infrastructure in the same slice.
-3. Compare Review against a saved single-model baseline and manual multi-model copy/paste on the three benchmark tasks.
-4. Build one Decide / Plan vertical slice and use it to test which Review abstractions genuinely belong in Shared Core.
-5. Consolidate the proven Task Pack contract, Artifact versions, Role Packs, context policies, and evaluation rubrics.
-6. Add Explore, then Create, only through bounded vertical slices.
-7. Introduce the first true multi-agent workflow in Research when parallel source investigation provides a concrete advantage.
-8. Introduce Execute only after Research and the Human Gate are reliable; keep planning, execution, independent review, and deterministic verification separate.
-9. Treat Play as an optional future Pack requiring deterministic rules, private Seat state, and strict visibility boundaries.
+The approved forward sequence is defined in [Detailed Development Milestones](DEVELOPMENT_MILESTONES.md):
+
+1. **DP-0:** align product and repository truth, first-run information architecture, credential-free demo, export, engineering portability, and public API safety.
+2. **DP-1:** build and evaluate Quick Council / Ask the Room as the daily-use wedge.
+3. **DP-2:** finish bounded Review evidence and retain, simplify, or remove protocol pieces according to matched comparisons.
+4. **DP-3:** consolidate a Pack contract only from the two validated consumers, then prove it with one internal third-Pack spike.
+5. **DP-4:** add Explore and Create, with one clearly labelled reflective-entertainment Lab.
+6. **DP-5:** add Research and uncertainty-aware company or financial scenario work with dated sources.
+7. **DP-6:** promote Play only after one deterministic, privacy-safe, replayable game passes.
+8. **DP-7:** add a read-only Project Room for Codex and VS Code context and prompt review.
+9. **DP-8:** add controlled Execute only after read-only project evidence, isolated authority, independent review, deterministic checks, and rollback exist.
+10. **DP-9:** add identity, sync, billing, collaboration, and curated distribution only for capabilities with repeat-use evidence.
+
+The historical `M0` through `M5` roadmap remains an implementation and evidence ledger. It does not override this forward sequence.
 
 ## Multi-Agent Boundary
 
@@ -118,7 +134,7 @@ Hard development rules:
 
 ## Success Evidence
 
-The core hypothesis is supported only when structured multi-model review produces important accepted improvements that a single strong model missed, while cost, latency, and human reading effort remain acceptable.
+The broad product needs two kinds of evidence. **Habit evidence** asks whether users deliberately invoke and reuse independent perspectives for ordinary or enjoyable tasks. **Trust evidence** asks whether structured challenge produces important accepted improvements that a strong single model missed. Both must keep cost, latency, and human reading effort acceptable.
 
 Track at minimum:
 
@@ -128,9 +144,13 @@ Track at minimum:
 - time and human edits required to reach an adopted result;
 - calls, tokens, latency, and advisory cost;
 - failures caused by coordination, context loss, homogenization, or model agreement without evidence.
+- Ask the Room invocation, second-task reuse, and user-kept unique perspectives;
+- saved, exported, or shared results and abandonment caused by reading burden;
+- Pack reuse without speculative Shared Core growth;
+- permission, privacy, rule, or context-boundary failures in Research, Play, Project, and Execute modes.
 
 Features that do not improve this evidence are simplified, made optional, or removed.
 
 ## Explicit Deferrals
 
-Until Review and Decide / Plan demonstrate value, defer a generic multi-agent platform, model marketplace, broad custom endpoints, automatic paid Observer defaults, semantic routers, embedding infrastructure, general game engines, long-form creative memory, account collaboration, and unrestricted execution.
+Defer a public Pack marketplace, arbitrary remote Pack code, broad custom endpoints, automatic paid Observer defaults, semantic routing or embedding infrastructure without a named consumer, general game engines before one game passes, unrestricted long-term memory, account collaboration before ownership rules, automatic financial action, and unrestricted execution. Labs may explore astrology, games, and coding-context critique, but they do not enter Shared Core or claim product status until their promotion gate passes.

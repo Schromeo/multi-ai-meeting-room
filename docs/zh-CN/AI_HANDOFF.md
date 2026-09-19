@@ -1,9 +1,10 @@
 # AI 交接说明
 
-最后更新：2026-08-30
+最后更新：2026-09-18
 
 ## 当前状态
 
+- **已批准产品开发列车（D-064，2026-09-18）：** [产品开发计划](PRODUCT_DEVELOPMENT_PLAN.md)把 **Ask the Room** 设为日常窄入口，Review 保留为第一个信任 Pack 而不是产品边界，并通过 DP-0 到 DP-9 排列整个工作空间。[详细开发里程碑](DEVELOPMENT_MILESTONES.md)决定前向工作。DP-0.0 文档批准已完成；DP-0.1“产品与仓库真实性基线”为当前里程碑。批准方向不授权付费调用、代码实现、发布或 Execute 动作。
 - **最新本地纠错（D-063）：** Connection Setup现在除`AIza`外也识别当前Gemini `AQ.`授权key；Anthropic会先于前缀重叠的OpenAI `sk-`族判断，未知格式保留手选。识别只作本地提示：不持久化、不跨供应商试探，也不宣称已验证凭证。构建、63项测试和lint通过；仍只有三项既有Cloudflare ambient错误。零真实调用。见[简报](correction-briefs/2026-08-30-provider-key-prefix-detection.md)。已准备的含Gemini三席位smoke尚未运行，执行时仍需明确确认。
 - **最新本地纠错（D-062 / PLAN-06）：** 新Plan的Builder/Reviewer阶段会在供应商工作前保存严格的usage未知`started`回执，再由同请求/阶段终态原位替换。没有Reviewer回执表示该阶段未启动；保留下来的started表示可能存在未知供应商用量，绝不等于零。构建、62项测试和lint通过；仍只有三项既有Cloudflare ambient错误。零真实调用。不重写历史歧义，也不建设计费账本。见[简报](correction-briefs/2026-08-29-plan-stage-request-receipts.md)。
 - **最新本地纠错（D-061 / PLAN-11）：** stopped协议快照现在保存`budget`或`human`来源，旧房间保持中性。保存Plan恢复会在控件启用前按保留用量评估；额度耗尽的恢复仍可见但禁用，且不能调用供应商。构建、62项测试和lint通过；类型检查仍只有三项既有Cloudflare ambient错误。零真实调用、零记录迁移。PLAN-11已本地验证；D-062另行关闭新Plan回执，PLAN-12持久连续性仍待处理。见[简报](correction-briefs/2026-08-29-plan-stop-and-recovery-truth.md)。
@@ -27,18 +28,18 @@
 - 最新详细 Plan 证据：Smoke 007 新增每天 10 MEU 契约。一次输入已改变的 Anthropic review 恢复通过；最终 OpenAI synthesis 使用 2,092 output tokens、26 秒和 `$0.017`，随后因缺少 Day 2 被拒绝。没有继续重试。见 `docs/zh-CN/evaluations/2026-08-27-v0.11-detailed-plan-smoke-007.md`。
 - 已修复真实缺陷：供应商可选参数兼容、席位模型选择崩溃、Canonical State 容量不足导致依赖顺序的 Review 拒绝、只写在 prompt 中的 phase 上限、Observer 选择输出过大、targeted debate 使用完整 Review schema 的负担、不可见 Observer 失败原因、缺少可信日期、Claim 决定无约束力、被拒绝 Claim 泄漏进 synthesis、只依靠 prompt 的 Review Brief 结构、synthesis card 污染、Decide 产物输出不足，以及废弃 transcript turn 破坏显式恢复。原失败房间保留供审计。
 - 其他未完成：生产 API Key、加密永久 BYOK、Skill 包、多样性指标、导出、证据系统、执行连接器和广泛比较评测。
-- 当前重点：可用交付的参考质量，不再扩建体验，也不再一律追求最低配置。Plan 负面 Gate 现已有本地修改/复核路径及任务化 prompt。Review 历史语义失败与比较优势仍未解决，M2.12 继续暂缓。
+- 当前重点：DP-0 产品真实性与第一分钟体验。保留现有 Review、Plan Artifact 及未解决质量证据；除非后续 DP 里程碑明确命名信息增益并获得新授权，不恢复任何付费 Plan 或 Review 调用。
 - 强制校正流程：每个实现切片现在都必须以 Correction Brief 开始，并按照[开发校正循环](DEVELOPMENT_CORRECTION_LOOP.md)分别记录机械、语义、Artifact、Human Gate、体验、经济性和差异化价值结果。
 - 最新本地修正：待决定 Plan Gate 人工逐天编辑，整份重新校验，保存后发布，失败留草稿，恢复原始一天、历史和准确修订批准。原 AI Plan/审阅保持不变，复制/视图注明人工修改未经模型复审。不调用付费模型，不改 prompt/预算，不增加数据库 store。仍有三处既有 Cloudflare 声明错误。
 - 最新实现（D-055）：每份原计划最多选三条意见，一次修改和一次不同席位复核，允许有据拒绝，保留未解决意见。调用前保存意图/草稿；失败停止，完成或放弃后 UI 不可重复循环。原天数/审阅不变，精确批准包含来源与修改；人工编辑需在完成或放弃后进行，且不冒充模型复审。Plan 交付调用对已有识别范围内 GPT-5 使用 medium，其余保留供应商默认，不更换用户模型。上限：Builder16K、审阅6K、修改12K、复核6K，Plan 超时180秒。Gemini 思考计入输出用量；OpenAI Plan 不完整响应保留已报告用量。
-- 下一动作：保存的Live014 Plan完整但尚未通过审阅。用户恢复Anthropic/Fable连接后，最多另行确认一次Reviewer-only调用，沿用6K上限，不重生成Sol、不自动重试；随后先判断意见是否有据，再决定是否修改/复核。保留010-014，不加席、不造通用账本平台、不大改UX。
+- 下一动作：以 Correction Brief 和只读真实性盘点开始 DP-0.1，覆盖产品／package 身份、版本与状态主张、package-manager 政策、license 状态、准确 build／lint／type／test 命令、当前失败、公共 API 凭证政策。Brief 完成前不改代码，且不调用供应商。保留 Live010-014 供 DP-2 证据使用。
 - 恢复点：`241affd` 完成 v0.10c 并锁定产品方向；`0dfbc1f` 在 Codex sandbox 中关闭本地 inspector；`d844b40` 修复席位模型选择崩溃，也是当前已提交基线。v0.10c 烟雾校正和 v0.11a-e Review 工作仍留在尚未提交的工作区。
 - 线上地址：`https://multi-ai-meeting-room.schromeo.chatgpt.site`
 - 发布状态：线上仍为上一版本。v0.4 源码已推送并保存，但 Sites 自动生成的 `nodejs_compat` 标记与 2026-08-04 生效的平台默认值冲突；输入不变时不要重复部署。
 
 ## 每次开始工作前
 
-1. 阅读项目章程、产品方向定稿、开发校正循环、本文件、决策记录、路线图、会议协议蓝图、模型与代理蓝图和最新开发日志。
+1. 阅读项目章程、产品方向、产品开发计划、详细开发里程碑、开发校正循环、本文件、决策记录、路线图、会议协议蓝图、模型与代理蓝图和最新开发日志。
 2. 修改前检查工作区，保留用户已有改动。
 3. 说明本次工作推进哪个里程碑和完成条件。
 4. 确认该任务没有已经完成或被明确否决。
@@ -83,7 +84,7 @@ M2 不包括联网研究、代码执行、通用插件或自治循环。密钥�
 
 ## 已批准产品目标
 
-M2.7 持久化、M2.8 结构化状态、M2.9 可恢复编排和已经实现的 M2.10 切片构成 Shared Core。Review 仍是第一条产品线；D-052 暂缓 M2.12 对照，同时允许有界 M2.13 Plan 修正，并不表示 Task Pack 或比较优势已完成。不能把 Discuss 当成统一阶段。产品顺序以 PRODUCT_DIRECTION.md 为准，已实现行为见 MEETING_PROTOCOL_BLUEPRINT.md。
+M2.7 持久化、M2.8 结构化状态、M2.9 可恢复编排、已实现 M2.10 切片及 Review／Plan Artifact 经验构成当前 Council Kernel。D-064 把 Ask the Room 设为窄入口，Review 设为第一个信任 Pack。前向顺序以 `DEVELOPMENT_MILESTONES.md` 为准；历史 M 里程碑继续表达实现／证据状态。不能把 Discuss 当成万能阶段；`MEETING_PROTOCOL_BLUEPRINT.md` 描述已实现行为，不要求所有 Pack 使用同一 phase 顺序。
 
 ## 每次结束工作前
 

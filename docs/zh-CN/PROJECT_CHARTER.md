@@ -22,7 +22,7 @@
 
 Review、Decide / Plan、Explore、Create 和未来 Play Pack 定义要完成的工作，并与权限等级分离。例如 Review 可以运行在 Discuss 或 Research；Execute 增加权限，但不会变成另一个产品。
 
-各产品线以有限纵向 Task Pack 形式生长在共享核心上。[产品方向定稿](PRODUCT_DIRECTION.md)是当前开发顺序和方向校正的基准。
+交互深度从 Solo 逐步进入 Quick Council／**Ask the Room**、Deep Council 和任务形 Pack。各产品线继续以有限纵向 Task Pack 生长在共享核心上。[产品方向](PRODUCT_DIRECTION.md)定义已批准策略，[详细开发里程碑](DEVELOPMENT_MILESTONES.md)决定当前开发顺序。
 
 ## 不可偏离的原则
 
@@ -38,7 +38,7 @@ Review、Decide / Plan、Explore、Create 和未来 Play Pack 定义要完成的
 
 ## 当前重点
 
-M2 已实现真实 Discuss 协议：模型适配、流式输出、有限轮次、交叉审阅、决策 memo、人工决策门、用量估算、不保存凭证的 IndexedDB Event Store、严格 Turn Envelope、确定性 Canonical Meeting State，以及持久化、由人主持的可恢复编排器。Auto、Checkpoints 与 Turn by turn 会把供应商工作拆成显式 phase transition；Chair Directive、Raise Hand、中断恢复、重复 transition 防护、向后兼容 Meeting Budget、确定性带来源 Process Report、显式 Observer，以及由 Chair 选择 Dispute 的定向回合均已实现。2026-08-04，真实 OpenAI + Anthropic 会议走通了结构化之前的端到端路径。新版路径完成一次有限真实供应商验证后，当前工作转向 Review Task Pack，交付详细版本化 Artifact 和被接受的 Change Set。在产品证据提出需求前，暂停扩建通用编排器。
+已实现基础包括真实供应商 adapter、会话 BYOK、可组合 Seat、有限 streaming、cross-review、Human Gate、usage 估算、不保存凭证的 IndexedDB Event Store、严格 Turn Envelope、确定性 Canonical Meeting State、可恢复编排、预算、中断恢复、Observer、定向 Dispute 回合、Review Artifact 版本，以及结构化 Plan 路径。Review 与 Plan 证据仍不完整并继续保留。根据 D-064，当前前向工作是 DP-0 产品真实性与第一分钟体验，随后是 Quick Council／Ask the Room 和有限 Review 证据。没有命名 Pack 证明需求前，通用编排扩建继续暂停。
 
 ## 第一阶段不做
 
@@ -50,4 +50,4 @@ M2 已实现真实 Discuss 协议：模型适配、流式输出、有限轮次�
 
 ## 成功标准
 
-在可接受的成本、延迟和人工投入下，有限、结构化多模型工作流产生单个强模型遗漏、并最终被用户接受的重要改进，项目才算成功。未来只有当任务拆分、工具和验证确实需要时，Research 与 Execute 才加入真正多 Agent 工作。
+当用户会为普通或有趣工作反复主动选择独立 AI 视角，并且有后果的 Task Pack 能在可接受成本、延迟和人工投入下产生强单模型遗漏、且最终被接受的重要改进时，项目才算成功。Research、Play、Project Room 与 Execute 只有在各自验证证明必要时才增加专属状态、工具或权限。

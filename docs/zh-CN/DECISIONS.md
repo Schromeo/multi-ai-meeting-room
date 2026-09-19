@@ -376,3 +376,11 @@ S1 009 暴露了下载取回失败和看似精确的通用估价。开放现有�
 - **决定：** Connection Setup只能从一小组当前高置信且有顺序的前缀推断三家已支持供应商：Anthropic `sk-ant-`、Gemini `AIza`或`AQ.`，以及既有受支持OpenAI `sk-`形式。由于前缀家族重叠，Anthropic先于OpenAI判断。未知格式保持未决，要求用户明确选择。前缀推断绝不验证有效性、所有权、权限范围、计费、模型访问或地区资格。
 - **安全边界：** 浏览器只在本地推断，绝不能把同一凭证提交给多个供应商来猜身份。只有明确选择或本地推断出唯一供应商后，模型发现才接收key并只调用该供应商。供应商格式会变化，因此规则必须隔离并有测试。
 - **原因：** Google正在把Gemini API从标准key迁移到授权key，新的AI Studio key可能使用`AQ.`。把易变的便利格式当成证明会同时产生可靠性与秘密暴露风险。保守本地提示可以减少Setup摩擦，又不会扩大受支持供应商范围。
+
+## D-064 - Ask the Room 是宽广 Multi-AI 工作空间的窄入口
+
+- **状态：** 已接受
+- **日期：** 2026-09-18
+- **决定：** 产品终点是一个由人主持的 Multi-AI 工作空间，覆盖普通对话、Review、Explore、Create、Research、规则约束 Play、只读 Project Room，以及后续受控 Execute。反复出现的窄入口是 **Ask the Room**：把已有回答、想法、选择或 Artifact 提升给一到两个独立提示的 Challenger，保留影响结果的差异，再由 Human Chair 停止、追问或进入 Task Pack。Review 继续作为第一个信任 Pack，但不是产品边界。开发通过一条有限构建队列，在“习惯”和“信任”证据之间交替推进。占星、游戏和编码上下文想法先作为有时间上限的 Lab；Codex 与 VS Code 集成在任何执行权限前先保持只读。
+- **顺序：** [详细开发里程碑](DEVELOPMENT_MILESTONES.md)决定前向优先级：DP-0 产品真实性、DP-1 Quick Council、DP-2 Review 证据、DP-3 Pack contract、DP-4 Explore／Create、DP-5 Research、DP-6 Play proof、DP-7 只读 Project Room、DP-8 受控 Execute、DP-9 选择性产品化。历史 `M0` 到 `M5` 条目继续保存证据与实现状态；发生冲突时不再决定前向开发顺序。
+- **原因：** 把受众收窄成专业文档审阅会丢失独立模型挑战在日常、创意、娱乐和项目工作中的原始价值；但同时实现所有场景又会形成失控平台。一个窄用户动作加逐步加深的交互层，既保留宽野心，也让每个开发切片可测试、可回退、受证据 Gate 约束。
