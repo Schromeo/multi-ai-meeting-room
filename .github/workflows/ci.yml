@@ -21,9 +21,9 @@ jobs:
       - uses: actions/setup-node@v4
         with:
           node-version: 22.13.0
-      - name: Enable pinned pnpm
-        run: |
-          corepack enable
-          corepack prepare pnpm@11.19.0 --activate
+      - name: Install pinned pnpm
+        uses: pnpm/action-setup@v6
+        with:
+          version: 11.19.0
       - run: pnpm install --frozen-lockfile
       - run: pnpm check
