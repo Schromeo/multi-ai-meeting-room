@@ -4,6 +4,8 @@
 
 ## 当前状态
 
+- **最新本地纠错（2026-09-25／DP-0.3）：** Meeting 输出档位现在控制供应商上限、房间总预算和 unlimited synthesis 指令。Unlimited 使用普通 turn 12K、synthesis 16K 上限；创作／规划提示要求匹配用户语言并展开为可执行交付。请求下一轮时把旧 Canonical State 记录压缩为一个 summary Claim，同时保留 transcript 历史。供应商中断会保留上一轮 memo 并提供 interrupted round 恢复。Lint/build 通过；离线测试仍为 64/65，因为既有 Solo session-key 测试返回 502。零真实调用、零部署。
+
 - **已批准产品开发列车（D-064，2026-09-18）：** [产品开发计划](PRODUCT_DEVELOPMENT_PLAN.md)把 **Ask the Room** 设为日常窄入口，Review 保留为第一个信任 Pack 而不是产品边界，并通过 DP-0 到 DP-9 排列整个工作空间。[详细开发里程碑](DEVELOPMENT_MILESTONES.md)决定前向工作。DP-0.0 至 DP-0.2 已完成；DP-0.3“首次使用信息架构”为当前里程碑。该状态不授权付费调用、发布或 Execute 动作。
 - **最新工程 Gate（D-066／DP-0.2）：** Windows `pnpm check`重新生成 Cloudflare runtime types、完成 vinext build、通过 63/63 离线测试、lint 与 type check。首次远程运行在两个 OS 的安装前均因 Corepack 签名校验失败。只替换为官方固定版本 pnpm action 后，`97b865a`上的 [Ubuntu 与 Windows CI](https://github.com/Schromeo/multi-ai-meeting-room/actions/runs/36076954748)均通过。DP-0.2 已完成。见[验证](evaluations/2026-09-19-dp-0-2-local-portability.md)。
 - **最新仓库基线（D-065／DP-0.1）：** package 为私有、无 tag 的`multi-ai-meeting-room@0.0.0-development`；pnpm 11.19.0 与`pnpm-lock.yaml`是唯一 package 路径；锁定的 native build 依赖使用显式 allowlist；仓库为`UNLICENSED`并保留所有权利。过期 v0.10c／未提交说法已移除。[基线证据](evaluations/2026-09-19-dp-0-1-repository-baseline.md)：frozen install 与 lint 通过；Windows build/test script、一项 CRLF 敏感源码测试与三项 Cloudflare ambient 声明稳定失败并归 DP-0.2。零供应商调用、零部署。

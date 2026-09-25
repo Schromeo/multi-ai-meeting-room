@@ -2,6 +2,15 @@
 
 This chronological log records shipped work, validation, limitations, and the next decision. It is not a place for uncommitted feature ideas; those belong in the roadmap or decision record.
 
+## 2026-09-25 - DP-0.3 Meeting Output and Round Recovery Correction
+
+- Connected the `lite`, `medium`, and `unlimited` profiles to Solo and Meeting Room provider caps, total room budgets, and synthesis behavior. `unlimited` now gives ordinary Meeting turns 12,000 output tokens and synthesis 16,000, while provider limits remain authoritative.
+- Added detailed delivery instructions for unlimited creative/planning synthesis: preserve the user's language, choose a direction, and expand it into positioning, core hook, setting, long arcs, stages, and at least a ten-chapter opening blueprint instead of returning only short options.
+- When the Chair requests another round from the Human Gate, the transcript remains intact but Canonical State compacts prior claims, disputes, assumptions, and questions into one round-summary Claim and archives their IDs. This prevents the 12-Claim working-state cap from blocking a legitimate next round.
+- Incomplete provider rounds now preserve the previous memo, return to the Decision surface, and expose a recoverable interrupted-round action. OpenAI incomplete responses classify output/reasoning-token, content-filter, or generic stop causes when available.
+- Frontend setup now calls the round control `Round allowance`, explains that the Chair requests extra rounds, and aligns the three policy controls. `pnpm lint` and `pnpm build` pass; offline tests are 64/65 because the existing Solo session-key test still returns 502. No live provider call or deployment was made.
+
+
 ## 2026-09-24 - DP-0.3 Local Entry/Solo Slice (Incomplete)
 
 - Implemented the four intent entries, Chat-first Solo surface, mode-specific objective drafts, and a bounded session-BYOK Solo API without changing saved-room schema or calling a live provider. A Connection change clears Solo context; the workspace-funded key path is rejected.

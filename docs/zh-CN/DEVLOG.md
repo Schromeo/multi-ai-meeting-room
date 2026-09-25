@@ -1,5 +1,13 @@
 # 开发日志
 
+## 2026-09-25 - DP-0.3 Meeting 输出与下一轮恢复纠错
+
+- 将 `lite`、`medium`、`unlimited` 档位接入 Solo 与 Meeting Room 的供应商上限、房间总预算和 synthesis 行为。`unlimited` 现在给普通 Meeting turn 12,000 output tokens、synthesis 16,000；供应商自身限制仍然权威。
+- 为 unlimited 创作／规划 synthesis 增加详细交付指令：保持用户语言，选择一个方向，并展开定位、核心卖点、设定、长线主线、阶段和至少十章开篇细纲，而不是只返回几个短选项。
+- Chair 从 Human Gate 请求下一轮时，transcript 完整保留，但 Canonical State 会把上一轮的 claims、disputes、assumptions、questions 压缩为一个 round-summary Claim，并归档旧 ID，避免 12 Claim 工作状态上限阻塞合法的下一轮。
+- 供应商中断时保留上一轮 memo，回到 Decision 界面，并显示可恢复的 interrupted round 操作。OpenAI incomplete 响应在可用时区分 output／reasoning token 上限、content filter 或普通中断。
+- 前端设置将轮数改称 `Round allowance`，说明额外轮次由 Chair 主动请求，并统一三个策略控件。`pnpm lint` 与 `pnpm build` 通过；离线测试 64/65，剩余失败是既有 Solo session-key 测试返回 502。未调用真实供应商、未部署。
+
 ## 2026-09-24 - DP-0.3 本地入口／Solo 切片（未完成）
 
 - 实现四个意图入口、Chat 优先的 Solo 界面、按模式隔离的 Objective 草稿及有界 session-BYOK Solo API；不改存档 schema，不调用真实供应商。切换 Connection 清空 Solo 上下文，API 拒绝 workspace 出资 key 路径。

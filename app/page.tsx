@@ -42,6 +42,7 @@ import {
   ChairDirective,
   ClaimDecision,
   createInitialMeetingState,
+  compactMeetingStateForNextRound,
   decideClaimByChair,
   MeetingState,
   reduceTurnEnvelope,
@@ -80,6 +81,7 @@ import {
   ReviewArtifactResult,
   ReviewEditCheckpoint,
   ReviewHumanRevision,
+  reviewArtifactLimits,
   selectReviewArtifactSeatIds,
   validateReviewFindingSource,
 } from "../lib/review-artifact";
@@ -90,6 +92,7 @@ type EntryMode = "chat" | "council" | "artifact" | "packs";
 type TranscriptMode = "focus" | "overview";
 type ProviderChoice = ProviderId | "auto";
 type ReviewResultView = "artifact" | "changes" | "verification" | "brief";
+type OutputProfile = "lite" | "medium" | "unlimited";
 
 type ReviewReplayResult = {
   ok: boolean;
@@ -279,6 +282,7 @@ export default function Home() {
   const [protocolState, setProtocolState] = useState<MeetingProtocolState | null>(null);
   const [controlMode, setControlMode] = useState<ControlMode>("checkpoints");
   const [maxRounds, setMaxRounds] = useState(2);
+  const [outputProfile, setOutputProfile] = useState<OutputProfile>("medium");
   const [directiveKind, setDirectiveKind] = useState<ChairDirective["kind"]>("constraint");
   const [directiveTarget, setDirectiveTarget] = useState("all");
   const [directiveText, setDirectiveText] = useState("");
@@ -482,10 +486,10 @@ export default function Home() {
     () => {
       const base = createDefaultMeetingBudget(Math.max(2, seats.length), maxRounds, observerDraft.enabled);
       return planRequest ? createPlanBudget() : taskMode === "review"
-        ? createReviewArtifactBudget(base, maxRounds)
-        : createDecisionPackageBudget(base, maxRounds);
+        ? createReviewArtifactBudget(base, maxRounds, outputProfile, Math.max(2, seats.length), observerDraft.enabled)
+        : createDecisionPackageBudget(base, maxRounds, outputProfile, Math.max(2, seats.length), observerDraft.enabled);
     },
-    [maxRounds, observerDraft.enabled, seats.length, taskMode, planRequest],
+    [maxRounds, observerDraft.enabled, outputProfile, seats.length, taskMode, planRequest],
   );
   const activeBudgetStatus = useMemo(
     () => protocolState ? evaluateMeetingBudget(protocolState, usage) : null,
@@ -1148,8 +1152,8 @@ export default function Home() {
     const rawProtocol = record.protocolState ?? legacyProtocolState(record);
     const restoredProtocol = rawProtocol
       ? record.planRequest ? rawProtocol : record.taskMode === "review"
-        ? ensureReviewArtifactBudget(rawProtocol, record.participants.length)
-        : ensureDecisionPackageBudget(rawProtocol, record.participants.length, record.transcript)
+        ? ensureReviewArtifactBudget(rawProtocol, record.participants.length, outputProfile)
+        : ensureDecisionPackageBudget(rawProtocol, record.participants.length, record.transcript, outputProfile)
       : rawProtocol;
     updateProtocol(restoredProtocol);
     setControlMode(restoredProtocol?.controlMode ?? "checkpoints");
@@ -1373,6 +1377,7 @@ export default function Home() {
         iteration: nextState.round,
         priorMemo: memoRef.current,
         meetingState: canonicalState,
+        outputProfile,
         protocolPhase: "observer",
         seatIds: [],
         processReport: report,
@@ -1434,8 +1439,8 @@ export default function Home() {
     setError("");
     setCopied(false);
     let nextState = planRequest ? startState : taskMode === "review"
-      ? ensureReviewArtifactBudget(startState, seats.length)
-      : ensureDecisionPackageBudget(startState, seats.length, transcriptRef.current);
+      ? ensureReviewArtifactBudget(startState, seats.length, outputProfile)
+      : ensureDecisionPackageBudget(startState, seats.length, transcriptRef.current, outputProfile);
     let activeTransitionId = "";
     try {
       while (true) {
@@ -1512,6 +1517,7 @@ export default function Home() {
             iteration: nextState.round,
             priorMemo: memoRef.current,
             meetingState: meetingStateRef.current,
+            outputProfile,
             protocolPhase,
             seatIds: pendingSeatIds,
             contextTurns: protocolPhase === "targeted_debate"
@@ -1665,7 +1671,13 @@ export default function Home() {
           if (interrupted.ok) nextState = interrupted.state;
         }
         setError(safeClientError(meetingError));
-        setPhase("Interrupted at a recoverable boundary");
+        if (memoRef.current.trim()) {
+          updateDecision("pending");
+          setStage("decision");
+          setPhase("Round interrupted; the previous summary is preserved");
+        } else {
+          setPhase("Interrupted at a recoverable boundary");
+        }
       }
       updateProtocol(nextState);
       try {
@@ -1760,6 +1772,18 @@ export default function Home() {
       setError("Accept at least one Finding before building Artifact v2.");
       return;
     }
+    const continuingFromHumanGate = current.phase === "human_gate" && Boolean(memoRef.current.trim());
+    const compactedState = continuingFromHumanGate && meetingStateRef.current
+      ? compactMeetingStateForNextRound(
+          meetingStateRef.current,
+          memoRef.current,
+          `round-${current.round}-decision-context`,
+        )
+      : meetingStateRef.current;
+    if (compactedState) {
+      meetingStateRef.current = compactedState;
+      setMeetingState(compactedState);
+    }
     const continued = continueProtocol(current, seats.map((seat) => seat.id));
     if (!continued.ok) {
       setError(continued.error);
@@ -1771,7 +1795,7 @@ export default function Home() {
     setStage("meeting");
     setError("");
     try {
-      await flushProtocolRecord(continued.state, meetingStateRef.current, leaveOriginalResult
+      await flushProtocolRecord(continued.state, compactedState, leaveOriginalResult
         ? { reviewResult: undefined, memo: "", decision: "waiting", stage: "meeting" }
         : undefined);
     } catch (storageError) {
@@ -2457,7 +2481,7 @@ export default function Home() {
       const response = await fetch("/api/discuss", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ solo: { connectionId: connection.id, provider: connection.provider, model, messages }, connections: { [connection.id]: { provider: connection.provider, apiKey: connection.apiKey } } }),
+        body: JSON.stringify({ solo: { connectionId: connection.id, provider: connection.provider, model, messages }, connections: { [connection.id]: { provider: connection.provider, apiKey: connection.apiKey } }, outputProfile }),
       });
       const payload = await response.json() as { text?: string; error?: string; usage?: UsageSummary; incomplete?: boolean };
       if (!response.ok || !payload.text) throw new Error(payload.error || "The Solo response was unavailable.");
@@ -2653,7 +2677,7 @@ export default function Home() {
               <div className="objective-footer">
                 <span>{objective.length}/4,000</span>
                 <span>Discuss only</span>
-                <span>{maxRounds} round{maxRounds === 1 ? "" : "s"} maximum</span>
+                <span>Up to {maxRounds} round{maxRounds === 1 ? "" : "s"}</span>
               </div>
               {readySeatCount < 2 && !configLoading ? (
                 <button className="connection-callout" type="button" onClick={() => openConnectionManager()}>
@@ -2766,13 +2790,23 @@ export default function Home() {
                   </div>
                 </div>
                 <div>
-                  <span className="section-kicker">Maximum rounds</span>
+                  <span className="section-kicker">Round allowance</span>
                   <div className="segmented-control round-limit-control">
                     {[1, 2, 3].map((rounds) => (
                       <button type="button" disabled={Boolean(planRequest) && rounds !== 1} className={maxRounds === rounds ? "active" : ""} onClick={() => setMaxRounds(rounds)} key={rounds}>{rounds}</button>
                     ))}
                   </div>
+                  <small className="control-help">The Chair requests each extra round; this only sets the upper limit.</small>
                 </div>
+                <label>
+                  <span className="section-kicker">Output budget</span>
+                  <select value={outputProfile} onChange={(event) => setOutputProfile(event.target.value as OutputProfile)} disabled={running}>
+                    <option value="lite">Lite</option>
+                    <option value="medium">Medium</option>
+                    <option value="unlimited">Uncapped</option>
+                  </select>
+                  <small>{outputProfile === "lite" ? "Shorter replies and lower usage." : outputProfile === "unlimited" ? "No extra app cap; provider limits still apply." : "Balanced reply length and usage."}</small>
+                </label>
               </section>
 
               <section className={`observer-setup ${observerDraft.enabled ? "enabled" : ""}`} aria-label="Observer configuration">
@@ -3417,7 +3451,7 @@ export default function Home() {
                   : "Approve the artifact, reject it, or add a scoped direction before spending another bounded round."}</p>
                 <div className="decision-actions">
                   <button className="approve-button" type="button" onClick={() => void recordHumanDecision("approved")} disabled={running || decision !== "pending" || Boolean(editingReviewChangeId) || Boolean(editingPlanDay) || planSaving || Boolean(planArtifact && !planDecisionReady(planArtifact))}>{decision === "approved" ? (planArtifact ? "Plan approved" : reviewResult ? `Artifact v${displayedReviewVersion} approved` : "Memo approved") : (planArtifact ? "Approve plan" : reviewResult ? `Approve Artifact v${displayedReviewVersion}` : "Approve memo")}</button>
-                  <button type="button" onClick={() => void continueMeeting()} disabled={running || decision !== "pending" || !memo || !protocolState || protocolState.phase !== "human_gate" || protocolState.round >= protocolState.maxRounds || !roomCompositionMatches}>Request another round</button>
+                  <button type="button" onClick={() => void continueMeeting()} disabled={running || decision !== "pending" || !memo || !protocolState || (protocolState.phase !== "human_gate" && protocolState.status !== "interrupted") || protocolState.round >= protocolState.maxRounds || !roomCompositionMatches}>{protocolState?.status === "interrupted" ? "Retry interrupted round" : "Request another round"}</button>
                   <button className="reject-button" type="button" onClick={() => void recordHumanDecision("rejected")} disabled={running || decision !== "pending" || Boolean(editingPlanDay) || planSaving}>{decision === "rejected" ? (planArtifact ? "Plan rejected" : reviewResult ? "Artifact rejected" : "Memo rejected") : (planArtifact ? "Reject plan" : reviewResult ? `Reject Artifact v${displayedReviewVersion}` : "Reject memo")}</button>
                 </div>
                 {decision === "pending" && protocolState && protocolState.round < protocolState.maxRounds && !roomCompositionMatches ? (
@@ -4075,11 +4109,21 @@ function reviewFindingSourceLabel(kind: ReviewFindingSourceKind) {
 function createReviewArtifactBudget(
   base: ReturnType<typeof createDefaultMeetingBudget>,
   maxRounds: number,
+  outputProfile: OutputProfile = "medium",
+  seatCount = 2,
+  observerEnabled = false,
 ) {
+  const limits = outputProfileLimits(outputProfile);
+  const rounds = Math.max(1, maxRounds);
+  const participants = Math.max(2, Math.min(3, seatCount));
+  const participantTurns = participants * 2 * rounds;
+  const observerTurns = observerEnabled ? rounds : 0;
   return {
     maxAgentTurns: base.maxAgentTurns + maxRounds * 2,
     maxInputTokens: base.maxInputTokens + maxRounds * 18_000,
-    maxOutputTokens: base.maxOutputTokens + maxRounds * 6_000,
+    maxOutputTokens: participantTurns * limits.turnTokens +
+      rounds * (reviewArtifactLimits.maxEditorOutputTokens + reviewArtifactLimits.maxVerifierOutputTokens) +
+      observerTurns * limits.observerTokens,
     maxModelTimeMs: base.maxModelTimeMs + maxRounds * 180_000,
   };
 }
@@ -4087,15 +4131,32 @@ function createReviewArtifactBudget(
 function createDecisionPackageBudget(
   base: ReturnType<typeof createDefaultMeetingBudget>,
   maxRounds: number,
+  outputProfile: OutputProfile,
+  seatCount: number,
+  observerEnabled: boolean,
 ) {
+  const limits = outputProfileLimits(outputProfile);
+  const rounds = Math.max(1, maxRounds);
+  const participants = Math.max(2, Math.min(3, seatCount));
+  const participantTurns = participants * 2 * rounds;
+  const observerTurns = observerEnabled ? rounds : 0;
   return {
     maxAgentTurns: base.maxAgentTurns + maxRounds,
     maxInputTokens: base.maxInputTokens + maxRounds * 6_000,
-    // The initial synthesis uses 4,800 tokens instead of the base 1,200,
-    // and one explicit synthesis recovery receives the same bounded cap.
-    maxOutputTokens: base.maxOutputTokens + maxRounds * 8_400,
+    maxOutputTokens: participantTurns * limits.turnTokens +
+      rounds * limits.synthesisTokens + observerTurns * limits.observerTokens,
     maxModelTimeMs: base.maxModelTimeMs + maxRounds * 90_000,
   };
+}
+
+function outputProfileLimits(outputProfile: OutputProfile) {
+  if (outputProfile === "lite") {
+    return { turnTokens: 600, synthesisTokens: 2_400, observerTokens: 300 };
+  }
+  if (outputProfile === "unlimited") {
+    return { turnTokens: 12_000, synthesisTokens: 16_000, observerTokens: 600 };
+  }
+  return { turnTokens: 1_200, synthesisTokens: 4_800, observerTokens: 300 };
 }
 
 function createPlanBudget() {
@@ -4127,10 +4188,14 @@ function ensureDecisionPackageBudget(
   state: MeetingProtocolState,
   seatCount: number,
   transcript: TranscriptItem[] = [],
+  outputProfile: OutputProfile = "medium",
 ) {
   const required = createDecisionPackageBudget(
     createDefaultMeetingBudget(seatCount, state.maxRounds, state.observerEnabled),
     state.maxRounds,
+    outputProfile,
+    seatCount,
+    state.observerEnabled,
   );
   const latestTransition = state.transitions.at(-1);
   const failedBeforeProviderStart = Boolean(

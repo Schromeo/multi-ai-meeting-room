@@ -712,6 +712,39 @@ export function renderMeetingStateContext(
   return JSON.stringify(context);
 }
 
+export function compactMeetingStateForNextRound(
+  state: MeetingState,
+  summary: string,
+  sourceMessageId: string,
+): MeetingState {
+  const archivedRecordIds = [
+    ...state.archivedRecordIds,
+    ...state.claims.map((claim) => claim.id),
+    ...state.disputes.map((dispute) => dispute.id),
+    ...state.assumptions.map((assumption) => assumption.id),
+    ...state.openQuestions.map((question) => question.id),
+  ].slice(-200);
+  const compactedSummary = boundedText(summary.trim(), 480);
+  const summaryClaim: Claim = {
+    id: `round-summary-${state.round}-${state.version + 1}`,
+    text: compactedSummary || `Round ${state.round} completed; continue from the prior decision context.`,
+    status: "provisionally_supported",
+    assumptionLevel: "medium",
+    sourceMessageIds: [sourceMessageId],
+    supportingSeatIds: ["human-chair"],
+    opposingSeatIds: [],
+  };
+  return {
+    ...state,
+    version: state.version + 1,
+    claims: [summaryClaim],
+    disputes: [],
+    assumptions: [],
+    openQuestions: [],
+    archivedRecordIds,
+  };
+}
+
 export function parseMeetingState(value: unknown): MeetingState | null {
   if (!isRecord(value) || value.schemaVersion !== 1) return null;
   if (

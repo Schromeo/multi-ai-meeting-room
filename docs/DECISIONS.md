@@ -473,3 +473,17 @@ Durable product and architecture choices live here. New entries are append-only.
 - **Decision:** `pnpm check` is the single ordered engineering contract: regenerate worker types from pinned Wrangler and `wrangler.jsonc`, build through a repository-owned cross-platform vinext launcher, run the complete offline test suite, lint handwritten source, and type-check without emission. GitHub Actions uses `pnpm/action-setup@v6` to install pinned pnpm 11.19.0, then runs frozen install and the same check on Node 22.13.0 across Windows and Ubuntu. The deterministic generated declaration is ignored; the inactive D1 binding remains an explicit optional augmentation rather than entering runtime configuration.
 - **Boundary:** generated declarations are not hand-edited, committed, or linted as handwritten code. They are recreated before every full check and immediately validated by TypeScript. No new package, dependency upgrade, provider call, deployment, D1 binding, or first-run interface work belongs to this decision.
 - **Reason:** separate platform commands allowed Windows shell syntax, CRLF assumptions, missing runtime declarations, and stale success claims to diverge. The first remote run exposed a bundled Corepack signature-key mismatch before installation on both OSes; the official pnpm installer repaired that runner-specific failure. Both jobs then passed on `97b865a` in [CI run 36076954748](https://github.com/Schromeo/multi-ai-meeting-room/actions/runs/36076954748).
+
+## D-067 - Next Rounds Compact Working State Without Rewriting History
+
+- **Status:** Accepted locally; broader round-quality evidence pending
+- **Date:** 2026-09-25
+- **Decision:** when the Chair requests another round after a Human Gate, preserve the full transcript and append-only history, but compact the prior Canonical State working set into one bounded round-summary Claim and archive the old Claim, Dispute, Assumption, and open-question IDs. The next round receives the prior memo and the compact summary rather than an exhausted working set. This is a working-context reduction, not deletion, approval, or factual verification of the summary.
+- **Reason:** a confirmed first-round direction should support a second task such as outline expansion without reusing every exploratory Claim. The fixed 12-Claim cap otherwise rejects legitimate next-round content even when the user has already chosen a direction.
+
+## D-068 - Unlimited Output Is A Detailed Delivery Profile, Not An Unbounded Provider Promise
+
+- **Status:** Accepted locally; live provider quality evidence pending
+- **Date:** 2026-09-25
+- **Decision:** the `unlimited` profile raises application output caps, aligns total room budgets, and adds task-shaped synthesis instructions for creative/planning work. It must preserve the user's language and produce an actionable expanded deliverable rather than only short options. Provider, transport, reasoning, content-filter, cost, and host limits remain authoritative; incomplete work preserves the prior memo and exposes explicit recovery.
+- **Reason:** larger token ceilings alone did not turn concise structured meeting turns into a usable novel outline, and an incomplete second-round provider stream left the user without a visible prior result or recovery path. Prompt responsibility and failure presentation must change with the user-facing depth.

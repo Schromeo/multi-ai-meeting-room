@@ -636,7 +636,7 @@ p {
 
 .protocol-setup {
   display: grid;
-  grid-template-columns: minmax(0, 2fr) minmax(120px, 1fr);
+  grid-template-columns: repeat(3, minmax(0, 1fr));
   gap: 12px;
   border-top: 1px solid var(--line);
   padding-top: 14px;
@@ -663,6 +663,36 @@ p {
   padding-right: 8px;
   padding-left: 8px;
   white-space: normal;
+}
+
+.protocol-setup > label {
+  display: grid;
+  align-content: start;
+  gap: 7px;
+  min-width: 0;
+  color: var(--ink-soft);
+  font-size: 0.65rem;
+  font-weight: 700;
+}
+
+.protocol-setup select {
+  width: 100%;
+  min-height: 34px;
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  padding: 6px 9px;
+  background: var(--surface);
+  color: var(--ink);
+  font-size: 0.72rem;
+}
+
+.control-help {
+  display: block;
+  margin-top: 6px;
+  color: var(--ink-soft);
+  font-size: 0.64rem;
+  font-weight: 500;
+  line-height: 1.35;
 }
 
 .observer-setup {
