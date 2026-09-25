@@ -19,6 +19,7 @@ import {
   type ProcessReport,
 } from "../../../lib/meeting-orchestrator";
 import {
+  ChairDirective,
   createInitialMeetingState,
   chairDirectivesForPhase,
   MeetingState,
@@ -74,6 +75,8 @@ type CompletedTurn = ProviderResult & {
 };
 
 type DiscussRequest = {
+  solo?: unknown;
+  outputProfile?: unknown;
   objective?: unknown;
   taskMode?: unknown;
   reviewInput?: unknown;
@@ -134,6 +137,19 @@ const PROVIDER_TIMEOUT_MS = 90_000;
 const MAX_REVIEW_REPLAY_OUTPUT_TOKENS = 600;
 const MAX_REVIEW_BASELINE_OUTPUT_TOKENS = 2_400;
 
+type OutputProfile = "lite" | "medium" | "unlimited";
+
+const outputProfiles: Record<OutputProfile, {
+  turnTokens: number;
+  synthesisTokens: number;
+  observerTokens: number;
+  targetedDebateTokens: number;
+}> = {
+  lite: { turnTokens: 600, synthesisTokens: 2_400, observerTokens: 300, targetedDebateTokens: 400 },
+  medium: { turnTokens: MAX_OUTPUT_TOKENS, synthesisTokens: DECISION_SYNTHESIS_OUTPUT_TOKENS, observerTokens: MAX_OBSERVER_OUTPUT_TOKENS, targetedDebateTokens: MAX_TARGETED_DEBATE_OUTPUT_TOKENS },
+  unlimited: { turnTokens: 12_000, synthesisTokens: 16_000, observerTokens: 600, targetedDebateTokens: 800 },
+};
+
 const reviewVerifierReplayFixture = {
   version: 2,
   objective: "Verify one bounded resume edit without inventing evidence.",
@@ -175,6 +191,7 @@ export async function POST(request: Request) {
   }
 
   if (!body || typeof body !== "object") return Response.json({ error: "Invalid meeting request." }, { status: 400 });
+  if (body.solo !== undefined) return soloResponse(request, body);
   if (body.planAmendmentAction !== undefined) return planAmendmentResponse(request, body);
   if (body.stageReplay !== undefined) return reviewVerifierReplayResponse(request, body);
   if (body.protocolPhase !== undefined) return phaseResponse(request, body);
@@ -187,8 +204,9 @@ export async function POST(request: Request) {
     return Response.json({ error: validation.error }, { status: 400 });
   }
 
-  const { objective, taskMode, reviewInput, seats, connections, iteration, priorMemo, requestId, meetingState } =
+  const { objective, taskMode, reviewInput, seats, connections, iteration, priorMemo, requestId, meetingState, outputProfile } =
     validation.value;
+  const outputBudget = outputProfiles[outputProfile];
   const work = seats.map((seat, index): AgentWork => ({
     ...seat,
     id: `${requestId}-${iteration}-${seat.id}-${index}`,
@@ -253,6 +271,8 @@ export async function POST(request: Request) {
               buildSystemPrompt(item.role),
               request.signal,
               emit,
+              undefined,
+              outputBudget.turnTokens,
             );
             item.text = result.envelope.statement;
             return { item, result };
@@ -297,6 +317,7 @@ export async function POST(request: Request) {
               request.signal,
               emit,
               `${roleLabels[target.role]} / ${target.config.name}`,
+              outputBudget.turnTokens,
             );
             return { item: reviewWork, result, target };
           }),
@@ -337,12 +358,13 @@ export async function POST(request: Request) {
             iteration,
             canonicalState,
             taskMode,
+            outputProfile,
           ),
           buildSystemPrompt("synthesizer"),
           request.signal,
           emit,
           undefined,
-          taskMode === "decide" ? DECISION_SYNTHESIS_OUTPUT_TOKENS : MAX_OUTPUT_TOKENS,
+          taskMode === "decide" ? outputBudget.synthesisTokens : outputBudget.turnTokens,
         );
         enforceTaskSynthesisContract(taskMode, objective, synthesisWork, synthesisCandidate, emit);
         const synthesisReduction = reduceCompletedTurns(
@@ -393,6 +415,47 @@ export async function POST(request: Request) {
       "X-Request-Id": requestId,
     },
   });
+}
+
+async function soloResponse(request: Request, body: DiscussRequest) {
+  const value = body.solo;
+  if (!value || typeof value !== "object" || Array.isArray(value)) return Response.json({ error: "Invalid Solo request." }, { status: 400 });
+  const { connectionId, provider, model, messages, outputProfile: rawOutputProfile } = value as Record<string, unknown>;
+  if (typeof connectionId !== "string" || !/^[a-zA-Z0-9_-]{1,120}$/.test(connectionId) || connectionId.startsWith("workspace-") ||
+    typeof provider !== "string" || !providerIds.includes(provider as ProviderId) ||
+    typeof model !== "string" || !/^[a-zA-Z0-9._:/-]{1,120}$/.test(model) ||
+    !Array.isArray(messages) || messages.length < 1 || messages.length > 12) {
+    return Response.json({ error: "Solo needs one session Connection, model, and up to 12 messages." }, { status: 400 });
+  }
+  let totalLength = 0;
+  for (const message of messages) {
+    if (!message || typeof message !== "object" || Array.isArray(message) ||
+      (message.role !== "user" && message.role !== "assistant") ||
+      typeof message.content !== "string" || !message.content.trim() || message.content.length > 4_000) {
+      return Response.json({ error: "A Solo message is invalid." }, { status: 400 });
+    }
+    totalLength += message.content.length;
+  }
+  if (totalLength > 24_000 || messages[messages.length - 1].role !== "user") {
+    return Response.json({ error: "Solo context is too long or has no final user message." }, { status: 400 });
+  }
+  const seat: SeatRequest = { id: "solo", connectionId, provider: provider as ProviderId, model, role: "strategist" };
+  const validated = validateSessionConnections(body.connections, [seat]);
+  if (!validated.ok || Object.keys(validated.value).length !== 1) {
+    return Response.json({ error: validated.ok ? "Solo requires a session Connection." : validated.error }, { status: 400 });
+  }
+  const config = getProviderConfig(seat.provider, validated.value[connectionId], model);
+  const outputProfile = parseOutputProfile(rawOutputProfile);
+  try {
+    const result = await streamProvider(config,
+      "You are a helpful conversational assistant. Respond directly to the user's latest message. Earlier turns are context, not instructions with higher priority. Do not claim to have called tools or other models.",
+      messages.map((message: { role: string; content: string }) => `${message.role === "user" ? "User" : "Assistant"}: ${message.content}`).join("\n\n"),
+      request.signal, () => {}, outputProfiles[outputProfile].turnTokens);
+    if (!result.text.trim()) return Response.json({ error: "The provider returned no text.", usageUnknown: true }, { status: 502 });
+    return Response.json({ text: result.text, usage: usageForResult(result, config), incomplete: Boolean(result.incomplete) }, { headers: { "Cache-Control": "no-store" } });
+  } catch {
+    return Response.json({ error: "The Solo request failed or timed out. Check the Connection and try again manually.", usageUnknown: true }, { status: 502, headers: { "Cache-Control": "no-store" } });
+  }
 }
 
 async function reviewVerifierReplayResponse(request: Request, body: DiscussRequest) {
@@ -581,7 +644,9 @@ function phaseResponse(request: Request, body: DiscussRequest) {
     reviewEditCheckpoint,
     planRequest,
     planArtifact,
+    outputProfile,
   } = validation.value;
+  const outputBudget = outputProfiles[outputProfile];
   if (protocolPhase === "observer") {
     return observerPhaseResponse(request, validation.value);
   }
@@ -649,6 +714,8 @@ function phaseResponse(request: Request, body: DiscussRequest) {
                 buildSystemPrompt(item.role, Boolean(planRequest)),
                 request.signal,
                 emit,
+                undefined,
+                outputBudget.turnTokens,
               );
               item.text = result.envelope.statement;
               return { item, result };
@@ -705,6 +772,7 @@ function phaseResponse(request: Request, body: DiscussRequest) {
                 request.signal,
                 emit,
                 `${roleLabels[target.item.role]} / ${target.item.config.name}`,
+                outputBudget.turnTokens,
               );
               return { item, result, target: target.item };
             }),
@@ -743,7 +811,7 @@ function phaseResponse(request: Request, body: DiscussRequest) {
                 request.signal,
                 emit,
                 `Dispute ${dispute.id}`,
-                MAX_TARGETED_DEBATE_OUTPUT_TOKENS,
+                outputBudget.targetedDebateTokens,
               );
               if (
                 result.envelope.card.newClaims.length > 0 ||
@@ -866,6 +934,7 @@ function phaseResponse(request: Request, body: DiscussRequest) {
               round,
               canonicalState,
               taskMode,
+              outputProfile,
               targetedDisputeId,
               reviewTurns,
             ),
@@ -873,7 +942,7 @@ function phaseResponse(request: Request, body: DiscussRequest) {
             request.signal,
             emit,
             undefined,
-            taskMode === "decide" ? DECISION_SYNTHESIS_OUTPUT_TOKENS : MAX_OUTPUT_TOKENS,
+            taskMode === "decide" ? outputBudget.synthesisTokens : outputBudget.turnTokens,
           );
           enforceTaskSynthesisContract(taskMode, objective, synthesisWork, synthesis, emit);
           const reduction = reduceCompletedTurns(
@@ -932,7 +1001,8 @@ function observerPhaseResponse(
   request: Request,
   value: Extract<ReturnType<typeof validatePhaseRequest>, { ok: true }>["value"],
 ) {
-  const { observer, processReport, meetingState, connections, requestId, round } = value;
+  const { observer, processReport, meetingState, connections, requestId, round, outputProfile } = value;
+  const outputBudget = outputProfiles[outputProfile];
   if (!observer || !processReport) {
     return Response.json({ error: "Observer phase is missing validated inputs." }, { status: 400 });
   }
@@ -985,7 +1055,7 @@ function observerPhaseResponse(
               emit({ type: "observer.progress", id: observerId, stage: "generating" });
             }
           },
-          MAX_OBSERVER_OUTPUT_TOKENS,
+          outputBudget.observerTokens,
         );
         emit({ type: "observer.progress", id: observerId, stage: "validating" });
         const parsed = parseObserverOutput(result.text, meetingState);
@@ -1044,8 +1114,7 @@ function observerPhaseResponse(
 function validatePhaseRequest(body: DiscussRequest):
   | {
       ok: true;
-      value: {
-        objective: string;
+        outputProfile: OutputProfile;
         taskMode: TaskMode;
         reviewInput?: ReviewTaskInput;
         seats: SeatRequest[];
@@ -1063,8 +1132,7 @@ function validatePhaseRequest(body: DiscussRequest):
         reviewEditCheckpoint?: ReviewEditCheckpoint;
         planRequest?: PlanRequest;
         planArtifact?: PlanArtifact;
-      };
-    }
+      }
   | { ok: false; error: string } {
   const round = Number(body.iteration);
   if (!Number.isInteger(round) || round < 1 || round > 5) {
@@ -1240,6 +1308,7 @@ function validatePhaseRequest(body: DiscussRequest):
     ok: true,
     value: {
       objective: base.value.objective,
+      outputProfile: base.value.outputProfile,
       taskMode: base.value.taskMode,
       ...(base.value.reviewInput ? { reviewInput: base.value.reviewInput } : {}),
       seats: base.value.seats,
@@ -1734,6 +1803,7 @@ function validateRequest(body: DiscussRequest, additionalConnections: ObserverRe
       ok: true;
       value: {
         objective: string;
+        outputProfile: OutputProfile;
         taskMode: TaskMode;
         reviewInput?: ReviewTaskInput;
         planRequest?: PlanRequest;
@@ -1752,6 +1822,8 @@ function validateRequest(body: DiscussRequest, additionalConnections: ObserverRe
   if (body.objective.length > MAX_OBJECTIVE_LENGTH) {
     return { ok: false, error: `The objective must be under ${MAX_OBJECTIVE_LENGTH} characters.` };
   }
+  const outputProfile = parseOutputProfile(body.outputProfile);
+  if (!outputProfile) return { ok: false, error: "The output budget profile is invalid." };
   const taskMode = body.taskMode === undefined ? "decide" : parseTaskMode(body.taskMode);
   if (!taskMode) return { ok: false, error: "The task mode is invalid." };
   const planRequest = body.planRequest === undefined ? undefined : parsePlanRequest(body.planRequest);
@@ -1836,6 +1908,7 @@ function validateRequest(body: DiscussRequest, additionalConnections: ObserverRe
     ok: true,
     value: {
       objective: body.objective.trim(),
+      outputProfile,
       taskMode,
       ...(reviewInput ? { reviewInput } : {}),
       ...(planRequest ? { planRequest } : {}),
@@ -2161,6 +2234,7 @@ async function streamOpenAI(
       input: prompt,
       stream: true,
       max_output_tokens: maxOutputTokens,
+      ...(!planQuality ? { text: { format: { type: "json_object" } } } : {}),
       ...(reasoningSetting !== "provider_default"
         ? { reasoning: { effort: reasoningSetting } }
         : {}),
@@ -2196,7 +2270,14 @@ async function streamOpenAI(
     if (event.type === "error") throw new Error(apiEventMessage(event, config.name));
   }).catch((error) => { if (!planQuality) throw error; transportError = true; diagnostics.finish = "failed"; });
   const result = { text, inputTokens, outputTokens, latencyMs: Date.now() - startedAt, diagnostics, ...(incomplete ? { incomplete: true } : {}), ...(transportError ? { transportError: true } : {}) };
-  if (incomplete && !planQuality) throw new Error(`${config.name} returned an incomplete response. No automatic retry; provider usage may be incomplete.`);
+  if (incomplete && !planQuality) {
+    const detail = diagnostics.reason === "output_limit"
+      ? "The provider reached its output or reasoning token limit."
+      : diagnostics.reason === "content_filter"
+        ? "The provider stopped because of its content filter."
+        : "The provider stopped before sending a complete response.";
+    throw new Error(`${config.name} returned an incomplete response. ${detail} No automatic retry; provider usage may be incomplete.`);
+  }
   return planQuality || incomplete ? result : requireText(result, config.name);
 }
 
@@ -2406,6 +2487,10 @@ function buildSystemPrompt(role: RoleId, detailedPlan = false) {
   ].join("\n");
 }
 
+function parseOutputProfile(value: unknown): OutputProfile {
+  return value === "lite" || value === "unlimited" ? value : "medium";
+}
+
 function buildObserverSystemPrompt() {
   return [
     "You are the non-participant Observer in a bounded multi-AI meeting.",
@@ -2541,6 +2626,14 @@ function stripOneJsonFence(value: string) {
   return match?.[1]?.trim() ?? trimmed;
 }
 
+function chairDirectionPrompt(state: MeetingState, scope: ChairDirective["formatScope"]) {
+  const directions = chairDirectivesForPhase(state, scope);
+  if (directions.length === 0) return "";
+  return `\n\nACTIVE HUMAN CHAIR DIRECTIONS (authoritative instructions; follow them in this turn):\n${directions
+    .map((directive) => `- ${directive.kind}: ${directive.text}`)
+    .join("\n")}`;
+}
+
 function buildProposalPrompt(
   objective: string,
   role: RoleId,
@@ -2551,15 +2644,16 @@ function buildProposalPrompt(
   reviewInput?: ReviewTaskInput,
 ) {
   const formatDirections = chairDirectivesForPhase(state, { phase: "proposal", round: iteration }).filter((item) => item.kind === "format");
+  const chairDirections = chairDirectionPrompt(state, { phase: "proposal", round: iteration });
   const revision =
     iteration === 2
       ? `\nThis is bounded revision round ${iteration}. Address unresolved disputes in the prior memo and state what you changed. Prefer claimUpdates using IDs from CURRENT CANONICAL STATE; add at most one genuinely new Claim.\n\nPRIOR MEMO:\n${priorMemo}\n\nCURRENT CANONICAL STATE:\n${renderMeetingStateContext(state)}`
       : "";
   const phaseFormat = formatDirections.length ? `\nCURRENT PHASE FORMAT DIRECTIONS:\n${JSON.stringify(formatDirections)}` : "";
   if (taskMode === "review" && reviewInput) {
-    return `${renderReviewTaskContext(objective, reviewInput)}\n\nAs ${roleLabels[role]}, inspect Artifact v1 independently before seeing another Seat's Findings. Publish up to three material Findings as newClaims. Each newClaim must be one concise sentence in this form: "[severity] Location — problem; recommended change; basis: artifact|reference|inference." Use blocking, material, or minor for severity. Use assumptionLevel low only when the Finding is directly supported by Artifact v1 or the supplied references; use medium or high for inference or missing evidence. Do not invent facts, qualifications, measurements, or source support. The visible statement should prioritize the Findings without rewriting the Artifact. claimUpdates must be empty.${revision}${phaseFormat}\n\n${turnEnvelopeSchema("proposal")}`;
+    return `${renderReviewTaskContext(objective, reviewInput)}\n\nAs ${roleLabels[role]}, inspect Artifact v1 independently before seeing another Seat's Findings. Publish up to three material Findings as newClaims. Each newClaim must be one concise sentence in this form: "[severity] Location — problem; recommended change; basis: artifact|reference|inference." Use blocking, material, or minor for severity. Use assumptionLevel low only when the Finding is directly supported by Artifact v1 or the supplied references; use medium or high for inference or missing evidence. Do not invent facts, qualifications, measurements, or source support. The visible statement should prioritize the Findings without rewriting the Artifact. claimUpdates must be empty.${revision}${chairDirections}${phaseFormat}\n\n${turnEnvelopeSchema("proposal")}`;
   }
-  return `MEETING OBJECTIVE:\n${objective}\n\nAs ${roleLabels[role]}, provide a concise proposal as a Turn Envelope. Use up to three newClaims, mark no more than two as medium/high assumptions, use at most one objection, and ask at most one questionForChair. claimUpdates must be empty because no canonical Claim IDs have been published yet.${revision}${phaseFormat}\n\n${turnEnvelopeSchema("proposal")}`;
+  return `MEETING OBJECTIVE:\n${objective}\n\nAs ${roleLabels[role]}, provide a concise proposal as a Turn Envelope. Use up to three newClaims, mark no more than two as medium/high assumptions, use at most one objection, and ask at most one questionForChair. claimUpdates must be empty because no canonical Claim IDs have been published yet.${revision}${chairDirections}${phaseFormat}\n\n${turnEnvelopeSchema("proposal")}`;
 }
 
 function buildReviewPrompt(
@@ -2571,10 +2665,11 @@ function buildReviewPrompt(
   taskMode: TaskMode,
   reviewInput?: ReviewTaskInput,
 ) {
+  const chairDirections = chairDirectionPrompt(state, { phase: "review", round: state.round });
   if (taskMode === "review" && reviewInput) {
-    return `${renderReviewTaskContext(objective, reviewInput)}\n\nREVIEW TARGET: ${roleLabels[targetRole]} using ${targetProvider}\n\nTARGET FINDING SUMMARY:\n${proposal}\n\nCURRENT CANONICAL FINDINGS:\n${renderMeetingStateContext(state, undefined, { phase: "review", round: state.round })}\n\nCross-check only the target Seat's Findings against Artifact v1, supplied references, and truth constraints. Name the strongest supported Finding, the most consequential unsupported or missed issue, and the smallest correction. Use only published Claim IDs in claimUpdates or targetClaimId. Do not rewrite Artifact v1, introduce external evidence, or review unrelated ideas. Label unresolved support as unverified.\n\n${turnEnvelopeSchema("review")}`;
+    return `${renderReviewTaskContext(objective, reviewInput)}\n\nREVIEW TARGET: ${roleLabels[targetRole]} using ${targetProvider}\n\nTARGET FINDING SUMMARY:\n${proposal}\n\nCURRENT CANONICAL FINDINGS:\n${renderMeetingStateContext(state, undefined, { phase: "review", round: state.round })}${chairDirections}\n\nCross-check only the target Seat's Findings against Artifact v1, supplied references, and truth constraints. Name the strongest supported Finding, the most consequential unsupported or missed issue, and the smallest correction. Use only published Claim IDs in claimUpdates or targetClaimId. Do not rewrite Artifact v1, introduce external evidence, or review unrelated ideas. Label unresolved support as unverified.\n\n${turnEnvelopeSchema("review")}`;
   }
-  return `MEETING OBJECTIVE:\n${objective}\n\nREVIEW TARGET: ${roleLabels[targetRole]} using ${targetProvider}\n\nTARGET PROPOSAL:\n${proposal}\n\nCURRENT CANONICAL STATE:\n${renderMeetingStateContext(state, undefined, { phase: "review", round: state.round })}\n\nReview this specific proposal. The statement should name its strongest valid point, most consequential weakness, unsupported factual claims, concrete revision, and verdict. Use only published Claim IDs from CURRENT CANONICAL STATE in targetClaimId or claimUpdates. Do not repeat the proposal or review unrelated ideas. Do not introduce external evidence, named examples, or empirical claims that are absent from CURRENT CANONICAL STATE; label them unverified instead.\n\n${turnEnvelopeSchema("review")}`;
+  return `MEETING OBJECTIVE:\n${objective}\n\nREVIEW TARGET: ${roleLabels[targetRole]} using ${targetProvider}\n\nTARGET PROPOSAL:\n${proposal}\n\nCURRENT CANONICAL STATE:\n${renderMeetingStateContext(state, undefined, { phase: "review", round: state.round })}${chairDirections}\n\nReview this specific proposal. The statement should name its strongest valid point, most consequential weakness, unsupported factual claims, concrete revision, and verdict. Use only published Claim IDs from CURRENT CANONICAL STATE in targetClaimId or claimUpdates. Do not repeat the proposal or review unrelated ideas. Do not introduce external evidence, named examples, or empirical claims that are absent from CURRENT CANONICAL STATE; label them unverified instead.\n\n${turnEnvelopeSchema("review")}`;
 }
 
 function buildTargetedDebatePrompt(objective: string, disputeId: string, state: MeetingState) {
@@ -2605,6 +2700,7 @@ function buildSynthesisPrompt(
   iteration: number,
   state: MeetingState,
   taskMode: TaskMode,
+  outputProfile: OutputProfile = "medium",
   targetedDisputeId?: string,
   targetedReviewTurns: PhaseContextTurn[] = [],
 ) {
@@ -2629,14 +2725,17 @@ function buildSynthesisPrompt(
         })
         .join("\n\n")
     : "";
+  const detailedDeliveryDirection = outputProfile === "unlimited" && taskMode !== "review"
+    ? "\nDETAILED DELIVERY MODE:\nThe user selected the detailed output profile. Do not answer with a short recommendation or a list of three ideas. Respond in the same language as the user's objective; if the objective is Chinese, write the deliverable in natural Simplified Chinese. For a creative concept, novel direction, story line, outline, or plan, provide an actionable long-form deliverable with positioning, core hook, differentiating setting, protagonist and conflict, long-term main arc, 3-5 major stages or volumes, and a concrete opening blueprint for at least the first 10 chapters. Add risks, commonness traps, and the next writing step. Use headings and compact paragraphs. Choose a recommended direction and develop it instead of stopping at comparison.\n"
+    : "";
   const workingTurns = targetedDisputeId
     ? `NAMED DISPUTE: ${targetedDisputeId}\n\n${targetedDeltaText}`
-    : `${proposalText}\n\n${reviewText}`;
+    : `${proposalText}\n\n${reviewText}${detailedDeliveryDirection}`;
 
   if (taskMode === "review") {
-    return `REVIEW OBJECTIVE:\n${objective}\n\nROUND: ${iteration}\n\nCURRENT CANONICAL FINDINGS AND BINDING HUMAN DECISIONS:\n${renderMeetingStateContext(state, undefined, { phase: "synthesis", round: iteration })}\n\nCreate a Review Brief inside the Turn Envelope statement using only Canonical State. Do not replay or summarize raw reviewer statements, rewrite Artifact v1, or invent evidence. A Claim with status rejected_by_chair is a binding exclusion: do not recommend it, treat it as missing evidence, or repeat it as a valid concern. A Claim with status accepted_by_chair is a binding inclusion. A resolved Dispute is not open. Use exactly these headings:\n\n# Priority Findings\n# Supported Findings\n# Contested Findings\n# Missing Evidence\n# Recommended Next Step\n\nPreserve unresolved minority objections and distinguish supplied support from inference. The next product slice will create the Change Set and Artifact v2. Keep newClaims, claimUpdates, and objections empty; synthesis organizes validated Findings but does not create records.\n\n${turnEnvelopeSchema("synthesis")}`;
+    return `REVIEW OBJECTIVE:\n${objective}\n\nROUND: ${iteration}\n\nCURRENT CANONICAL FINDINGS AND BINDING HUMAN DECISIONS:\n${renderMeetingStateContext(state, undefined, { phase: "synthesis", round: iteration })}${chairDirectionPrompt(state, { phase: "synthesis", round: iteration })}\n\nCreate a Review Brief inside the Turn Envelope statement using only Canonical State. Do not replay or summarize raw reviewer statements, rewrite Artifact v1, or invent evidence. A Claim with status rejected_by_chair is a binding exclusion: do not recommend it, treat it as missing evidence, or repeat it as a valid concern. A Claim with status accepted_by_chair is a binding inclusion. A resolved Dispute is not open. Use exactly these headings:\n\n# Priority Findings\n# Supported Findings\n# Contested Findings\n# Missing Evidence\n# Recommended Next Step\n\nPreserve unresolved minority objections and distinguish supplied support from inference. The next product slice will create the Change Set and Artifact v2. Keep newClaims, claimUpdates, and objections empty; synthesis organizes validated Findings but does not create records.\n\n${turnEnvelopeSchema("synthesis")}`;
   }
-  return `MEETING OBJECTIVE:\n${objective}\n\nROUND: ${iteration}\n\nCURRENT CANONICAL STATE:\n${renderMeetingStateContext(state, undefined, { phase: "synthesis", round: iteration })}\n\n${workingTurns}\n\nCreate the decision memo inside the Turn Envelope statement. The memo is the user's final deliverable, not a recap of the meeting. It must be self-contained and directly satisfy every requested output in the objective. If the objective requests a schedule-based plan, # Deliverable must include every requested day or step. Each scheduled unit must name its topic, concrete named tasks or resources rather than category labels, workload or quantity, time allocation, and completion or review action. For a LeetCode plan that requests suggested problems, use both LeetCode ID and title. If the objective defines MEU or another workload equation, every day must show its equation and subtotal, name at least four concrete problem IDs, distinguish new problems from timed redo/review work, and give minute-level time boxes that respect the daily limit. Include the requested checkpoints, adjustment rules, rest, and labeled assumptions. Do not stop at principles or defer the plan merely because optional personalization details are missing. When the Human Chair has authorized assumptions, label and use them. Do not force consensus and do not invent evidence. The statement must use exactly these headings:\n\n# Recommendation\n# Deliverable\n# Agreements\n# Unresolved Disputes\n# Unverified Assumptions\n# Tradeoffs\n# Next Actions\n\nUnder Recommendation, state one clear recommendation or explicitly state that the evidence is insufficient. Preserve important minority objections and identify what requires a human decision. Use the available statement budget for the detailed Deliverable; keep the surrounding sections concise. Keep newClaims, claimUpdates, and objections empty; synthesis organizes the validated discussion but does not create new canonical records.\n\n${turnEnvelopeSchema("synthesis")}`;
+  return `MEETING OBJECTIVE:\n${objective}\n\nROUND: ${iteration}\n\nCURRENT CANONICAL STATE:\n${renderMeetingStateContext(state, undefined, { phase: "synthesis", round: iteration })}${chairDirectionPrompt(state, { phase: "synthesis", round: iteration })}\n\n${workingTurns}\n\nCreate the decision memo inside the Turn Envelope statement. The memo is the user's final deliverable, not a recap of the meeting. It must be self-contained and directly satisfy every requested output in the objective. If the objective requests a schedule-based plan, # Deliverable must include every requested day or step. Each scheduled unit must name its topic, concrete named tasks or resources rather than category labels, workload or quantity, time allocation, and completion or review action. For a LeetCode plan that requests suggested problems, use both LeetCode ID and title. If the objective defines MEU or another workload equation, every day must show its equation and subtotal, name at least four concrete problem IDs, distinguish new problems from timed redo/review work, and give minute-level time boxes that respect the daily limit. Include the requested checkpoints, adjustment rules, rest, and labeled assumptions. Do not stop at principles or defer the plan merely because optional personalization details are missing. When the Human Chair has authorized assumptions, label and use them. Do not force consensus and do not invent evidence. The statement must use exactly these headings:\n\n# Recommendation\n# Deliverable\n# Agreements\n# Unresolved Disputes\n# Unverified Assumptions\n# Tradeoffs\n# Next Actions\n\nUnder Recommendation, state one clear recommendation or explicitly state that the evidence is insufficient. Preserve important minority objections and identify what requires a human decision. Use the available statement budget for the detailed Deliverable; keep the surrounding sections concise. Keep newClaims, claimUpdates, and objections empty; synthesis organizes the validated discussion but does not create new canonical records.\n\n${turnEnvelopeSchema("synthesis")}`;
 }
 
 function renderReviewTaskContext(objective: string, input: ReviewTaskInput) {

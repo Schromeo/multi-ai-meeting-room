@@ -122,14 +122,55 @@ test("server-renders the real Discuss room", async () => {
   const html = await response.text();
   assert.match(html, /<title>Multi-AI Meeting Room<\/title>/i);
   assert.match(html, /Multi-AI Meeting Room/);
-  assert.match(html, /Start review/i);
-  assert.match(html, /What should this review improve/);
-  assert.match(html, /Artifact v1/);
-  assert.match(html, /Reference material/);
-  assert.match(html, /Truth constraints/);
-  assert.match(html, /Room composition/);
+  assert.match(html, /Start with one model/);
+  assert.match(html, /Ask the Room/);
+  assert.match(html, /Drop an Artifact/);
+  assert.match(html, /Browse Packs/);
+  assert.match(html, /Choose a session Connection/);
+  assert.doesNotMatch(html, /Review Artifact v1 against the supplied references/);
   assert.match(html, /Meetings/);
   assert.doesNotMatch(html, /Your site is taking shape|Building your site/);
+});
+
+test("Solo rejects workspace credentials and invalid context before a provider call", async () => {
+  const worker = await loadWorker();
+  const send = (body) => worker.fetch(new Request("http://localhost/api/discuss", {
+    method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify(body),
+  }), workerEnv(), executionContext());
+  const base = { solo: { connectionId: "workspace-openai", provider: "openai", model: "gpt-test", messages: [{ role: "user", content: "Hello" }] } };
+  const workspace = await send(base);
+  assert.equal(workspace.status, 400);
+  const invalid = await send({ ...base, solo: { ...base.solo, connectionId: "session-1", messages: [{ role: "assistant", content: "Hello" }] }, connections: { "session-1": { provider: "openai", apiKey: "sk-not-a-real-key" } } });
+  assert.equal(invalid.status, 400);
+});
+
+test("Solo makes one bounded session-key call and returns a credential-free reply", async () => {
+  const originalFetch = globalThis.fetch;
+  let calls = 0;
+  globalThis.fetch = async (url, options) => {
+    assert.equal(url, "https://api.openai.com/v1/responses");
+    calls += 1;
+    assert.equal(options.headers.Authorization, "Bearer solo-fixture-key");
+    const sent = JSON.parse(options.body);
+    assert.equal(sent.max_output_tokens, 1600);
+    assert.match(sent.input, /User: Hello/);
+    return new Response('event: response.output_text.delta\ndata: {"type":"response.output_text.delta","delta":"Hello back"}\n\nevent: response.completed\ndata: {"type":"response.completed","response":{"usage":{"input_tokens":10,"output_tokens":2}}}\n\n', { headers: { "content-type": "text/event-stream" } });
+  };
+  try {
+    const worker = await loadWorker();
+    const response = await worker.fetch(new Request("http://localhost/api/discuss", {
+      method: "POST", headers: { "content-type": "application/json" },
+      body: JSON.stringify({ solo: { connectionId: "session-1", provider: "openai", model: "gpt-test", messages: [{ role: "user", content: "Hello" }] }, connections: { "session-1": { provider: "openai", apiKey: "solo-fixture-key" } } }),
+    }), workerEnv(), executionContext());
+    assert.equal(response.status, 200);
+    const body = await response.json();
+    assert.equal(body.text, "Hello back");
+    assert.equal(body.usage.inputTokens, 10);
+    assert.equal(calls, 1);
+    assert.doesNotMatch(JSON.stringify(body), /solo-fixture-key/);
+  } finally {
+    globalThis.fetch = originalFetch;
+  }
 });
 
 test("provider status endpoint exposes configuration without secrets", async () => {
@@ -2309,7 +2350,8 @@ test("session BYOK streams a bounded meeting without exposing credentials", asyn
       const request = JSON.parse(String(init?.body ?? "{}"));
       assert.equal(request.model, "gpt-4.1-mini");
       assert.equal(request.reasoning, undefined);
-      assert.equal(request.text, undefined);
+      assert.deepEqual(request.text, { format: { type: "json_object" } });
+      assert.equal(request.max_output_tokens, String(request.input).includes("Create the decision memo") ? 2_400 : 600);
       const text = fixtureTurnEnvelope(String(request.input), "OpenAI fixture response.");
       return sseResponse([
         { type: "response.output_text.delta", delta: text },
@@ -2323,6 +2365,7 @@ test("session BYOK streams a bounded meeting without exposing credentials", asyn
       providerCalls += 1;
       const request = JSON.parse(String(init?.body ?? "{}"));
       assert.equal(request.thinking, undefined);
+      assert.equal(request.max_tokens, String(init?.body ?? "").includes("Create the decision memo") ? 2_400 : 600);
       return sseResponse([
         {
           type: "message_start",
@@ -2373,6 +2416,7 @@ test("session BYOK streams a bounded meeting without exposing credentials", asyn
           },
           iteration: 1,
           priorMemo: "",
+          outputProfile: "lite",
           requestId: "fixture-room-0001",
         }),
       }),
@@ -3832,7 +3876,7 @@ test("targeted debate calls only routed Seats with the named bounded context", a
 });
 
 test("source contains real streaming adapters and credential-free structured rooms", async () => {
-  const [page, styles, route, meetingRecord, meetingState, orchestrator, roomStore, reviewArtifact, handoff, handoffZh] = await Promise.all([
+  const [pageSource, styles, route, meetingRecord, meetingState, orchestrator, roomStore, reviewArtifact, handoff, handoffZh] = await Promise.all([
     readFile(new URL("../app/page.tsx", import.meta.url), "utf8"),
     readFile(new URL("../app/globals.css", import.meta.url), "utf8"),
     readFile(new URL("../app/api/discuss/route.ts", import.meta.url), "utf8"),
@@ -3844,6 +3888,7 @@ test("source contains real streaming adapters and credential-free structured roo
     readFile(new URL("../docs/AI_HANDOFF.md", import.meta.url), "utf8"),
     readFile(new URL("../docs/zh-CN/AI_HANDOFF.md", import.meta.url), "utf8"),
   ]);
+  const page = pageSource.replace(/\r\n?/g, "\n");
 
   assert.doesNotMatch(page, /agentCopy|seedMessages|setTimeout\(\(\) => \{\s*const nextRound/);
   assert.match(page, /Add new connection/);
@@ -3881,6 +3926,8 @@ test("source contains real streaming adapters and credential-free structured roo
   assert.ok(updateModelsHandler);
   assert.match(updateModelsHandler, /setObserverDraft/);
   assert.match(page, /beginProtocolTransition/);
+  assert.match(page, /value="lite"/);
+  assert.match(page, /value="unlimited"/);
   assert.match(page, /appliedTurnIds && !appliedTurnIds\.has\(item\.id\)/);
   assert.match(page, /failedBeforeProviderStart/);
   assert.match(page, /phaseBoundary\.detail \?\? phaseBoundary\.error\.message/);
@@ -3919,6 +3966,8 @@ test("source contains real streaming adapters and credential-free structured roo
   assert.match(route, /api\.anthropic\.com\/v1\/messages/);
   assert.match(route, /streamGenerateContent\?alt=sse/);
   assert.match(route, /stream:\s*true/);
+  assert.match(route, /text: \{ format: \{ type: "json_object" \} \}/);
+  assert.match(route, /ACTIVE HUMAN CHAIR DIRECTIONS \(authoritative instructions/);
   assert.match(route, /type: "agent\.progress", id: item\.id, stage: "validating"/);
   assert.match(route, /item: \{ \.\.\.item, id: turn\.id, text: turn\.envelope\.statement \}/);
   assert.match(route, /Review limits: statement at most 120 words/);

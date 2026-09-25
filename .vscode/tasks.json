@@ -1,0 +1,21 @@
+{
+  "version": "2.0.0",
+  "tasks": [
+    {
+      "label": "Start Meeting Room",
+      "type": "shell",
+      "command": "pnpm launch",
+      "windows": {
+        "command": "pnpm.cmd launch"
+      },
+      "isBackground": true,
+      "problemMatcher": [],
+      "presentation": {
+        "reveal": "always",
+        "panel": "dedicated",
+        "clear": false,
+        "showReuseMessage": true
+      }
+    }
+  ]
+}

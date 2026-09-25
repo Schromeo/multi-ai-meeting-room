@@ -1,5 +1,41 @@
 # 开发日志
 
+## 2026-09-25 - DP-0.3 Meeting 输出与下一轮恢复纠错
+
+- 将 `lite`、`medium`、`unlimited` 档位接入 Solo 与 Meeting Room 的供应商上限、房间总预算和 synthesis 行为。`unlimited` 现在给普通 Meeting turn 12,000 output tokens、synthesis 16,000；供应商自身限制仍然权威。
+- 为 unlimited 创作／规划 synthesis 增加详细交付指令：保持用户语言，选择一个方向，并展开定位、核心卖点、设定、长线主线、阶段和至少十章开篇细纲，而不是只返回几个短选项。
+- Chair 从 Human Gate 请求下一轮时，transcript 完整保留，但 Canonical State 会把上一轮的 claims、disputes、assumptions、questions 压缩为一个 round-summary Claim，并归档旧 ID，避免 12 Claim 工作状态上限阻塞合法的下一轮。
+- 供应商中断时保留上一轮 memo，回到 Decision 界面，并显示可恢复的 interrupted round 操作。OpenAI incomplete 响应在可用时区分 output／reasoning token 上限、content filter 或普通中断。
+- 前端设置将轮数改称 `Round allowance`，说明额外轮次由 Chair 主动请求，并统一三个策略控件。`pnpm lint` 与 `pnpm build` 通过；离线测试 64/65，剩余失败是既有 Solo session-key 测试返回 502。未调用真实供应商、未部署。
+
+## 2026-09-24 - DP-0.3 本地入口／Solo 切片（未完成）
+
+- 实现四个意图入口、Chat 优先的 Solo 界面、按模式隔离的 Objective 草稿及有界 session-BYOK Solo API；不改存档 schema，不调用真实供应商。切换 Connection 清空 Solo 上下文，API 拒绝 workspace 出资 key 路径。
+- 本地 `pnpm check` 的构建、65 项测试、lint 与类型检查通过。`pnpm dev` 浏览器检查覆盖空 session 入口、草稿隔离和 390px 首屏。详见[本地评估](evaluations/2026-09-24-dp-0-3-local-entry-slice.md)。
+- DP-0.3 仍为 Current。旧存档浏览器回放和完整验收仍待完成。本地 `pnpm start` 可返回 HTML，但生成的 CSS 请求为 404，生产视觉有效性未解决。零真实供应商调用、零部署。
+
+## 2026-09-24 - DP-0.2 远程 CI 收尾
+
+- 推送已审阅的 DP-0.1／DP-0.2 分支并创建[草稿 PR #1](https://github.com/Schromeo/multi-ai-meeting-room/pull/1)。[首次 CI](https://github.com/Schromeo/multi-ai-meeting-room/actions/runs/36076814165)在两个 OS 的`corepack prepare`步骤失败：Node 22.13.0 自带 Corepack 不识别 pnpm registry 签名 key。两项 job 均未进入依赖安装或项目检查。
+- 只把 CI 安装器改为官方`pnpm/action-setup@v6`，保留 pnpm 11.19.0、Node 22.13.0、frozen install 与完全相同的`pnpm check`契约。Workflow YAML 在本地解析成功。`97b865a`上的[第二次运行](https://github.com/Schromeo/multi-ai-meeting-room/actions/runs/36076954748)通过 Ubuntu 与 Windows 两项完整检查。DP-0.2 已完成；PR 仍为草稿，未合并。
+- Correction Gate：机械可移植性已在本地 Windows 与两个远程 runner 验证；这不证明首次使用体验、供应商质量或部署安全。零供应商调用、零部署。DP-0.3 为当前里程碑；[纠错简报](correction-briefs/2026-09-24-dp-0-3-first-run-entry.md)和[源码基线](evaluations/2026-09-24-dp-0-3-first-run-baseline.md)已明确入口失败与验收。本地备份分支`backup/dp-0-3-pre-ui-2026-09-24`保留原 UI 提交`97b865a`。
+
+## 2026-09-19 - DP-0.2 本地工程可移植性通过
+
+- 完成双语[纠错简报](correction-briefs/2026-09-19-dp-0-2-engineering-portability.md)、本地[验证报告](evaluations/2026-09-19-dp-0-2-local-portability.md)与 D-066。小型 Node launcher 现解析固定 ESM vinext CLI，并在不使用 shell-specific 语法的情况下提供`WRANGLER_LOG_PATH`；`dev`、`build`与`start`共用它，不新增依赖。
+- 只统一受影响源码检查测试读取的 page source，保留所有断言和 63 项案例。固定 Wrangler 会在每次 canonical check 开始时重新生成被忽略的 Cloudflare runtime／module 声明；inactive D1 binding 保持 optional。准确的`Response.json(): unknown`类型暴露并关闭一处 Plan amendment 响应边界，没有改变运行时解析。
+- 新增可在 clean clone 独立运行的`typecheck`、确定性 worker 类型生成和唯一 canonical `pnpm check`；把 test 与 build 分离，让失败可归因。新增 Node 22.13.0／pnpm 11.19.0 的 Windows 加 Ubuntu GitHub Actions 矩阵。既有锁定`js-yaml`成功解析 workflow，并确认两项 job 均使用 frozen install 加同一 check 命令。
+- Windows 本地证据：frozen install 通过；生成类型被重新创建并由 TypeScript 消费；vinext 五个 build 环境通过；63/63 测试通过；lint 零错误／警告；type check 零错误；完整`pnpm check`通过。Wrangler 4.92.0 提示有更新，但未升级依赖。
+- Correction Gate：零供应商调用、零支出、不改浏览器记录、不新增／升级依赖、不部署；不作产品质量或浏览器可用性声明。DP-0.2 继续为当前——本地通过、CI 待运行——因为 workflow 尚未远程运行。Windows 与 Ubuntu runner 证据通过或命名一个有界修复前，不开始 DP-0.3。
+
+## 2026-09-19 - DP-0.1 产品与仓库真实性基线
+
+- 完成双语[纠错简报](correction-briefs/2026-09-19-dp-0-1-repository-truth.md)、只读盘点、[命令基线](evaluations/2026-09-19-dp-0-1-repository-baseline.md)与 D-065。私有 package 现为`multi-ai-meeting-room@0.0.0-development`；当前源码以 commit／dirty state 加 active DP 里程碑标识，不捏造 release。历史 v0.x 标签继续代表开发快照。
+- 统一使用 pnpm 11.19.0 与`pnpm-lock.yaml`，移除`package-lock.json`，把嵌套 test 命令从 npm 改为 pnpm，并把四项 starter build 许可占位符改为已锁定`esbuild`、`sharp`、`unrs-resolver`、`workerd`家族的显式 allowlist。Frozen install 通过，未升级依赖。
+- Package 声明为`UNLICENSED`并保留所有权利；更新 README、app metadata、Roadmap、Handoff、文档索引、里程碑、Decisions 与中文镜像。Session BYOK 继续为临时凭证；DP-0.6 加入并验证认证与滥用防护前，公共部署不得暴露工作区付费凭证。
+- Node 24.19.0、pnpm 11.19.0 的 Windows 基线：frozen install 通过；lint 通过；标准 build 在 vinext 前因 POSIX-only `WRANGLER_LOG_PATH=...`语法失败；标准 test 在该 build 处停止；直接测试 62/63，一项源码正则对 CRLF 敏感；type check 只报告三项已知 Cloudflare ambient 声明错误。`git diff --check`与当前身份／状态扫描通过。
+- Correction Gate：运行时行为与历史 Review／Plan 证据不变；零供应商调用、零支出、不改浏览器记录、不升级依赖、不部署、不改外部服务。DP-0.1 已完成；DP-0.2“工程可移植性基线”为当前里程碑并负责上述四类失败。可移植性关闭前，首次使用 UI 继续不在范围内。
+
 ## 2026-09-18 - 产品开发计划与详细里程碑已批准
 
 - 项目所有者批准 D-064：一个由人主持的 Multi-AI 工作空间，以 **Ask the Room** 为反复出现的窄入口；Review 是第一个信任 Pack 而不是产品边界；通过一条有限队列交替验证“习惯”和“信任”；占星／游戏／编码上下文先走有时间上限的 Lab；Codex／VS Code 在 Execute 前保持只读。

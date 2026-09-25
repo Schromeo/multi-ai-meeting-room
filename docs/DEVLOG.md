@@ -2,6 +2,43 @@
 
 This chronological log records shipped work, validation, limitations, and the next decision. It is not a place for uncommitted feature ideas; those belong in the roadmap or decision record.
 
+## 2026-09-25 - DP-0.3 Meeting Output and Round Recovery Correction
+
+- Connected the `lite`, `medium`, and `unlimited` profiles to Solo and Meeting Room provider caps, total room budgets, and synthesis behavior. `unlimited` now gives ordinary Meeting turns 12,000 output tokens and synthesis 16,000, while provider limits remain authoritative.
+- Added detailed delivery instructions for unlimited creative/planning synthesis: preserve the user's language, choose a direction, and expand it into positioning, core hook, setting, long arcs, stages, and at least a ten-chapter opening blueprint instead of returning only short options.
+- When the Chair requests another round from the Human Gate, the transcript remains intact but Canonical State compacts prior claims, disputes, assumptions, and questions into one round-summary Claim and archives their IDs. This prevents the 12-Claim working-state cap from blocking a legitimate next round.
+- Incomplete provider rounds now preserve the previous memo, return to the Decision surface, and expose a recoverable interrupted-round action. OpenAI incomplete responses classify output/reasoning-token, content-filter, or generic stop causes when available.
+- Frontend setup now calls the round control `Round allowance`, explains that the Chair requests extra rounds, and aligns the three policy controls. `pnpm lint` and `pnpm build` pass; offline tests are 64/65 because the existing Solo session-key test still returns 502. No live provider call or deployment was made.
+
+
+## 2026-09-24 - DP-0.3 Local Entry/Solo Slice (Incomplete)
+
+- Implemented the four intent entries, Chat-first Solo surface, mode-specific objective drafts, and a bounded session-BYOK Solo API without changing saved-room schema or calling a live provider. A Connection change clears Solo context; the workspace-funded key path is rejected.
+- Local `pnpm check` passes build, 65 tests, lint, and type check. Browser checks under `pnpm dev` verified the empty-session entry, draft isolation, and 390px first screen. See the [local evaluation](evaluations/2026-09-24-dp-0-3-local-entry-slice.md).
+- DP-0.3 stays Current. Old-record browser replay and full acceptance remain open. Local `pnpm start` served HTML but returned 404 for generated CSS; production visual validity is unresolved. Zero real provider calls or deployment.
+
+## 2026-09-24 - DP-0.2 Remote CI Closure
+
+- Pushed the reviewed DP-0.1/DP-0.2 branch and opened [draft PR #1](https://github.com/Schromeo/multi-ai-meeting-room/pull/1). The [first CI run](https://github.com/Schromeo/multi-ai-meeting-room/actions/runs/36076814165) failed on both OSes at `corepack prepare`: the Node 22.13.0 bundled Corepack did not recognize the pnpm registry signature key. Neither job reached dependency installation or project checks.
+- Replaced only the CI installer with official `pnpm/action-setup@v6`, keeping pnpm 11.19.0, Node 22.13.0, frozen install, and the exact `pnpm check` contract. Workflow YAML parsed locally. On `97b865a`, the [second run](https://github.com/Schromeo/multi-ai-meeting-room/actions/runs/36076954748) passed Ubuntu and Windows jobs; each completed the full check. DP-0.2 is Complete. The PR remains draft and unmerged.
+- Correction Gate: mechanical portability is verified on local Windows and both remote runners. This does not establish first-run usability, provider quality, or deployment safety. Zero provider calls or deployment. DP-0.3 is Current; its [Correction Brief](correction-briefs/2026-09-24-dp-0-3-first-run-entry.md) and [source baseline](evaluations/2026-09-24-dp-0-3-first-run-baseline.md) now name the entry failure and checks. Local backup branch `backup/dp-0-3-pre-ui-2026-09-24` preserves the pre-UI commit `97b865a`.
+
+## 2026-09-19 - DP-0.2 Local Engineering Portability Pass
+
+- Completed the bilingual [Correction Brief](correction-briefs/2026-09-19-dp-0-2-engineering-portability.md), local [validation report](evaluations/2026-09-19-dp-0-2-local-portability.md), and D-066. A small Node launcher now resolves the pinned ESM vinext CLI and supplies `WRANGLER_LOG_PATH` without shell-specific syntax; `dev`, `build`, and `start` share it with no new dependency.
+- Normalized only the loaded page source in the affected source-inspection test, preserving every assertion and all 63 cases. Pinned Wrangler regenerates ignored Cloudflare runtime/module declarations at the start of every canonical check. The inactive D1 binding remains optional. Accurate `Response.json(): unknown` typing exposed and closed one Plan amendment response boundary without changing runtime parsing.
+- Added a clean-clone-safe `typecheck`, deterministic worker-type generation, and one canonical `pnpm check`; separated tests from build so failures remain attributable. Added a checked Node 22.13.0 / pnpm 11.19.0 GitHub Actions matrix for Windows and Ubuntu. Existing locked `js-yaml` parsed the workflow and confirmed both jobs use frozen install plus the same check command.
+- Local Windows evidence: frozen install passes; generated types are recreated and consumed by TypeScript; all five vinext build environments pass; 63/63 tests pass; lint has zero errors/warnings; type check has zero errors; the full `pnpm check` passes. Wrangler 4.92.0 reported an update, but no dependency was upgraded.
+- Correction Gate: zero provider calls, spend, browser-record changes, dependency additions/upgrades, or deployment. No product-quality or browser-usability claim. DP-0.2 remains Current - local pass, CI pending - because the workflow has not run remotely. Do not begin DP-0.3 until Windows and Ubuntu runner evidence passes or names one bounded repair.
+
+## 2026-09-19 - DP-0.1 Product and Repository Truth Baseline
+
+- Completed the bilingual [Correction Brief](correction-briefs/2026-09-19-dp-0-1-repository-truth.md), read-only inventory, [command baseline](evaluations/2026-09-19-dp-0-1-repository-baseline.md), and D-065. The private package is now `multi-ai-meeting-room@0.0.0-development`; current source uses commit/dirty state plus the active DP milestone rather than a fabricated release. Historical v0.x labels remain development snapshots.
+- Standardized on pnpm 11.19.0 with `pnpm-lock.yaml`, removed `package-lock.json`, changed the nested test command from npm to pnpm, and replaced four starter build-permission placeholders with explicit allowlisting for the already locked `esbuild`, `sharp`, `unrs-resolver`, and `workerd` families. Frozen install passes without a dependency upgrade.
+- Declared the package `UNLICENSED` and all rights reserved; updated README, app metadata, Roadmap, Handoff, documentation indexes, milestones, Decisions, and Chinese mirrors. Session BYOK remains ephemeral. A public deployment must not expose workspace-funded credentials before DP-0.6 adds verified authentication and abuse controls.
+- Windows baseline under Node 24.19.0 and pnpm 11.19.0: frozen install passes; lint passes; standard build fails before vinext on POSIX-only `WRANGLER_LOG_PATH=...` syntax; standard test stops at that build; direct tests are 62/63 with one CRLF-sensitive source regex; type check reports only the three known Cloudflare ambient declaration errors. `git diff --check` and current identity/status scans pass.
+- Correction Gate: runtime behavior and historical Review/Plan evidence are unchanged; zero provider calls, spend, browser-record changes, dependency upgrades, deployment, or external service changes. DP-0.1 is Complete. DP-0.2 Engineering Portability Baseline is Current and owns those four failure categories; first-run UI remains out of scope until portability closes.
+
 ## 2026-09-18 - Product Development Plan and Detailed Milestones Approved
 
 - The owner approved D-064: one human-chaired Multi-AI workspace, **Ask the Room** as the narrow recurring entry, Review as the first trust Pack rather than the product boundary, one bounded queue alternating Habit and Trust evidence, time-boxed Labs for astrology/games/coding context, and read-only Codex/VS Code integration before Execute.

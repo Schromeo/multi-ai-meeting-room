@@ -457,3 +457,33 @@ Durable product and architecture choices live here. New entries are append-only.
 - **Decision:** the product destination is one human-chaired Multi-AI workspace spanning ordinary conversation, Review, Explore, Create, Research, rule-bound Play, read-only Project Rooms, and later controlled Execute. The narrow recurring entry is **Ask the Room**: promote an existing answer, idea, choice, or artifact to one or two independently prompted Challengers, preserve consequential differences, and let the Human Chair stop, follow up, or enter a Task Pack. Review remains the first trust Pack, not the product boundary. Development alternates Habit and Trust evidence through one bounded build queue. Astrology, games, and coding-context ideas begin as time-boxed Labs; Codex and VS Code integration begins read-only before any execution authority.
 - **Sequencing:** [Detailed Development Milestones](DEVELOPMENT_MILESTONES.md) is canonical for forward priority: DP-0 product truth, DP-1 Quick Council, DP-2 Review evidence, DP-3 Pack contract, DP-4 Explore/Create, DP-5 Research, DP-6 Play proof, DP-7 read-only Project Room, DP-8 controlled Execute, and DP-9 selective productization. Historical `M0` through `M5` entries remain evidence and implementation status, not the forward build order when they conflict.
 - **Reason:** narrowing the audience to professional document review would discard the original value of independent model challenge in everyday, creative, entertaining, and project work. Attempting every scenario at once would create an unbounded platform. A narrow user action plus progressive interaction depth preserves the broad ambition while keeping each development slice testable, reversible, and evidence-gated.
+
+## D-065 - Repository Identity Uses Development Truth, Not Invented Release Claims
+
+- **Status:** Accepted
+- **Date:** 2026-09-19
+- **Decision:** the repository and private package are named `multi-ai-meeting-room`. Until the owner deliberately creates a tagged release, `package.json` uses `0.0.0-development`; current source is identified by Git commit, dirty state when present, and the active DP milestone. Historical v0.x labels remain development-snapshot names, not releases. pnpm 11.19.0 with `pnpm-lock.yaml` is the sole supported package-management path; the locked `esbuild`, `sharp`, `unrs-resolver`, and `workerd` install scripts are explicitly allowed. The repository is `UNLICENSED` with all rights reserved until the owner grants a separate license.
+- **Security boundary:** user BYOK remains current-page memory only. Workspace-managed provider credentials are local/private-evaluation inputs and must not be exposed by a public deployment before DP-0.6 implements and verifies authentication, request/call limits, rate limiting, and abuse controls.
+- **Reason:** starter metadata, dual lockfiles, placeholder build permissions, and stale working-tree/version prose made reproducibility and legal/security expectations ambiguous. A deliberately non-release version and restrictive license state are truthful without guessing owner intent; one pinned package path makes later portability failures attributable.
+
+## D-066 - One Pinned Check Contract Owns Local and CI Portability
+
+- **Status:** Accepted; local and Windows/Ubuntu CI verified
+- **Date:** 2026-09-19
+- **Decision:** `pnpm check` is the single ordered engineering contract: regenerate worker types from pinned Wrangler and `wrangler.jsonc`, build through a repository-owned cross-platform vinext launcher, run the complete offline test suite, lint handwritten source, and type-check without emission. GitHub Actions uses `pnpm/action-setup@v6` to install pinned pnpm 11.19.0, then runs frozen install and the same check on Node 22.13.0 across Windows and Ubuntu. The deterministic generated declaration is ignored; the inactive D1 binding remains an explicit optional augmentation rather than entering runtime configuration.
+- **Boundary:** generated declarations are not hand-edited, committed, or linted as handwritten code. They are recreated before every full check and immediately validated by TypeScript. No new package, dependency upgrade, provider call, deployment, D1 binding, or first-run interface work belongs to this decision.
+- **Reason:** separate platform commands allowed Windows shell syntax, CRLF assumptions, missing runtime declarations, and stale success claims to diverge. The first remote run exposed a bundled Corepack signature-key mismatch before installation on both OSes; the official pnpm installer repaired that runner-specific failure. Both jobs then passed on `97b865a` in [CI run 36076954748](https://github.com/Schromeo/multi-ai-meeting-room/actions/runs/36076954748).
+
+## D-067 - Next Rounds Compact Working State Without Rewriting History
+
+- **Status:** Accepted locally; broader round-quality evidence pending
+- **Date:** 2026-09-25
+- **Decision:** when the Chair requests another round after a Human Gate, preserve the full transcript and append-only history, but compact the prior Canonical State working set into one bounded round-summary Claim and archive the old Claim, Dispute, Assumption, and open-question IDs. The next round receives the prior memo and the compact summary rather than an exhausted working set. This is a working-context reduction, not deletion, approval, or factual verification of the summary.
+- **Reason:** a confirmed first-round direction should support a second task such as outline expansion without reusing every exploratory Claim. The fixed 12-Claim cap otherwise rejects legitimate next-round content even when the user has already chosen a direction.
+
+## D-068 - Unlimited Output Is A Detailed Delivery Profile, Not An Unbounded Provider Promise
+
+- **Status:** Accepted locally; live provider quality evidence pending
+- **Date:** 2026-09-25
+- **Decision:** the `unlimited` profile raises application output caps, aligns total room budgets, and adds task-shaped synthesis instructions for creative/planning work. It must preserve the user's language and produce an actionable expanded deliverable rather than only short options. Provider, transport, reasoning, content-filter, cost, and host limits remain authoritative; incomplete work preserves the prior memo and exposes explicit recovery.
+- **Reason:** larger token ceilings alone did not turn concise structured meeting turns into a usable novel outline, and an incomplete second-round provider stream left the user without a visible prior result or recovery path. Prompt responsibility and failure presentation must change with the user-facing depth.
