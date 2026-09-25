@@ -2350,7 +2350,8 @@ test("session BYOK streams a bounded meeting without exposing credentials", asyn
       const request = JSON.parse(String(init?.body ?? "{}"));
       assert.equal(request.model, "gpt-4.1-mini");
       assert.equal(request.reasoning, undefined);
-      assert.equal(request.text, undefined);
+      assert.deepEqual(request.text, { format: { type: "json_object" } });
+      assert.equal(request.max_output_tokens, String(request.input).includes("Create the decision memo") ? 2_400 : 600);
       const text = fixtureTurnEnvelope(String(request.input), "OpenAI fixture response.");
       return sseResponse([
         { type: "response.output_text.delta", delta: text },
@@ -2364,6 +2365,7 @@ test("session BYOK streams a bounded meeting without exposing credentials", asyn
       providerCalls += 1;
       const request = JSON.parse(String(init?.body ?? "{}"));
       assert.equal(request.thinking, undefined);
+      assert.equal(request.max_tokens, String(init?.body ?? "").includes("Create the decision memo") ? 2_400 : 600);
       return sseResponse([
         {
           type: "message_start",
@@ -2414,6 +2416,7 @@ test("session BYOK streams a bounded meeting without exposing credentials", asyn
           },
           iteration: 1,
           priorMemo: "",
+          outputProfile: "lite",
           requestId: "fixture-room-0001",
         }),
       }),
@@ -3923,6 +3926,8 @@ test("source contains real streaming adapters and credential-free structured roo
   assert.ok(updateModelsHandler);
   assert.match(updateModelsHandler, /setObserverDraft/);
   assert.match(page, /beginProtocolTransition/);
+  assert.match(page, /value="lite"/);
+  assert.match(page, /value="unlimited"/);
   assert.match(page, /appliedTurnIds && !appliedTurnIds\.has\(item\.id\)/);
   assert.match(page, /failedBeforeProviderStart/);
   assert.match(page, /phaseBoundary\.detail \?\? phaseBoundary\.error\.message/);
@@ -3961,6 +3966,8 @@ test("source contains real streaming adapters and credential-free structured roo
   assert.match(route, /api\.anthropic\.com\/v1\/messages/);
   assert.match(route, /streamGenerateContent\?alt=sse/);
   assert.match(route, /stream:\s*true/);
+  assert.match(route, /text: \{ format: \{ type: "json_object" \} \}/);
+  assert.match(route, /ACTIVE HUMAN CHAIR DIRECTIONS \(authoritative instructions/);
   assert.match(route, /type: "agent\.progress", id: item\.id, stage: "validating"/);
   assert.match(route, /item: \{ \.\.\.item, id: turn\.id, text: turn\.envelope\.statement \}/);
   assert.match(route, /Review limits: statement at most 120 words/);

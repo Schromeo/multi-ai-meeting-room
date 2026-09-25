@@ -9,6 +9,7 @@
   },
   "scripts": {
     "dev": "node scripts/run-vinext.mjs dev",
+    "launch": "node scripts/start-meeting-room.mjs",
     "build": "node scripts/run-vinext.mjs build",
     "start": "node scripts/run-vinext.mjs start",
     "test": "node --test tests/rendered-html.test.mjs tests/review-evaluation.test.mjs",

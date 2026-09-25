@@ -48,7 +48,13 @@ pnpm typecheck
 pnpm check
 ```
 
-`pnpm check` is the canonical local and CI entry. It regenerates ignored Cloudflare types from the pinned Wrangler configuration, builds, runs all 63 offline tests, lints handwritten source, and type-checks without emitting files. The standalone `pnpm typecheck` command also regenerates those types, so it works after a clean clone. The Windows and Ubuntu GitHub Actions jobs passed on the DP-0.2 branch. See the latest [Development Log](docs/DEVLOG.md) for exact results.
+### One-click start on Windows
+
+After installing Node.js 22.13+ and pnpm 11.19.0, double-click `start-meeting-room.cmd` in the repository root. The launcher changes to the repository directory, installs the locked dependencies only when `node_modules` is missing, starts the development server on port 3000, waits for a healthy HTTP response, and opens `http://localhost:3000` in the default browser.
+
+In VS Code, run `Start Meeting Room` from **Terminal > Run Task**. The command-line equivalent is `pnpm launch`. Stop the task with the terminal stop control; do not start a second launcher while port 3000 is already in use.
+
+`pnpm check` is the canonical local and CI entry. It regenerates ignored Cloudflare types from the pinned Wrangler configuration, builds, runs the offline tests, lints handwritten source, and type-checks without emitting files. The standalone `pnpm typecheck` command also regenerates those types, so it works after a clean clone. The Windows and Ubuntu GitHub Actions jobs passed on the DP-0.2 branch. See the latest [Development Log](docs/DEVLOG.md) for exact results and known test limitations.
 
 ## Credential and Deployment Boundary
 
