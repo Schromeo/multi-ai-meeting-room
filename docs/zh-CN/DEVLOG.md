@@ -1,5 +1,11 @@
 # 开发日志
 
+## 2026-09-24 - DP-0.2 远程 CI 收尾
+
+- 推送已审阅的 DP-0.1／DP-0.2 分支并创建[草稿 PR #1](https://github.com/Schromeo/multi-ai-meeting-room/pull/1)。[首次 CI](https://github.com/Schromeo/multi-ai-meeting-room/actions/runs/36076814165)在两个 OS 的`corepack prepare`步骤失败：Node 22.13.0 自带 Corepack 不识别 pnpm registry 签名 key。两项 job 均未进入依赖安装或项目检查。
+- 只把 CI 安装器改为官方`pnpm/action-setup@v6`，保留 pnpm 11.19.0、Node 22.13.0、frozen install 与完全相同的`pnpm check`契约。Workflow YAML 在本地解析成功。`97b865a`上的[第二次运行](https://github.com/Schromeo/multi-ai-meeting-room/actions/runs/36076954748)通过 Ubuntu 与 Windows 两项完整检查。DP-0.2 已完成；PR 仍为草稿，未合并。
+- Correction Gate：机械可移植性已在本地 Windows 与两个远程 runner 验证；这不证明首次使用体验、供应商质量或部署安全。零供应商调用、零部署。DP-0.3 为当前里程碑；[纠错简报](correction-briefs/2026-09-24-dp-0-3-first-run-entry.md)和[源码基线](evaluations/2026-09-24-dp-0-3-first-run-baseline.md)已明确入口失败与验收。本地备份分支`backup/dp-0-3-pre-ui-2026-09-24`保留原 UI 提交`97b865a`。
+
 ## 2026-09-19 - DP-0.2 本地工程可移植性通过
 
 - 完成双语[纠错简报](correction-briefs/2026-09-19-dp-0-2-engineering-portability.md)、本地[验证报告](evaluations/2026-09-19-dp-0-2-local-portability.md)与 D-066。小型 Node launcher 现解析固定 ESM vinext CLI，并在不使用 shell-specific 语法的情况下提供`WRANGLER_LOG_PATH`；`dev`、`build`与`start`共用它，不新增依赖。

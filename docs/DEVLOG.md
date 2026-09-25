@@ -2,6 +2,12 @@
 
 This chronological log records shipped work, validation, limitations, and the next decision. It is not a place for uncommitted feature ideas; those belong in the roadmap or decision record.
 
+## 2026-09-24 - DP-0.2 Remote CI Closure
+
+- Pushed the reviewed DP-0.1/DP-0.2 branch and opened [draft PR #1](https://github.com/Schromeo/multi-ai-meeting-room/pull/1). The [first CI run](https://github.com/Schromeo/multi-ai-meeting-room/actions/runs/36076814165) failed on both OSes at `corepack prepare`: the Node 22.13.0 bundled Corepack did not recognize the pnpm registry signature key. Neither job reached dependency installation or project checks.
+- Replaced only the CI installer with official `pnpm/action-setup@v6`, keeping pnpm 11.19.0, Node 22.13.0, frozen install, and the exact `pnpm check` contract. Workflow YAML parsed locally. On `97b865a`, the [second run](https://github.com/Schromeo/multi-ai-meeting-room/actions/runs/36076954748) passed Ubuntu and Windows jobs; each completed the full check. DP-0.2 is Complete. The PR remains draft and unmerged.
+- Correction Gate: mechanical portability is verified on local Windows and both remote runners. This does not establish first-run usability, provider quality, or deployment safety. Zero provider calls or deployment. DP-0.3 is Current; its [Correction Brief](correction-briefs/2026-09-24-dp-0-3-first-run-entry.md) and [source baseline](evaluations/2026-09-24-dp-0-3-first-run-baseline.md) now name the entry failure and checks. Local backup branch `backup/dp-0-3-pre-ui-2026-09-24` preserves the pre-UI commit `97b865a`.
+
 ## 2026-09-19 - DP-0.2 Local Engineering Portability Pass
 
 - Completed the bilingual [Correction Brief](correction-briefs/2026-09-19-dp-0-2-engineering-portability.md), local [validation report](evaluations/2026-09-19-dp-0-2-local-portability.md), and D-066. A small Node launcher now resolves the pinned ESM vinext CLI and supplies `WRANGLER_LOG_PATH` without shell-specific syntax; `dev`, `build`, and `start` share it with no new dependency.

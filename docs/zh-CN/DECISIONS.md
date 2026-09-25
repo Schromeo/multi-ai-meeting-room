@@ -395,8 +395,8 @@ S1 009 暴露了下载取回失败和看似精确的通用估价。开放现有�
 
 ## D-066 - 本地与 CI 可移植性共用一条固定 Check Contract
 
-- **状态：** 本地已接受；远程 CI 证据待补
+- **状态：** 已接受；本地及 Windows／Ubuntu CI 均已验证
 - **日期：** 2026-09-19
-- **决定：** `pnpm check`是唯一有序工程契约：由固定 Wrangler 与`wrangler.jsonc`重新生成 worker types，通过仓库自带跨平台 vinext launcher 构建，运行完整离线测试，lint 手写源码，并进行不输出文件的 type check。GitHub Actions 在 Windows 与 Ubuntu 上使用 Node 22.13.0、pnpm 11.19.0，frozen install 后运行同一命令。确定性生成 declaration 被 ignore；inactive D1 binding 继续作为显式 optional augmentation，不进入 runtime 配置。
+- **决定：** `pnpm check`是唯一有序工程契约：由固定 Wrangler 与`wrangler.jsonc`重新生成 worker types，通过仓库自带跨平台 vinext launcher 构建，运行完整离线测试，lint 手写源码，并进行不输出文件的 type check。GitHub Actions 用`pnpm/action-setup@v6`安装固定 pnpm 11.19.0，再于 Windows 与 Ubuntu 的 Node 22.13.0 环境执行 frozen install 与同一检查。确定性生成 declaration 被 ignore；inactive D1 binding 继续作为显式 optional augmentation，不进入 runtime 配置。
 - **边界：** 生成 declaration 不手改、不提交，也不当作手写代码 lint；每次完整 check 前重新创建，随后立即由 TypeScript 验证。本决定不新增 package、不升级依赖、不调用供应商、不部署、不配置 D1，也不开始首次使用界面工作。
-- **原因：** 分离的平台命令让 Windows shell 语法、CRLF 假设、缺失 runtime 声明和过期成功说法发生漂移。单一固定命令让失败可比较，同时保留“本地通过”与“远程 runner 已验证”的差别。
+- **原因：** 分离的平台命令让 Windows shell 语法、CRLF 假设、缺失 runtime 声明和过期成功说法发生漂移。首次远程运行暴露两个 OS 上安装前的 Corepack 签名 key 不匹配；官方 pnpm 安装步骤修复了这一 runner 差异。随后`97b865a`上的两项 job 在[CI 运行 36076954748](https://github.com/Schromeo/multi-ai-meeting-room/actions/runs/36076954748)中通过。

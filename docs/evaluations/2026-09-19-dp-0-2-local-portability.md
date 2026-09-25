@@ -44,8 +44,10 @@ Wrangler reports that a newer release exists. It was deliberately not installed:
 - **Economic:** zero provider calls, zero API spend, no dependency addition/upgrade, no deployment, and no external repository/account write.
 - **Differentiated value:** not evaluated. This is an engineering reproducibility slice.
 
-## Remaining Gate
+## Remote CI Addendum - 2026-09-24
 
-The checked CI contract is locally parsed but has not run on GitHub. DP-0.2 therefore remains **Current - local pass, CI pending**. Its completion condition is the first Windows and Ubuntu jobs both passing the same `pnpm check`, or one bounded repair of an observed runner delta. DP-0.3 must not begin on local evidence alone.
+The [first remote run](https://github.com/Schromeo/multi-ai-meeting-room/actions/runs/36076814165) failed in `corepack prepare pnpm@11.19.0` on both Windows and Ubuntu. Node 22.13.0's bundled Corepack could not match the current registry signature key; neither job reached installation, build, tests, lint, or type checking. The bounded repair replaced only that setup step with `pnpm/action-setup@v6` at the same pnpm version. No dependency or test contract changed.
+
+The [second run](https://github.com/Schromeo/multi-ai-meeting-room/actions/runs/36076954748) on commit `97b865a` completed with **SUCCESS** for `Check (ubuntu-latest)` and `Check (windows-latest)`. Both ran frozen install and the same `pnpm check`. DP-0.2 is **Complete**; DP-0.3 may begin with its Correction Brief, baseline, and named backup. This verifies engineering portability, not product quality or deployment safety. [Draft PR #1](https://github.com/Schromeo/multi-ai-meeting-room/pull/1) remains unmerged.
 
 See the [Correction Brief](../correction-briefs/2026-09-19-dp-0-2-engineering-portability.md) and D-066 in the [Decision Record](../DECISIONS.md).

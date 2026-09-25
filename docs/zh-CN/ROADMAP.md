@@ -4,7 +4,7 @@
 
 ## 当前定位
 
-- **DP-0.2 本地可移植性通过、远程 CI 待运行（D-066，2026-09-19）：** 仓库自带 vinext launcher 移除 shell-specific 环境变量语法；源码测试统一换行；固定 Wrangler 生成加 inactive D1 optional augmentation 让 type check 准确；`pnpm check`现用一条命令重新生成 worker types、build、运行 63/63 测试、lint 与 type check。Frozen install 与完整 check 在 Windows 通过。已解析的 GitHub Actions 矩阵把同一 contract 应用于 Windows 与 Ubuntu；首次远程运行仍待执行。DP-0.2 继续为当前；DP-0.3 尚未开始。见[本地验证](evaluations/2026-09-19-dp-0-2-local-portability.md)。
+- **DP-0.2 工程可移植性已完成（D-066，2026-09-24）：** 仓库自带 vinext launcher、CRLF-safe 源码测试、固定 Wrangler 生成与 inactive D1 可选类型通过 canonical `pnpm check`。[首次 CI](https://github.com/Schromeo/multi-ai-meeting-room/actions/runs/36076814165)在两个平台上均于安装前被 Corepack 签名校验拦截；改用官方固定版本 pnpm action 后，`97b865a`上的 [Ubuntu 与 Windows job](https://github.com/Schromeo/multi-ai-meeting-room/actions/runs/36076954748)全部通过。DP-0.3 现处于 Correction Brief 与基线 Gate。见[验证](evaluations/2026-09-19-dp-0-2-local-portability.md)。
 - **DP-0.1 仓库真实性已完成（D-065，2026-09-19）：** package 身份为`multi-ai-meeting-room@0.0.0-development`；pnpm 11.19.0 与`pnpm-lock.yaml`是唯一 package 路径；四项锁定 native build 依赖有明确安装许可；私有仓库为`UNLICENSED`并保留所有权利。README 与当前状态文案现指向 DP 开发列车，不再沿用过期 v0.10c／未提交说法。[命令基线](evaluations/2026-09-19-dp-0-1-repository-baseline.md)记录 install 与 lint 通过，以及现归 DP-0.2 处理的 Windows script、CRLF 测试与 Cloudflare 类型失败。零供应商调用、零部署。
 - **开发计划重构已批准（D-064，2026-09-18）：** [产品开发计划](PRODUCT_DEVELOPMENT_PLAN.md)定义一个宽广、由人主持的 Multi-AI 工作空间，以 **Ask the Room** 为窄入口，在“习惯”和“信任”证据之间交替推进，并分阶段进入 Explore、Create、Research、Play、Project Room 与受控 Execute。[详细开发里程碑](DEVELOPMENT_MILESTONES.md)决定前向构建顺序。DP-0 为当前阶段；仅批准方向不授权付费调用、发布或 Execute 动作。
 - **供应商key提示已更新（D-063）：** Setup现在除`AIza`外也识别Gemini `AQ.`授权key，同时保留Anthropic/OpenAI有序判断及明确手选回退。规则只在本地运行，绝不跨供应商试探。构建、63项测试和lint通过，零真实调用。当前Gemini自动识别缺陷已关闭；这不验证凭证，也不增加供应商。
@@ -39,7 +39,7 @@
 - **DP-3 - 计划中：** 从两个已验证消费者形成 Pack contract。
 - **DP-4 到 DP-9 - 计划中：** Explore／Create、Research、Play proof、只读 Project Room、受控 Execute、选择性产品化。
 
-DP-0.0 方向批准与 DP-0.1 仓库真实性均已完成。DP-0.2“工程可移植性基线”是唯一当前实现里程碑。具体子里程碑、依赖、预算、验收和停止规则见[详细开发里程碑](DEVELOPMENT_MILESTONES.md)。
+DP-0.0 至 DP-0.2 均已完成。DP-0.3“首次使用信息架构”是唯一当前实现里程碑。具体子里程碑、依赖、预算、验收和停止规则见[详细开发里程碑](DEVELOPMENT_MILESTONES.md)。
 
 ## 保留的旧校正路径
 

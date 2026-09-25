@@ -48,7 +48,7 @@ pnpm typecheck
 pnpm check
 ```
 
-`pnpm check` is the canonical local and CI entry. It regenerates ignored Cloudflare types from the pinned Wrangler configuration, builds, runs all 63 offline tests, lints handwritten source, and type-checks without emitting files. The standalone `pnpm typecheck` command also regenerates those types, so it works after a clean clone. The current Windows run passes. A Windows/Ubuntu GitHub Actions matrix uses the same command; its first remote run is pending, so DP-0.2 remains Current until that evidence exists. See the latest [Development Log](docs/DEVLOG.md) for exact results.
+`pnpm check` is the canonical local and CI entry. It regenerates ignored Cloudflare types from the pinned Wrangler configuration, builds, runs all 63 offline tests, lints handwritten source, and type-checks without emitting files. The standalone `pnpm typecheck` command also regenerates those types, so it works after a clean clone. The Windows and Ubuntu GitHub Actions jobs passed on the DP-0.2 branch. See the latest [Development Log](docs/DEVLOG.md) for exact results.
 
 ## Credential and Deployment Boundary
 

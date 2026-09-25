@@ -1,11 +1,11 @@
 # AI 交接说明
 
-最后更新：2026-09-19
+最后更新：2026-09-24
 
 ## 当前状态
 
-- **已批准产品开发列车（D-064，2026-09-18）：** [产品开发计划](PRODUCT_DEVELOPMENT_PLAN.md)把 **Ask the Room** 设为日常窄入口，Review 保留为第一个信任 Pack 而不是产品边界，并通过 DP-0 到 DP-9 排列整个工作空间。[详细开发里程碑](DEVELOPMENT_MILESTONES.md)决定前向工作。DP-0.0 与 DP-0.1 已完成；DP-0.2“工程可移植性基线”为当前里程碑。该状态不授权付费调用、发布或 Execute 动作。
-- **最新本地纠错（D-066／DP-0.2）：** Windows `pnpm check`现重新生成 Cloudflare runtime types、完成 vinext build、通过 63/63 离线测试、lint 与 type check。修复包括仓库自带跨平台 launcher、受影响源码测试内 CRLF 统一、被 ignore 的确定性 Wrangler 输出加 inactive D1 optional augmentation，以及显式 Plan amendment 响应类型。已解析的 Windows／Ubuntu GitHub Actions 矩阵运行同一命令，但尚无远程 job。DP-0.2 继续为当前——本地通过、CI 待运行。见[验证](evaluations/2026-09-19-dp-0-2-local-portability.md)。
+- **已批准产品开发列车（D-064，2026-09-18）：** [产品开发计划](PRODUCT_DEVELOPMENT_PLAN.md)把 **Ask the Room** 设为日常窄入口，Review 保留为第一个信任 Pack 而不是产品边界，并通过 DP-0 到 DP-9 排列整个工作空间。[详细开发里程碑](DEVELOPMENT_MILESTONES.md)决定前向工作。DP-0.0 至 DP-0.2 已完成；DP-0.3“首次使用信息架构”为当前里程碑。该状态不授权付费调用、发布或 Execute 动作。
+- **最新工程 Gate（D-066／DP-0.2）：** Windows `pnpm check`重新生成 Cloudflare runtime types、完成 vinext build、通过 63/63 离线测试、lint 与 type check。首次远程运行在两个 OS 的安装前均因 Corepack 签名校验失败。只替换为官方固定版本 pnpm action 后，`97b865a`上的 [Ubuntu 与 Windows CI](https://github.com/Schromeo/multi-ai-meeting-room/actions/runs/36076954748)均通过。DP-0.2 已完成。见[验证](evaluations/2026-09-19-dp-0-2-local-portability.md)。
 - **最新仓库基线（D-065／DP-0.1）：** package 为私有、无 tag 的`multi-ai-meeting-room@0.0.0-development`；pnpm 11.19.0 与`pnpm-lock.yaml`是唯一 package 路径；锁定的 native build 依赖使用显式 allowlist；仓库为`UNLICENSED`并保留所有权利。过期 v0.10c／未提交说法已移除。[基线证据](evaluations/2026-09-19-dp-0-1-repository-baseline.md)：frozen install 与 lint 通过；Windows build/test script、一项 CRLF 敏感源码测试与三项 Cloudflare ambient 声明稳定失败并归 DP-0.2。零供应商调用、零部署。
 - **最新本地纠错（D-063）：** Connection Setup现在除`AIza`外也识别当前Gemini `AQ.`授权key；Anthropic会先于前缀重叠的OpenAI `sk-`族判断，未知格式保留手选。识别只作本地提示：不持久化、不跨供应商试探，也不宣称已验证凭证。构建、63项测试和lint通过；仍只有三项既有Cloudflare ambient错误。零真实调用。见[简报](correction-briefs/2026-08-30-provider-key-prefix-detection.md)。已准备的含Gemini三席位smoke尚未运行，执行时仍需明确确认。
 - **最新本地纠错（D-062 / PLAN-06）：** 新Plan的Builder/Reviewer阶段会在供应商工作前保存严格的usage未知`started`回执，再由同请求/阶段终态原位替换。没有Reviewer回执表示该阶段未启动；保留下来的started表示可能存在未知供应商用量，绝不等于零。构建、62项测试和lint通过；仍只有三项既有Cloudflare ambient错误。零真实调用。不重写历史歧义，也不建设计费账本。见[简报](correction-briefs/2026-08-29-plan-stage-request-receipts.md)。
@@ -17,9 +17,9 @@
 - **最新本地纠错（D-057）：** [Plan问题清单](PLAN_ISSUE_REGISTER.md)跟踪16项。PLAN-01初始Builder/Reviewer保存有限结束/用量及拒收诊断，不存原始响应；PLAN-02新格式指令显式限定阶段/轮次。59项离线测试、构建、lint通过，零真实调用。010/011缺失诊断仍未知，旧correction不迁移。真实Plan质量未通过。
 - **最新续接011：** [报告](evaluations/2026-08-27-plan-wait-continuation-011.md)。D-056取消Plan应用截止/累计时间停止，增加一次显式保存产物恢复。续接010同一房间，只新增一次GPT调用，没有新有效天数，审阅未启动。原77条任务及六天与留档一致，历史11；无重试/修改/批准。剩余输出46K->37K为取整显示，原始失败/结束/用量未暴露。仍为原累计$5，不追加$5。构建、54项离线测试、lint通过，保留三项既有Cloudflare类型错误。完整可用Plan及真实超过180秒完成仍未证实；D-056替代下方D-055历史180秒政策。
 - **最新实测010：** 新授权$5，GPT-5/Opus4.7未完成完整交付。实际6次供应商请求：交叉审阅JSON失败后改变输入恢复一次，随后medium推理Builder在180秒超时，保住Day1-6。补缺失天数因只剩1个预留调用名额被拦截，没有新增请求；实际计划审阅/修改/复核/批准均未运行。历史11条，[质量实测010](evaluations/2026-08-27-plan-quality-live-010.md)已归档原稿与失败。失败用量/实际账单不全，不得说花完$5或质量通过。
-- 阶段：DP-0.2 中的私有无 tag 预发布版本。历史 v0.x 名称标识保存的开发快照，不是当前 release 版本。评测工具扩建已收尾；M2.12 对照暂缓而非通过，通用编排继续冻结。
+- 阶段：DP-0.3 中的私有无 tag 预发布版本。历史 v0.x 名称标识保存的开发快照，不是当前 release 版本。评测工具扩建已收尾；M2.12 对照暂缓而非通过，通用编排继续冻结。
 - 产品：一个由人主持的多 AI 工作空间，包含 Review、Decide / Plan、Explore、Create 和未来 Play Task Pack，并横跨 Discuss、Research 与 Execute 权限等级。
-- 已完成：Review、BYOK、本地历史与准确批准；结构化详细 LeetCode Plan、有界生成/恢复、实际计划审阅、零调用人工编辑及 D-055 显式修改/复核。DP-0.2 Windows 命令矩阵现已本地通过：frozen install、生成类型、build、63/63 测试、lint 与 type check 均为绿色；远程 Windows／Ubuntu CI 证据仍待补，真实 Plan 质量也仍未证明。
+- 已完成：Review、BYOK、本地历史与准确批准；结构化详细 LeetCode Plan、有界生成/恢复、实际计划审阅、零调用人工编辑及 D-055 显式修改/复核。DP-0.2 的本地与远程 Windows／Ubuntu 命令矩阵均通过；真实 Plan 质量仍未证明。
 - 已批准但未实现：任务自适应审阅 Role Pack、Finding 聚类、独立配置 Editor 与 Verifier、批量 Finding 操作、三案例 Review 评测；更完整的 Decide / Plan、Explore、Create、Research、Execute 与 Play Task Pack；带 event cursor 重连的 durable transition runner、导出、账号同步，以及身份完成后的 D1 持久化。
 - 真实证据：Review Benchmark 001 使用 Anthropic Haiku 与 OpenAI `gpt-4.1-mini` 运行两次：十次调用、27K 输入 tokens、6,010 输出 tokens、96 秒，应用合计估算 `$0.087`，低于批准的 `$0.10` 上限。Run A 暴露共同的错误未来日期推断，并证明自由文本 Chair 纠正没有约束力。Run B 消除了该错误，证明被拒绝 Finding 在 cross-review 与 synthesis 中仍保持拒绝，但格式错误且浅薄的最终 brief 未通过产品 Gate。见 `docs/zh-CN/evaluations/2026-08-25-v0.11-review-benchmark-001.md`；供应商账单仍是权威依据。
 - 最新真实证据：Artifact v2 Benchmark 002 使用六次调用、3,537 个可见输出 tokens 和 54 秒。Editor 成功；Anthropic Verifier 未通过 changed-material 契约。旧组合 transition 随后在 Resume 前耗尽 turn budget。没有生成最终 Artifact，失败后没有新增调用。见 `docs/zh-CN/evaluations/2026-08-26-v0.11-artifact-v2-benchmark-002.md`。
@@ -30,11 +30,11 @@
 - 最新详细 Plan 证据：Smoke 007 新增每天 10 MEU 契约。一次输入已改变的 Anthropic review 恢复通过；最终 OpenAI synthesis 使用 2,092 output tokens、26 秒和 `$0.017`，随后因缺少 Day 2 被拒绝。没有继续重试。见 `docs/zh-CN/evaluations/2026-08-27-v0.11-detailed-plan-smoke-007.md`。
 - 已修复真实缺陷：供应商可选参数兼容、席位模型选择崩溃、Canonical State 容量不足导致依赖顺序的 Review 拒绝、只写在 prompt 中的 phase 上限、Observer 选择输出过大、targeted debate 使用完整 Review schema 的负担、不可见 Observer 失败原因、缺少可信日期、Claim 决定无约束力、被拒绝 Claim 泄漏进 synthesis、只依靠 prompt 的 Review Brief 结构、synthesis card 污染、Decide 产物输出不足，以及废弃 transcript turn 破坏显式恢复。原失败房间保留供审计。
 - 其他未完成：生产 API Key、加密永久 BYOK、Skill 包、多样性指标、导出、证据系统、执行连接器和广泛比较评测。
-- 当前重点：DP-0.2 工程可移植性。保留现有 Review、Plan Artifact 及未解决质量证据；除非后续 DP 里程碑明确命名信息增益并获得新授权，不恢复任何付费 Plan 或 Review 调用。
+- 当前重点：DP-0.3 首次使用信息架构。保留现有 Review、Plan Artifact 及未解决质量证据；除非后续 DP 里程碑明确命名信息增益并获得新授权，不恢复任何付费 Plan 或 Review 调用。
 - 强制校正流程：每个实现切片现在都必须以 Correction Brief 开始，并按照[开发校正循环](DEVELOPMENT_CORRECTION_LOOP.md)分别记录机械、语义、Artifact、Human Gate、体验、经济性和差异化价值结果。
 - 最新本地修正：待决定 Plan Gate 人工逐天编辑，整份重新校验，保存后发布，失败留草稿，恢复原始一天、历史和准确修订批准。原 AI Plan/审阅保持不变，复制/视图注明人工修改未经模型复审。不调用付费模型，不改 prompt/预算，不增加数据库 store。仍有三处既有 Cloudflare 声明错误。
 - 最新实现（D-055）：每份原计划最多选三条意见，一次修改和一次不同席位复核，允许有据拒绝，保留未解决意见。调用前保存意图/草稿；失败停止，完成或放弃后 UI 不可重复循环。原天数/审阅不变，精确批准包含来源与修改；人工编辑需在完成或放弃后进行，且不冒充模型复审。Plan 交付调用对已有识别范围内 GPT-5 使用 medium，其余保留供应商默认，不更换用户模型。上限：Builder16K、审阅6K、修改12K、复核6K，Plan 超时180秒。Gemini 思考计入输出用量；OpenAI Plan 不完整响应保留已报告用量。
-- 下一动作：在 DP-0 可移植性分支运行 Windows／Ubuntu workflow。若两个 job 都通过`pnpm check`，再关闭 DP-0.2 并编写 DP-0.3 Correction Brief；若失败，只修观察到的 runner 差异。该 Gate 前不升级依赖、不调用供应商、不部署、不开始首次使用 UI。
+- 下一动作：DP-0.3 [纠错简报](correction-briefs/2026-09-24-dp-0-3-first-run-entry.md)、[源码基线](evaluations/2026-09-24-dp-0-3-first-run-baseline.md)与本地备份分支`backup/dp-0-3-pre-ui-2026-09-24`均已就绪。实现最小的单 Connection Solo 和模式 Objective 校正，检查第一屏并保留既有 Review／Plan 房间。本步骤不包含供应商调用或部署。
 - 恢复点：`241affd`关闭 v0.10c 并锁定早期产品方向；`d844b40`是历史席位模型崩溃修复；`a9a8638`是进入 DP-0.1 时的干净提交基线。必须检查当前 HEAD 与工作区状态，不能把这些历史 hash 当成完整当前源码。
 - 线上地址：`https://multi-ai-meeting-room.schromeo.chatgpt.site`
 - 发布状态：2026-09-19 的未认证只读检查返回 HTTP 401，因此 DP-0.1 没有查看或确认已部署内容版本。较早 v0.4／`nodejs_compat`说明只保留为历史证据，不再当作已确认当前状态。不得发布或附带工作区付费凭证；部署工作必须等待输入变化及 DP-0.6 安全边界。

@@ -44,8 +44,10 @@ Wrangler 提示存在新版本。本切片刻意不安装：目标是在固定�
 - **经济性：** 零供应商调用、零 API 支出、不新增／升级依赖、不部署、不写外部仓库／账号。
 - **差异化价值：** 未评估；本轮是工程复现性切片。
 
-## 剩余 Gate
+## 远程 CI 补充记录 - 2026-09-24
 
-CI contract 已加入仓库并在本地解析，但尚未在 GitHub 运行。DP-0.2 继续为**当前——本地通过、CI 待运行**。完成条件是 Windows 与 Ubuntu job 首次同时通过同一`pnpm check`；若存在 runner 差异，只允许一次有界修复。不能凭本地证据开始 DP-0.3。
+[首次远程运行](https://github.com/Schromeo/multi-ai-meeting-room/actions/runs/36076814165)在 Windows 和 Ubuntu 的`corepack prepare pnpm@11.19.0`步骤失败。Node 22.13.0 自带 Corepack 无法匹配当前 registry 签名 key；两项 job 均未进入安装、构建、测试、lint 或 type check。有界修复只把该安装步骤换成相同 pnpm 版本的`pnpm/action-setup@v6`，不改依赖或测试契约。
+
+提交`97b865a`上的[第二次运行](https://github.com/Schromeo/multi-ai-meeting-room/actions/runs/36076954748)显示`Check (ubuntu-latest)`和`Check (windows-latest)`均为 **SUCCESS**。两者都执行 frozen install 与同一`pnpm check`。DP-0.2 **已完成**；DP-0.3 可从 Correction Brief、基线和命名备份开始。这证明工程可移植性，不证明产品质量或部署安全。[草稿 PR #1](https://github.com/Schromeo/multi-ai-meeting-room/pull/1)仍未合并。
 
 见[纠错简报](../correction-briefs/2026-09-19-dp-0-2-engineering-portability.md)与[决策记录](../DECISIONS.md)中的 D-066。
