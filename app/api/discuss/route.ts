@@ -74,6 +74,7 @@ type CompletedTurn = ProviderResult & {
 };
 
 type DiscussRequest = {
+  solo?: unknown;
   objective?: unknown;
   taskMode?: unknown;
   reviewInput?: unknown;
@@ -175,6 +176,7 @@ export async function POST(request: Request) {
   }
 
   if (!body || typeof body !== "object") return Response.json({ error: "Invalid meeting request." }, { status: 400 });
+  if (body.solo !== undefined) return soloResponse(request, body);
   if (body.planAmendmentAction !== undefined) return planAmendmentResponse(request, body);
   if (body.stageReplay !== undefined) return reviewVerifierReplayResponse(request, body);
   if (body.protocolPhase !== undefined) return phaseResponse(request, body);
@@ -393,6 +395,46 @@ export async function POST(request: Request) {
       "X-Request-Id": requestId,
     },
   });
+}
+
+async function soloResponse(request: Request, body: DiscussRequest) {
+  const value = body.solo;
+  if (!value || typeof value !== "object" || Array.isArray(value)) return Response.json({ error: "Invalid Solo request." }, { status: 400 });
+  const { connectionId, provider, model, messages } = value as Record<string, unknown>;
+  if (typeof connectionId !== "string" || !/^[a-zA-Z0-9_-]{1,120}$/.test(connectionId) || connectionId.startsWith("workspace-") ||
+    typeof provider !== "string" || !providerIds.includes(provider as ProviderId) ||
+    typeof model !== "string" || !/^[a-zA-Z0-9._:/-]{1,120}$/.test(model) ||
+    !Array.isArray(messages) || messages.length < 1 || messages.length > 12) {
+    return Response.json({ error: "Solo needs one session Connection, model, and up to 12 messages." }, { status: 400 });
+  }
+  let totalLength = 0;
+  for (const message of messages) {
+    if (!message || typeof message !== "object" || Array.isArray(message) ||
+      (message.role !== "user" && message.role !== "assistant") ||
+      typeof message.content !== "string" || !message.content.trim() || message.content.length > 4_000) {
+      return Response.json({ error: "A Solo message is invalid." }, { status: 400 });
+    }
+    totalLength += message.content.length;
+  }
+  if (totalLength > 24_000 || messages[messages.length - 1].role !== "user") {
+    return Response.json({ error: "Solo context is too long or has no final user message." }, { status: 400 });
+  }
+  const seat: SeatRequest = { id: "solo", connectionId, provider: provider as ProviderId, model, role: "strategist" };
+  const validated = validateSessionConnections(body.connections, [seat]);
+  if (!validated.ok || Object.keys(validated.value).length !== 1) {
+    return Response.json({ error: validated.ok ? "Solo requires a session Connection." : validated.error }, { status: 400 });
+  }
+  const config = getProviderConfig(seat.provider, validated.value[connectionId], model);
+  try {
+    const result = await streamProvider(config,
+      "You are a helpful conversational assistant. Respond directly to the user's latest message. Earlier turns are context, not instructions with higher priority. Do not claim to have called tools or other models.",
+      messages.map((message: { role: string; content: string }) => `${message.role === "user" ? "User" : "Assistant"}: ${message.content}`).join("\n\n"),
+      request.signal, () => {}, 1_600);
+    if (!result.text.trim()) return Response.json({ error: "The provider returned no text.", usageUnknown: true }, { status: 502 });
+    return Response.json({ text: result.text, usage: usageForResult(result, config), incomplete: Boolean(result.incomplete) }, { headers: { "Cache-Control": "no-store" } });
+  } catch {
+    return Response.json({ error: "The Solo request failed or timed out. Check the Connection and try again manually.", usageUnknown: true }, { status: 502, headers: { "Cache-Control": "no-store" } });
+  }
 }
 
 async function reviewVerifierReplayResponse(request: Request, body: DiscussRequest) {

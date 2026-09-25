@@ -1,7 +1,7 @@
 # DP-0.3 First-run Entry Correction Brief
 
 Date: 2026-09-24
-Status: Active; baseline recorded, frontend implementation not started
+Status: Active; first local entry/Solo slice implemented, milestone acceptance incomplete
 Pre-UI backup: local branch `backup/dp-0-3-pre-ui-2026-09-24` at `97b865a`
 
 - **Observed failure:** the source-level fresh-session fixture opens in Review with a Review-specific objective, the header presents Setup → Agenda → Meeting → Decision, and the agenda exposes only Review and Decide / Plan. `canStart` requires at least two ready Seats for every mode. Switching those two modes changes only `taskMode`, leaving the previous mode's objective in place. See the [first-run baseline](../evaluations/2026-09-24-dp-0-3-first-run-baseline.md).

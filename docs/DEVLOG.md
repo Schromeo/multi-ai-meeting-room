@@ -2,6 +2,12 @@
 
 This chronological log records shipped work, validation, limitations, and the next decision. It is not a place for uncommitted feature ideas; those belong in the roadmap or decision record.
 
+## 2026-09-24 - DP-0.3 Local Entry/Solo Slice (Incomplete)
+
+- Implemented the four intent entries, Chat-first Solo surface, mode-specific objective drafts, and a bounded session-BYOK Solo API without changing saved-room schema or calling a live provider. A Connection change clears Solo context; the workspace-funded key path is rejected.
+- Local `pnpm check` passes build, 65 tests, lint, and type check. Browser checks under `pnpm dev` verified the empty-session entry, draft isolation, and 390px first screen. See the [local evaluation](evaluations/2026-09-24-dp-0-3-local-entry-slice.md).
+- DP-0.3 stays Current. Old-record browser replay and full acceptance remain open. Local `pnpm start` served HTML but returned 404 for generated CSS; production visual validity is unresolved. Zero real provider calls or deployment.
+
 ## 2026-09-24 - DP-0.2 Remote CI Closure
 
 - Pushed the reviewed DP-0.1/DP-0.2 branch and opened [draft PR #1](https://github.com/Schromeo/multi-ai-meeting-room/pull/1). The [first CI run](https://github.com/Schromeo/multi-ai-meeting-room/actions/runs/36076814165) failed on both OSes at `corepack prepare`: the Node 22.13.0 bundled Corepack did not recognize the pnpm registry signature key. Neither job reached dependency installation or project checks.

@@ -251,6 +251,58 @@ p {
   overflow: hidden;
 }
 
+.workspace-frame:has(.entry-switcher) {
+  display: flex;
+  flex-direction: column;
+}
+
+.entry-switcher {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 8px;
+  width: min(1240px, 100%);
+  margin: 0 auto;
+  padding: 18px 28px 0;
+}
+
+.entry-switcher button {
+  min-width: 0;
+  padding: 13px 16px;
+  border: 1px solid var(--line);
+  border-radius: 12px;
+  background: var(--surface);
+  text-align: left;
+  font-weight: 750;
+}
+
+.entry-switcher button.active {
+  border-color: var(--mint);
+  background: var(--mint-soft);
+}
+
+.entry-switcher small { display: block; margin-top: 3px; color: var(--ink-soft); font-weight: 400; }
+.workspace-frame:has(.entry-switcher) .agenda-workspace { height: auto; flex: 1; min-height: 0; }
+
+.solo-workspace {
+  width: min(800px, 100%);
+  margin: 0 auto;
+  padding: 48px 28px 80px;
+  overflow-y: auto;
+}
+
+.solo-workspace h1 { margin: 0 0 12px; font-size: clamp(2rem, 4vw, 3rem); }
+.solo-workspace > p { color: var(--ink-soft); line-height: 1.55; }
+.solo-composer { display: grid; gap: 16px; margin-top: 30px; }
+.solo-composer label { display: grid; gap: 7px; font-weight: 650; }
+.solo-composer select, .solo-composer textarea { width: 100%; padding: 12px; border: 1px solid var(--line-strong); border-radius: 9px; background: var(--surface); }
+.solo-composer textarea { resize: vertical; }
+.solo-actions, .pack-actions { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
+.solo-actions .primary-button { margin-left: auto; }
+.solo-messages { display: grid; gap: 12px; margin-top: 22px; }
+.solo-message { padding: 14px 16px; border: 1px solid var(--line); border-radius: 12px; background: var(--surface); }
+.solo-message.user { background: var(--surface-soft); }
+.solo-message p { white-space: pre-wrap; overflow-wrap: anywhere; margin-bottom: 0; }
+
 .section-kicker {
   display: block;
   margin-bottom: 8px;
@@ -2831,6 +2883,9 @@ p {
 }
 
 @media (max-width: 680px) {
+  .entry-switcher { grid-template-columns: repeat(2, minmax(0, 1fr)); padding: 10px 14px 0; }
+  .entry-switcher button { padding: 10px; font-size: 0.8rem; }
+  .solo-workspace { padding: 26px 14px 70px; }
   .app-header {
     height: 64px;
     padding: 0 12px;

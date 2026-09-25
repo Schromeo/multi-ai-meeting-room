@@ -86,6 +86,7 @@ import {
 import ReplayReceipt from "./replay-receipt";
 
 type WorkspaceStage = "agenda" | "meeting" | "decision";
+type EntryMode = "chat" | "council" | "artifact" | "packs";
 type TranscriptMode = "focus" | "overview";
 type ProviderChoice = ProviderId | "auto";
 type ReviewResultView = "artifact" | "changes" | "verification" | "brief";
@@ -134,7 +135,7 @@ type ObserverDraft = {
   model: string;
 };
 
-const defaultObjective = "Review Artifact v1 against the supplied references and truth constraints";
+const defaultObjective = "";
 
 const providerUi: Record<
   ProviderId,
@@ -184,6 +185,16 @@ const milestones = [
 export default function Home() {
   const [objective, setObjective] = useState(defaultObjective);
   const [taskMode, setTaskMode] = useState<TaskMode>("review");
+  const objectiveDraftsRef = useRef<Record<TaskMode, string>>({ review: defaultObjective, decide: "" });
+  const [entryMode, setEntryMode] = useState<EntryMode>("chat");
+  const [soloConnectionId, setSoloConnectionId] = useState("");
+  const [soloModel, setSoloModel] = useState("");
+  const [soloInput, setSoloInput] = useState("");
+  const [soloMessages, setSoloMessages] = useState<Array<{ role: "user" | "assistant"; content: string }>>([]);
+  const [soloRunning, setSoloRunning] = useState(false);
+  const soloRunningRef = useRef(false);
+  const [soloError, setSoloError] = useState("");
+  const [soloUsage, setSoloUsage] = useState<UsageSummary | null>(null);
   const [reviewArtifact, setReviewArtifact] = useState("");
   const [reviewReferences, setReviewReferences] = useState("");
   const [reviewTruthConstraints, setReviewTruthConstraints] = useState("");
@@ -371,8 +382,6 @@ export default function Home() {
               };
             }),
           );
-        } else {
-          setConnectionOpen(true);
         }
       })
       .catch((configError) => setError(safeClientError(configError)))
@@ -1110,8 +1119,10 @@ export default function Home() {
     currentRoomCreatedAtRef.current = record.createdAt;
     updateParticipants(record.participants);
     updateObserver(record.observer ?? null);
+    objectiveDraftsRef.current = { review: "", decide: "", [record.taskMode]: record.objective };
     setObjective(record.objective);
     setTaskMode(record.taskMode);
+    setEntryMode(record.taskMode === "review" ? "artifact" : "council");
     setPlanEnabled(Boolean(record.planRequest));
     if (record.planRequest) setPlanSettings(record.planRequest);
     updatePlan(record.planArtifact ?? null);
@@ -1190,8 +1201,10 @@ export default function Home() {
     currentRoomCreatedAtRef.current = now;
     updateParticipants([]);
     updateObserver(null);
+    objectiveDraftsRef.current = { review: "", decide: "" };
     setObjective("");
     setTaskMode("review");
+    setEntryMode("chat");
     setPlanEnabled(false);
     updatePlan(null);
     updatePlanApproval(null);
@@ -2408,6 +2421,59 @@ export default function Home() {
     }
   }
 
+  function updateObjectiveDraft(value: string) {
+    objectiveDraftsRef.current[taskMode] = value;
+    setObjective(value);
+  }
+
+  function switchTaskMode(next: TaskMode) {
+    if (running || next === taskMode) return;
+    objectiveDraftsRef.current[taskMode] = objective;
+    setTaskMode(next);
+    setObjective(objectiveDraftsRef.current[next]);
+  }
+
+  function selectEntry(next: EntryMode) {
+    if (running || soloRunning) return;
+    setEntryMode(next);
+    setStage("agenda");
+    if (next === "artifact") switchTaskMode("review");
+    if (next === "council") switchTaskMode("decide");
+  }
+
+  async function submitSolo(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    const connection = sessionConnections.find((item) => item.id === soloConnectionId && item.apiKey);
+    const model = soloModel || connection?.models[0]?.id;
+    const content = soloInput.trim();
+    if (!connection || !model || !content || soloRunningRef.current) return;
+    soloRunningRef.current = true;
+    const messages = [...soloMessages, { role: "user" as const, content }].slice(-12);
+    setSoloMessages(messages);
+    setSoloInput("");
+    setSoloError("");
+    setSoloRunning(true);
+    try {
+      const response = await fetch("/api/discuss", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ solo: { connectionId: connection.id, provider: connection.provider, model, messages }, connections: { [connection.id]: { provider: connection.provider, apiKey: connection.apiKey } } }),
+      });
+      const payload = await response.json() as { text?: string; error?: string; usage?: UsageSummary; incomplete?: boolean };
+      if (!response.ok || !payload.text) throw new Error(payload.error || "The Solo response was unavailable.");
+      setSoloMessages([...messages, { role: "assistant", content: payload.text }]);
+      setSoloUsage(payload.usage ?? null);
+      if (payload.incomplete) setSoloError("The provider stopped before the reply was complete.");
+    } catch (reason) {
+      setSoloMessages(soloMessages);
+      setSoloInput(content);
+      setSoloError(`${safeClientError(reason)} Usage may be unknown; no automatic retry was made.`);
+    } finally {
+      soloRunningRef.current = false;
+      setSoloRunning(false);
+    }
+  }
+
   async function saveReviewChangeEdit(changeId: string) {
     if (!reviewResult || !reviewInput || decision !== "pending") return;
     const edits = currentHumanReviewEdits();
@@ -2451,7 +2517,7 @@ export default function Home() {
   return (
     <main className="meeting-app">
       <header className="app-header">
-        <button className="brand" type="button" onClick={() => !running && setStage("agenda")}>
+        <button className="brand" type="button" onClick={() => { if (!running) { setStage("agenda"); setEntryMode("chat"); } }}>
           <span className="brand-mark">M</span>
           <span>
             <strong>Meeting Room</strong>
@@ -2459,7 +2525,7 @@ export default function Home() {
           </span>
         </button>
 
-        <nav className="stage-nav" aria-label="Meeting stages">
+        {entryMode !== "chat" && <nav className="stage-nav" aria-label="Meeting stages">
           <button type="button" className={readySeatCount >= 2 ? "complete" : "active"} onClick={() => openConnectionManager()}>
             <span>1</span> Setup
           </button>
@@ -2472,7 +2538,7 @@ export default function Home() {
           <button type="button" className={stage === "decision" ? "active" : decision === "approved" ? "complete" : ""} disabled={!memo} onClick={() => setStage("decision")}>
             <span>4</span> Decision
           </button>
-        </nav>
+        </nav>}
 
         <div className="header-actions">
           <button className="quiet-button meeting-history-button" type="button" onClick={() => setHistoryOpen(true)}>
@@ -2489,14 +2555,36 @@ export default function Home() {
       </header>
 
       <section className="workspace-frame">
-        {stage === "agenda" ? (
+        {stage === "agenda" && <div className="entry-switcher" aria-label="Choose an entry">
+          <button type="button" className={entryMode === "chat" ? "active" : ""} onClick={() => selectEntry("chat")}>Chat <small>One model</small></button>
+          <button type="button" className={entryMode === "council" ? "active" : ""} onClick={() => selectEntry("council")}>Ask the Room <small>Two or three seats</small></button>
+          <button type="button" className={entryMode === "artifact" ? "active" : ""} onClick={() => selectEntry("artifact")}>Drop an Artifact <small>Review pack</small></button>
+          <button type="button" className={entryMode === "packs" ? "active" : ""} onClick={() => selectEntry("packs")}>Browse Packs <small>Current packs</small></button>
+        </div>}
+        {stage === "agenda" && entryMode === "chat" ? (
+          <section className="solo-workspace">
+            <div className="section-kicker">Solo chat</div>
+            <h1>Start with one model.</h1>
+            <p>Use a session Connection for an ordinary conversation. Nothing is sent until you press Send. This chat is held only in this page and is not saved in meeting history.</p>
+            {soloMessages.length > 0 && <div className="solo-messages" aria-live="polite">{soloMessages.map((message, index) => <article className={`solo-message ${message.role}`} key={index}><strong>{message.role === "user" ? "You" : "Assistant"}</strong><p>{message.content}</p></article>)}</div>}
+            <form onSubmit={submitSolo} className="solo-composer">
+              <label>Connection<select value={soloConnectionId} disabled={soloRunning} onChange={(event) => { setSoloConnectionId(event.target.value); setSoloModel(""); setSoloMessages([]); setSoloUsage(null); setSoloError(""); }}><option value="">Choose a session Connection</option>{sessionConnections.filter((item) => item.apiKey).map((item) => <option key={item.id} value={item.id}>{item.name} · {providerUi[item.provider].label}</option>)}</select></label>
+              <label>Model<select value={soloModel} disabled={soloRunning} onChange={(event) => setSoloModel(event.target.value)}><option value="">Default model</option>{sessionConnections.find((item) => item.id === soloConnectionId)?.models.map((model) => <option key={model.id} value={model.id}>{model.id}</option>)}</select></label>
+              <label>Your message<textarea value={soloInput} onChange={(event) => setSoloInput(event.target.value)} maxLength={4000} rows={4} placeholder="Ask anything, from everyday questions to a project idea..." /></label>
+              <div className="solo-actions"><button type="button" className="quiet-button" onClick={() => openConnectionManager()}>Manage Connections</button><button className="primary-button" type="submit" disabled={soloRunning || !soloInput.trim() || !soloConnectionId}>{soloRunning ? "Waiting..." : "Send"}</button></div>
+              {soloError && <p role="alert">{soloError}</p>}{soloUsage && <small>Last reply: {soloUsage.inputTokens} input + {soloUsage.outputTokens} output tokens; estimated ${soloUsage.estimatedUsd.toFixed(4)}.</small>}
+            </form>
+          </section>
+        ) : stage === "agenda" && entryMode === "packs" ? (
+          <section className="solo-workspace"><div className="section-kicker">Available packs</div><h1>Choose a deeper workflow.</h1><p>These packs currently use the existing two- or three-seat room. More packs are planned, not available yet.</p><div className="pack-actions"><button type="button" className="primary-button" onClick={() => selectEntry("artifact")}>Review an artifact</button><button type="button" className="quiet-button" onClick={() => selectEntry("council")}>Decide / Plan</button></div></section>
+        ) : stage === "agenda" ? (
           <form className="agenda-workspace" onSubmit={submitMeeting}>
             <section className="objective-panel">
               <div className="task-mode-heading">
                 <span className="section-kicker">Task pack</span>
                 <div className="segmented-control task-mode-control" aria-label="Task pack">
-                  <button type="button" className={taskMode === "review" ? "active" : ""} onClick={() => setTaskMode("review")} disabled={running}>Review</button>
-                  <button type="button" className={taskMode === "decide" ? "active" : ""} onClick={() => setTaskMode("decide")} disabled={running}>Decide / Plan</button>
+                  <button type="button" className={taskMode === "review" ? "active" : ""} onClick={() => switchTaskMode("review")} disabled={running}>Review</button>
+                  <button type="button" className={taskMode === "decide" ? "active" : ""} onClick={() => switchTaskMode("decide")} disabled={running}>Decide / Plan</button>
                 </div>
               </div>
               <div className="section-kicker">{taskMode === "review" ? "Review objective" : "Meeting objective"}</div>
@@ -2510,7 +2598,7 @@ export default function Home() {
                 className={`objective-input${taskMode === "review" ? " compact" : ""}`}
                 id="objective"
                 value={objective}
-                onChange={(event) => setObjective(event.target.value)}
+                onChange={(event) => updateObjectiveDraft(event.target.value)}
                 placeholder={taskMode === "review" ? "Define the review outcome and audience..." : "Define the decision and its constraints..."}
                 maxLength={4_000}
                 rows={taskMode === "review" ? 3 : 7}

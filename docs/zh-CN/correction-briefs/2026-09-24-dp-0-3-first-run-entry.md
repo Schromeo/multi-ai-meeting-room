@@ -1,7 +1,7 @@
 # DP-0.3 首次使用入口纠错简报
 
 日期：2026-09-24
-状态：当前；已记录基线，尚未开始前端实现
+状态：当前；首个本地入口／Solo 切片已实现，里程碑验收尚未完成
 原 UI 备份：本地分支`backup/dp-0-3-pre-ui-2026-09-24`，指向`97b865a`
 
 - **已观察失败：** 源码层的新 session fixture 默认打开 Review 和 Review 专用 Objective；顶部是 Setup → Agenda → Meeting → Decision，Agenda 只有 Review 与 Decide / Plan。每种模式的`canStart`都要求至少两个已就绪 Seat。切换这两种模式只改变`taskMode`，仍沿用上一模式的 Objective。见[首次使用基线](../evaluations/2026-09-24-dp-0-3-first-run-baseline.md)。

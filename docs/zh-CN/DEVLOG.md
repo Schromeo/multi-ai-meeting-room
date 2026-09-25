@@ -1,5 +1,11 @@
 # 开发日志
 
+## 2026-09-24 - DP-0.3 本地入口／Solo 切片（未完成）
+
+- 实现四个意图入口、Chat 优先的 Solo 界面、按模式隔离的 Objective 草稿及有界 session-BYOK Solo API；不改存档 schema，不调用真实供应商。切换 Connection 清空 Solo 上下文，API 拒绝 workspace 出资 key 路径。
+- 本地 `pnpm check` 的构建、65 项测试、lint 与类型检查通过。`pnpm dev` 浏览器检查覆盖空 session 入口、草稿隔离和 390px 首屏。详见[本地评估](evaluations/2026-09-24-dp-0-3-local-entry-slice.md)。
+- DP-0.3 仍为 Current。旧存档浏览器回放和完整验收仍待完成。本地 `pnpm start` 可返回 HTML，但生成的 CSS 请求为 404，生产视觉有效性未解决。零真实供应商调用、零部署。
+
 ## 2026-09-24 - DP-0.2 远程 CI 收尾
 
 - 推送已审阅的 DP-0.1／DP-0.2 分支并创建[草稿 PR #1](https://github.com/Schromeo/multi-ai-meeting-room/pull/1)。[首次 CI](https://github.com/Schromeo/multi-ai-meeting-room/actions/runs/36076814165)在两个 OS 的`corepack prepare`步骤失败：Node 22.13.0 自带 Corepack 不识别 pnpm registry 签名 key。两项 job 均未进入依赖安装或项目检查。

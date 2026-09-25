@@ -122,14 +122,55 @@ test("server-renders the real Discuss room", async () => {
   const html = await response.text();
   assert.match(html, /<title>Multi-AI Meeting Room<\/title>/i);
   assert.match(html, /Multi-AI Meeting Room/);
-  assert.match(html, /Start review/i);
-  assert.match(html, /What should this review improve/);
-  assert.match(html, /Artifact v1/);
-  assert.match(html, /Reference material/);
-  assert.match(html, /Truth constraints/);
-  assert.match(html, /Room composition/);
+  assert.match(html, /Start with one model/);
+  assert.match(html, /Ask the Room/);
+  assert.match(html, /Drop an Artifact/);
+  assert.match(html, /Browse Packs/);
+  assert.match(html, /Choose a session Connection/);
+  assert.doesNotMatch(html, /Review Artifact v1 against the supplied references/);
   assert.match(html, /Meetings/);
   assert.doesNotMatch(html, /Your site is taking shape|Building your site/);
+});
+
+test("Solo rejects workspace credentials and invalid context before a provider call", async () => {
+  const worker = await loadWorker();
+  const send = (body) => worker.fetch(new Request("http://localhost/api/discuss", {
+    method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify(body),
+  }), workerEnv(), executionContext());
+  const base = { solo: { connectionId: "workspace-openai", provider: "openai", model: "gpt-test", messages: [{ role: "user", content: "Hello" }] } };
+  const workspace = await send(base);
+  assert.equal(workspace.status, 400);
+  const invalid = await send({ ...base, solo: { ...base.solo, connectionId: "session-1", messages: [{ role: "assistant", content: "Hello" }] }, connections: { "session-1": { provider: "openai", apiKey: "sk-not-a-real-key" } } });
+  assert.equal(invalid.status, 400);
+});
+
+test("Solo makes one bounded session-key call and returns a credential-free reply", async () => {
+  const originalFetch = globalThis.fetch;
+  let calls = 0;
+  globalThis.fetch = async (url, options) => {
+    assert.equal(url, "https://api.openai.com/v1/responses");
+    calls += 1;
+    assert.equal(options.headers.Authorization, "Bearer solo-fixture-key");
+    const sent = JSON.parse(options.body);
+    assert.equal(sent.max_output_tokens, 1600);
+    assert.match(sent.input, /User: Hello/);
+    return new Response('event: response.output_text.delta\ndata: {"type":"response.output_text.delta","delta":"Hello back"}\n\nevent: response.completed\ndata: {"type":"response.completed","response":{"usage":{"input_tokens":10,"output_tokens":2}}}\n\n', { headers: { "content-type": "text/event-stream" } });
+  };
+  try {
+    const worker = await loadWorker();
+    const response = await worker.fetch(new Request("http://localhost/api/discuss", {
+      method: "POST", headers: { "content-type": "application/json" },
+      body: JSON.stringify({ solo: { connectionId: "session-1", provider: "openai", model: "gpt-test", messages: [{ role: "user", content: "Hello" }] }, connections: { "session-1": { provider: "openai", apiKey: "solo-fixture-key" } } }),
+    }), workerEnv(), executionContext());
+    assert.equal(response.status, 200);
+    const body = await response.json();
+    assert.equal(body.text, "Hello back");
+    assert.equal(body.usage.inputTokens, 10);
+    assert.equal(calls, 1);
+    assert.doesNotMatch(JSON.stringify(body), /solo-fixture-key/);
+  } finally {
+    globalThis.fetch = originalFetch;
+  }
 });
 
 test("provider status endpoint exposes configuration without secrets", async () => {
