@@ -3832,7 +3832,7 @@ test("targeted debate calls only routed Seats with the named bounded context", a
 });
 
 test("source contains real streaming adapters and credential-free structured rooms", async () => {
-  const [page, styles, route, meetingRecord, meetingState, orchestrator, roomStore, reviewArtifact, handoff, handoffZh] = await Promise.all([
+  const [pageSource, styles, route, meetingRecord, meetingState, orchestrator, roomStore, reviewArtifact, handoff, handoffZh] = await Promise.all([
     readFile(new URL("../app/page.tsx", import.meta.url), "utf8"),
     readFile(new URL("../app/globals.css", import.meta.url), "utf8"),
     readFile(new URL("../app/api/discuss/route.ts", import.meta.url), "utf8"),
@@ -3844,6 +3844,7 @@ test("source contains real streaming adapters and credential-free structured roo
     readFile(new URL("../docs/AI_HANDOFF.md", import.meta.url), "utf8"),
     readFile(new URL("../docs/zh-CN/AI_HANDOFF.md", import.meta.url), "utf8"),
   ]);
+  const page = pageSource.replace(/\r\n?/g, "\n");
 
   assert.doesNotMatch(page, /agentCopy|seedMessages|setTimeout\(\(\) => \{\s*const nextRound/);
   assert.match(page, /Add new connection/);

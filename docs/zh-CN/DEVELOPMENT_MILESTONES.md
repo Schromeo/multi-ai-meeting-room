@@ -3,7 +3,7 @@
 状态：已批准
 批准日期：2026-09-18
 当前阶段：DP-0 - 产品真实性与第一分钟体验
-当前里程碑：DP-0.1 - 产品与仓库真实性基线
+当前里程碑：DP-0.2 - 工程可移植性基线
 
 本文档是已批准[产品开发计划](PRODUCT_DEVELOPMENT_PLAN.md)的 canonical 前向开发顺序。历史 `M0` 到 `M5` 路线继续保存已实现和未完成工作的证据；当它与本文冲突时，不再决定下一项开发顺序。
 
@@ -119,8 +119,8 @@ DP-0 产品真实性与第一分钟体验
 | 里程碑 | 状态／规模 | 交付 | 退出证据 |
 | --- | --- | --- | --- |
 | DP-0.0 方向与里程碑批准 | 已完成／S | 已批准 Product Direction、D-064、中英文详细里程碑、历史路线到新路线映射 | 已记录所有者批准；文档一致指向 DP-0 为当前阶段 |
-| DP-0.1 产品与仓库真实性基线 | 当前／S | 真实 app/package 名称与版本策略、唯一 package-manager 政策、明确 license 状态、当前 README／状态文案、完整 build/test/type 基线 | 不再有 starter 身份或矛盾的“uncommitted/current”描述；命令和已知失败可复现 |
-| DP-0.2 工程可移植性基线 | 计划中／S | CI 检查、Cloudflare ambient 类型声明、CRLF-safe 源码测试、确定性测试命令，以及干净 build/lint/type/test 报告 | 支持的 Windows 与 CI 路径产生相同通过／失败分类 |
+| DP-0.1 产品与仓库真实性基线 | 已完成／S | 真实 app/package 名称与版本策略、唯一 package-manager 政策、明确 license 状态、当前 README／状态文案、完整 build/test/type 基线 | starter 身份与过期 uncommitted 说法已移除；已记录准确 Windows install/build/test/lint/type 结果及交给 DP-0.2 的失败 |
+| DP-0.2 工程可移植性基线 | 当前／S——本地通过、CI 待运行 | CI 检查、Cloudflare ambient 类型声明、CRLF-safe 源码测试、确定性测试命令，以及干净 build/lint/type/test 报告 | Windows `pnpm check`本地通过；Windows／Ubuntu workflow 仍需首次远程运行，之前不能宣称两条路径等价 |
 | DP-0.3 首次使用信息架构 | 计划中／M | Chat、Ask the Room、Drop an Artifact、Browse Packs 入口；一个 Connection 可开始 Solo；各模式独立默认 Objective | 新用户无需先被 Connection Library 遮住产品；切换模式绝不继承其他模式 Objective |
 | DP-0.4 免凭证 Demo 与回放 | 计划中／S | 一个内置只读 Room replay，展示独立视角、有效分歧、Human Chair 选择、最终结果和成本来源 | 无需 key 或供应商调用即可理解差异化循环；Demo 明确标为非实时 |
 | DP-0.5 Artifact 与 Room 导出 | 计划中／S | 带版本的 Markdown 与 JSON 导出，包含摘要、Artifact、lineage、decision、usage、schema version，排除凭证 | 导出 fixture 可通过验证往返；secret scanner 找不到 key 或 authorization 字段 |
@@ -319,11 +319,10 @@ Lab 永远不能抢占当前里程碑。每个 Lab 只有一个 fixture、一个
 
 ## 16. 立即有序队列
 
-1. **DP-0.1 产品与仓库真实性基线：** 创建 Correction Brief，盘点过期身份／状态／安全主张，选择最小真实修复，并记录完整命令基线。
-2. **DP-0.2 工程可移植性基线：** 在改变交互架构前关闭复现性失败。
-3. **DP-0.3 首次使用信息架构：** 先建立要求的命名备份，再实现单 Connection Solo 入口和模式正确 Objective。
-4. **DP-0.4 Demo／Replay：** 复用已保存证据，零供应商调用。
-5. **DP-0.5 Export** 与 **DP-0.6 API Safety：** 在邀请更广泛公开使用前完成。
-6. **DP-0.7 Acceptance：** 选择 Continue 或 Repair；不能只凭文档信心进入 DP-1。
+1. **DP-0.2 工程可移植性基线：** 在改变交互架构前，关闭已记录的 Windows script、CRLF 源码测试、Cloudflare ambient 类型和确定性 CI 命令失败。
+2. **DP-0.3 首次使用信息架构：** 先建立要求的命名备份，再实现单 Connection Solo 入口和模式正确 Objective。
+3. **DP-0.4 Demo／Replay：** 复用已保存证据，零供应商调用。
+4. **DP-0.5 Export** 与 **DP-0.6 API Safety：** 在邀请更广泛公开使用前完成。
+5. **DP-0.7 Acceptance：** 选择 Continue 或 Repair；不能只凭文档信心进入 DP-1。
 
-精确下一步是 DP-0.1 文档与基线工作。在其 Correction Brief 明确 observed failure、acceptance、cost boundary 和 stop condition 前，不授权代码实现。
+精确下一步是运行首次 Windows／Ubuntu workflow。若两项 job 均通过同一`pnpm check`，再关闭 DP-0.2；否则只修观察到的可移植性差异。不能凭本地证据提前开始 DP-0.3。

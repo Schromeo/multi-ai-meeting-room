@@ -2,6 +2,7 @@
 
 # dependencies
 /node_modules
+/.pnpm-store/
 /.pnp
 .pnp.*
 .yarn/*
@@ -40,5 +41,6 @@ next-env.d.ts
 *.tsbuildinfo
 /dist/
 /.wrangler/
+/worker-configuration.d.ts
 /outputs/
 /work/

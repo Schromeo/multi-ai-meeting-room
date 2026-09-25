@@ -2,7 +2,9 @@
 
 A human-chaired workspace where independent AI perspectives challenge consequential differences and produce inspectable artifacts, decisions, and eventually verified actions.
 
-The current local version is v0.10c. It includes provider-neutral OpenAI, Anthropic, and Gemini adapters; session BYOK and model discovery; reusable Seats; independent proposals and cross-review; a human-chaired resumable protocol; bounded context and usage; IndexedDB room history; an optional Observer; and one Chair-selected Dispute-targeted path. The latest protocol still needs one bounded real-provider smoke evaluation. The next product slice is an artifact-centered Review Task Pack, not further generic-orchestrator expansion.
+This repository is a private, pre-release development build. It has no release tags; current source is identified by the Git commit and the active `DP-*` milestone. Historical `v0.x` labels in evaluations describe preserved development snapshots, not published package releases. The package therefore uses `0.0.0-development` until the owner deliberately creates a tagged release.
+
+The implemented foundation includes OpenAI, Anthropic, and Gemini adapters; session-only BYOK; reusable model Seats; bounded discussion, Review, and structured Plan paths; Human Gates; and credential-free browser-local room history. The canonical forward queue is the [Detailed Development Milestones](docs/DEVELOPMENT_MILESTONES.md). Product quality evidence remains incomplete: Review and Plan have useful mechanical evidence and known semantic failures, so this repository does not claim that multi-model review is already superior to one strong model.
 
 ## Product Structure
 
@@ -18,6 +20,9 @@ Permission levels define authority:
 
 - [Project charter](docs/PROJECT_CHARTER.md)
 - [Product direction](docs/PRODUCT_DIRECTION.md)
+- [Product development plan](docs/PRODUCT_DEVELOPMENT_PLAN.md)
+- [Detailed development milestones](docs/DEVELOPMENT_MILESTONES.md)
+- [Development correction loop](docs/DEVELOPMENT_CORRECTION_LOOP.md)
 - [AI handoff](docs/AI_HANDOFF.md)
 - [Roadmap](docs/ROADMAP.md)
 - [Development log](docs/DEVLOG.md)
@@ -31,8 +36,24 @@ Any agent working in this repository must follow [AGENTS.md](AGENTS.md).
 
 ## Local Development
 
+The only supported package-manager path is pnpm. The repository pins pnpm 11.19.0 in `package.json` and tracks only `pnpm-lock.yaml`. Use Node.js 22.13 or newer.
+
 ```bash
-npm install
-npm run dev
-npm run build
+pnpm install --frozen-lockfile
+pnpm dev
+pnpm build
+pnpm test
+pnpm lint
+pnpm typecheck
+pnpm check
 ```
+
+`pnpm check` is the canonical local and CI entry. It regenerates ignored Cloudflare types from the pinned Wrangler configuration, builds, runs all 63 offline tests, lints handwritten source, and type-checks without emitting files. The standalone `pnpm typecheck` command also regenerates those types, so it works after a clean clone. The current Windows run passes. A Windows/Ubuntu GitHub Actions matrix uses the same command; its first remote run is pending, so DP-0.2 remains Current until that evidence exists. See the latest [Development Log](docs/DEVLOG.md) for exact results.
+
+## Credential and Deployment Boundary
+
+User-entered BYOK credentials live only in current-page memory, are sent only to the selected provider through same-origin routes, and clear on refresh. Workspace-managed provider keys are for local or explicitly private evaluation only. Do not expose a public deployment with workspace-funded credentials before DP-0.6 adds and verifies authentication, request/call limits, rate limiting, and abuse controls.
+
+## License
+
+No open-source license has been granted. The package is marked `UNLICENSED`; all rights are reserved unless the owner publishes a separate license.

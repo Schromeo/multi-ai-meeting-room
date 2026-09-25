@@ -3,7 +3,7 @@
 Status: Approved
 Approved: 2026-09-18
 Current stage: DP-0 - Product Truth and First-Minute Experience
-Current milestone: DP-0.1 - Product and Repository Truth Baseline
+Current milestone: DP-0.2 - Engineering Portability Baseline
 
 This document is the canonical forward development sequence for the approved [Product Development Plan](PRODUCT_DEVELOPMENT_PLAN.md). The historical `M0` through `M5` roadmap remains evidence of implemented and incomplete work; it no longer determines the next build order where it conflicts with this document.
 
@@ -119,8 +119,8 @@ Labs may run between stages only when they have a fixed fixture, a small budget,
 | Milestone | Status / size | Deliverable | Exit evidence |
 | --- | --- | --- | --- |
 | DP-0.0 Direction and milestone ratification | Complete / S | approved Product Direction, D-064, detailed bilingual milestones, and historical-to-new roadmap mapping | owner approval is recorded; docs agree on DP-0 as current |
-| DP-0.1 Product and repository truth baseline | Current / S | truthful app/package name and version policy, one package-manager policy, explicit license state, current README/status language, and a recorded build/test/type baseline | no starter identity or contradictory “uncommitted/current” claim remains; commands and known failures are reproducible |
-| DP-0.2 Engineering portability baseline | Planned / S | CI checks, Cloudflare ambient type declarations, CRLF-safe source tests, deterministic test command, and clean build/lint/type/test reporting | supported Windows and CI paths produce the same pass/fail classification |
+| DP-0.1 Product and repository truth baseline | Complete / S | truthful app/package name and version policy, one package-manager policy, explicit license state, current README/status language, and a recorded build/test/type baseline | starter identity and stale uncommitted claims removed; exact Windows install/build/test/lint/type results recorded, including DP-0.2 failures |
+| DP-0.2 Engineering portability baseline | Current / S - local pass, CI pending | CI checks, Cloudflare ambient type declarations, CRLF-safe source tests, deterministic test command, and clean build/lint/type/test reporting | Windows `pnpm check` passes locally; the Windows/Ubuntu workflow needs its first remote run before both paths can be declared equivalent |
 | DP-0.3 First-run information architecture | Planned / M | entry surface for Chat, Ask the Room, Drop an Artifact, and Browse Packs; one Connection is enough for Solo; mode-specific objective defaults | a fresh user reaches the intended input without the Connection Library obscuring the product; switching modes never leaks another mode's objective |
 | DP-0.4 Credential-free demo and replay | Planned / S | one bundled, read-only room replay showing independent views, meaningful disagreement, Human Chair choice, final result, and cost provenance | a user can understand the differentiated loop without a key or provider call; demo is visibly non-live |
 | DP-0.5 Artifact and room export | Planned / S | versioned Markdown plus JSON export for room summary, artifacts, lineage, decisions, usage, and schema version, excluding credentials | exported fixtures round-trip through validation; secret scanners find no key or authorization field |
@@ -319,11 +319,10 @@ Labs never pre-empt the Current milestone. Each has one fixture, one user-visibl
 
 ## 16. Immediate Ordered Queue
 
-1. **DP-0.1 Product and repository truth baseline** - create the Correction Brief, inventory stale identity/status/security claims, choose the smallest truthful patch, and record the complete command baseline.
-2. **DP-0.2 Engineering portability baseline** - close reproducibility failures before changing interaction architecture.
-3. **DP-0.3 First-run information architecture** - create the required named backup, then implement one-Connection Solo entry and mode-correct objectives.
-4. **DP-0.4 Demo/replay** - reuse saved evidence; make zero provider calls.
-5. **DP-0.5 Export** and **DP-0.6 API safety** - complete before inviting broader public use.
-6. **DP-0.7 acceptance** - decide Continue or Repair. DP-1 cannot start on documentation confidence alone.
+1. **DP-0.2 Engineering portability baseline** - close the recorded Windows script, CRLF-source-test, Cloudflare ambient-type, and deterministic CI-command failures before changing interaction architecture.
+2. **DP-0.3 First-run information architecture** - create the required named backup, then implement one-Connection Solo entry and mode-correct objectives.
+3. **DP-0.4 Demo/replay** - reuse saved evidence; make zero provider calls.
+4. **DP-0.5 Export** and **DP-0.6 API safety** - complete before inviting broader public use.
+5. **DP-0.7 acceptance** - decide Continue or Repair. DP-1 cannot start on documentation confidence alone.
 
-The exact next action is DP-0.1 documentation and baseline work. It does not authorize code until its Correction Brief identifies the observed failures, acceptance checks, cost boundary, and stop condition.
+The exact next action is the first checked Windows/Ubuntu workflow run. If both jobs pass the same `pnpm check`, close DP-0.2; otherwise repair only the observed portability delta. Do not begin DP-0.3 on local evidence alone.

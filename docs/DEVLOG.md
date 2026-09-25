@@ -2,6 +2,22 @@
 
 This chronological log records shipped work, validation, limitations, and the next decision. It is not a place for uncommitted feature ideas; those belong in the roadmap or decision record.
 
+## 2026-09-19 - DP-0.2 Local Engineering Portability Pass
+
+- Completed the bilingual [Correction Brief](correction-briefs/2026-09-19-dp-0-2-engineering-portability.md), local [validation report](evaluations/2026-09-19-dp-0-2-local-portability.md), and D-066. A small Node launcher now resolves the pinned ESM vinext CLI and supplies `WRANGLER_LOG_PATH` without shell-specific syntax; `dev`, `build`, and `start` share it with no new dependency.
+- Normalized only the loaded page source in the affected source-inspection test, preserving every assertion and all 63 cases. Pinned Wrangler regenerates ignored Cloudflare runtime/module declarations at the start of every canonical check. The inactive D1 binding remains optional. Accurate `Response.json(): unknown` typing exposed and closed one Plan amendment response boundary without changing runtime parsing.
+- Added a clean-clone-safe `typecheck`, deterministic worker-type generation, and one canonical `pnpm check`; separated tests from build so failures remain attributable. Added a checked Node 22.13.0 / pnpm 11.19.0 GitHub Actions matrix for Windows and Ubuntu. Existing locked `js-yaml` parsed the workflow and confirmed both jobs use frozen install plus the same check command.
+- Local Windows evidence: frozen install passes; generated types are recreated and consumed by TypeScript; all five vinext build environments pass; 63/63 tests pass; lint has zero errors/warnings; type check has zero errors; the full `pnpm check` passes. Wrangler 4.92.0 reported an update, but no dependency was upgraded.
+- Correction Gate: zero provider calls, spend, browser-record changes, dependency additions/upgrades, or deployment. No product-quality or browser-usability claim. DP-0.2 remains Current - local pass, CI pending - because the workflow has not run remotely. Do not begin DP-0.3 until Windows and Ubuntu runner evidence passes or names one bounded repair.
+
+## 2026-09-19 - DP-0.1 Product and Repository Truth Baseline
+
+- Completed the bilingual [Correction Brief](correction-briefs/2026-09-19-dp-0-1-repository-truth.md), read-only inventory, [command baseline](evaluations/2026-09-19-dp-0-1-repository-baseline.md), and D-065. The private package is now `multi-ai-meeting-room@0.0.0-development`; current source uses commit/dirty state plus the active DP milestone rather than a fabricated release. Historical v0.x labels remain development snapshots.
+- Standardized on pnpm 11.19.0 with `pnpm-lock.yaml`, removed `package-lock.json`, changed the nested test command from npm to pnpm, and replaced four starter build-permission placeholders with explicit allowlisting for the already locked `esbuild`, `sharp`, `unrs-resolver`, and `workerd` families. Frozen install passes without a dependency upgrade.
+- Declared the package `UNLICENSED` and all rights reserved; updated README, app metadata, Roadmap, Handoff, documentation indexes, milestones, Decisions, and Chinese mirrors. Session BYOK remains ephemeral. A public deployment must not expose workspace-funded credentials before DP-0.6 adds verified authentication and abuse controls.
+- Windows baseline under Node 24.19.0 and pnpm 11.19.0: frozen install passes; lint passes; standard build fails before vinext on POSIX-only `WRANGLER_LOG_PATH=...` syntax; standard test stops at that build; direct tests are 62/63 with one CRLF-sensitive source regex; type check reports only the three known Cloudflare ambient declaration errors. `git diff --check` and current identity/status scans pass.
+- Correction Gate: runtime behavior and historical Review/Plan evidence are unchanged; zero provider calls, spend, browser-record changes, dependency upgrades, deployment, or external service changes. DP-0.1 is Complete. DP-0.2 Engineering Portability Baseline is Current and owns those four failure categories; first-run UI remains out of scope until portability closes.
+
 ## 2026-09-18 - Product Development Plan and Detailed Milestones Approved
 
 - The owner approved D-064: one human-chaired Multi-AI workspace, **Ask the Room** as the narrow recurring entry, Review as the first trust Pack rather than the product boundary, one bounded queue alternating Habit and Trust evidence, time-boxed Labs for astrology/games/coding context, and read-only Codex/VS Code integration before Execute.

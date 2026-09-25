@@ -2,7 +2,9 @@
 
 这些文件用于快速了解项目，并防止后续开发忘记初衷、重复工作或进入无限循环。
 
-当前执行入口：[详细开发里程碑](DEVELOPMENT_MILESTONES.md)中的 DP-0.1“产品与仓库真实性基线”。[Plan 问题清单](PLAN_ISSUE_REGISTER.md)继续作为 DP-2 的保留证据，但不属于立即构建队列。
+当前执行入口：[详细开发里程碑](DEVELOPMENT_MILESTONES.md)中的 DP-0.2“工程可移植性基线”。DP-0.1 已完成；DP-0.2 本地通过，等待首次提交后的 Windows／Ubuntu CI 运行。[Plan 问题清单](PLAN_ISSUE_REGISTER.md)继续作为 DP-2 的保留证据，但不属于立即构建队列。
+
+仓库政策：当前是私有、未授权开源的预发布开发版本。当前源码以 commit 和 active DP 里程碑标识；历史`v0.x`标签是开发快照，不是 package release。唯一支持的 package-management 路径是 pnpm 11.19.0 与`pnpm-lock.yaml`。在 DP-0.6 验证访问与滥用防护前，公共部署不得暴露由工作区付费的供应商凭证。
 
 建议阅读顺序：
 

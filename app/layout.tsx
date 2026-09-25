@@ -15,7 +15,7 @@ const geistMono = Geist_Mono({
 export const metadata: Metadata = {
   title: "Multi-AI Meeting Room",
   description:
-    "A product prototype for chaired conversations between specialized AI agents.",
+    "A human-chaired workspace for independent AI challenge, inspectable artifacts, and bounded decisions.",
   icons: {
     icon: "/favicon.svg",
     shortcut: "/favicon.svg",

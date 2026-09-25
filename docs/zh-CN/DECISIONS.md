@@ -384,3 +384,19 @@ S1 009 暴露了下载取回失败和看似精确的通用估价。开放现有�
 - **决定：** 产品终点是一个由人主持的 Multi-AI 工作空间，覆盖普通对话、Review、Explore、Create、Research、规则约束 Play、只读 Project Room，以及后续受控 Execute。反复出现的窄入口是 **Ask the Room**：把已有回答、想法、选择或 Artifact 提升给一到两个独立提示的 Challenger，保留影响结果的差异，再由 Human Chair 停止、追问或进入 Task Pack。Review 继续作为第一个信任 Pack，但不是产品边界。开发通过一条有限构建队列，在“习惯”和“信任”证据之间交替推进。占星、游戏和编码上下文想法先作为有时间上限的 Lab；Codex 与 VS Code 集成在任何执行权限前先保持只读。
 - **顺序：** [详细开发里程碑](DEVELOPMENT_MILESTONES.md)决定前向优先级：DP-0 产品真实性、DP-1 Quick Council、DP-2 Review 证据、DP-3 Pack contract、DP-4 Explore／Create、DP-5 Research、DP-6 Play proof、DP-7 只读 Project Room、DP-8 受控 Execute、DP-9 选择性产品化。历史 `M0` 到 `M5` 条目继续保存证据与实现状态；发生冲突时不再决定前向开发顺序。
 - **原因：** 把受众收窄成专业文档审阅会丢失独立模型挑战在日常、创意、娱乐和项目工作中的原始价值；但同时实现所有场景又会形成失控平台。一个窄用户动作加逐步加深的交互层，既保留宽野心，也让每个开发切片可测试、可回退、受证据 Gate 约束。
+
+## D-065 - 仓库身份使用开发事实，不捏造 release 主张
+
+- **状态：** 已接受
+- **日期：** 2026-09-19
+- **决定：** 仓库与私有 package 统一命名为`multi-ai-meeting-room`。在所有者有意创建带 tag 的 release 前，`package.json`使用`0.0.0-development`；当前源码以 Git commit、存在时的 dirty state 与 active DP 里程碑标识。历史 v0.x 标签继续作为开发快照名，不是 release。pnpm 11.19.0 与`pnpm-lock.yaml`是唯一支持的 package-management 路径；明确允许锁文件中的`esbuild`、`sharp`、`unrs-resolver`与`workerd`安装脚本。仓库为`UNLICENSED`并保留所有权利，直到所有者另行授予 license。
+- **安全边界：** 用户 BYOK 继续只存在于当前页面内存。工作区管理的供应商凭证只用于本地／私有评估；DP-0.6 实现并验证认证、请求／调用限制、rate limit 与滥用防护前，公共部署不得暴露这些凭证。
+- **原因：** starter 元数据、双锁文件、占位 build 许可及过期工作区／版本文案让复现性、法律与安全预期含糊。明确非 release 版本与限制性 license 状态无需猜测所有者意图；单一固定 package 路径让后续可移植性失败可归因。
+
+## D-066 - 本地与 CI 可移植性共用一条固定 Check Contract
+
+- **状态：** 本地已接受；远程 CI 证据待补
+- **日期：** 2026-09-19
+- **决定：** `pnpm check`是唯一有序工程契约：由固定 Wrangler 与`wrangler.jsonc`重新生成 worker types，通过仓库自带跨平台 vinext launcher 构建，运行完整离线测试，lint 手写源码，并进行不输出文件的 type check。GitHub Actions 在 Windows 与 Ubuntu 上使用 Node 22.13.0、pnpm 11.19.0，frozen install 后运行同一命令。确定性生成 declaration 被 ignore；inactive D1 binding 继续作为显式 optional augmentation，不进入 runtime 配置。
+- **边界：** 生成 declaration 不手改、不提交，也不当作手写代码 lint；每次完整 check 前重新创建，随后立即由 TypeScript 验证。本决定不新增 package、不升级依赖、不调用供应商、不部署、不配置 D1，也不开始首次使用界面工作。
+- **原因：** 分离的平台命令让 Windows shell 语法、CRLF 假设、缺失 runtime 声明和过期成功说法发生漂移。单一固定命令让失败可比较，同时保留“本地通过”与“远程 runner 已验证”的差别。

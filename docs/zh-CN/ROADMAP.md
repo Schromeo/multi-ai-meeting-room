@@ -4,6 +4,8 @@
 
 ## 当前定位
 
+- **DP-0.2 本地可移植性通过、远程 CI 待运行（D-066，2026-09-19）：** 仓库自带 vinext launcher 移除 shell-specific 环境变量语法；源码测试统一换行；固定 Wrangler 生成加 inactive D1 optional augmentation 让 type check 准确；`pnpm check`现用一条命令重新生成 worker types、build、运行 63/63 测试、lint 与 type check。Frozen install 与完整 check 在 Windows 通过。已解析的 GitHub Actions 矩阵把同一 contract 应用于 Windows 与 Ubuntu；首次远程运行仍待执行。DP-0.2 继续为当前；DP-0.3 尚未开始。见[本地验证](evaluations/2026-09-19-dp-0-2-local-portability.md)。
+- **DP-0.1 仓库真实性已完成（D-065，2026-09-19）：** package 身份为`multi-ai-meeting-room@0.0.0-development`；pnpm 11.19.0 与`pnpm-lock.yaml`是唯一 package 路径；四项锁定 native build 依赖有明确安装许可；私有仓库为`UNLICENSED`并保留所有权利。README 与当前状态文案现指向 DP 开发列车，不再沿用过期 v0.10c／未提交说法。[命令基线](evaluations/2026-09-19-dp-0-1-repository-baseline.md)记录 install 与 lint 通过，以及现归 DP-0.2 处理的 Windows script、CRLF 测试与 Cloudflare 类型失败。零供应商调用、零部署。
 - **开发计划重构已批准（D-064，2026-09-18）：** [产品开发计划](PRODUCT_DEVELOPMENT_PLAN.md)定义一个宽广、由人主持的 Multi-AI 工作空间，以 **Ask the Room** 为窄入口，在“习惯”和“信任”证据之间交替推进，并分阶段进入 Explore、Create、Research、Play、Project Room 与受控 Execute。[详细开发里程碑](DEVELOPMENT_MILESTONES.md)决定前向构建顺序。DP-0 为当前阶段；仅批准方向不授权付费调用、发布或 Execute 动作。
 - **供应商key提示已更新（D-063）：** Setup现在除`AIza`外也识别Gemini `AQ.`授权key，同时保留Anthropic/OpenAI有序判断及明确手选回退。规则只在本地运行，绝不跨供应商试探。构建、63项测试和lint通过，零真实调用。当前Gemini自动识别缺陷已关闭；这不验证凭证，也不增加供应商。
 - **PLAN-06新Plan请求回执已关闭（D-062）：** 每个Builder/Reviewer阶段现在会在供应商工作前记录usage未知的`started`，并由终态原位替换。没有Reviewer回执表示未进入该阶段；保存的started表示可能产生用量，不能当成零。构建、62项测试和lint通过，零真实调用。历史歧义与供应商账单权威不变；没有增加通用计费平台。
@@ -15,7 +17,7 @@
 - **PLAN-01/02本地修复（D-057）：** 有限初始Plan尝试诊断、新格式指令阶段/轮次作用域。构建、59项离线测试、lint通过，零真实调用。见[16项问题清单](PLAN_ISSUE_REGISTER.md)；011历史证据仍缺失、旧correction未改，M2.13质量仍为当前。
 - **最新续接011失败：** D-056等待/恢复修复通过构建、54项离线测试及lint。同一010记录新增一次GPT调用，没有新有效天数，审阅未运行；保留6/12天，历史11。本次不是时间截止，输出耗尽还是解析拒收仍不可观察。见[011报告及有序待办](evaluations/2026-08-27-plan-wait-continuation-011.md)。未新增$5授权或自动重试。
 - **最新Plan Gate失败：** [质量实测010](evaluations/2026-08-27-plan-quality-live-010.md)在新授权$5下实际调用GPT-5/Opus4.7共6次。一次格式恢复通过，但Builder在180秒超时，仅6/12天；补缺失天数被共享调用预留额度拦截，未新增请求。实际计划审阅及D-055修改未测。已归档原稿与失败，历史11条，实际账单/失败用量不全。
-- **本地产品版本：** v0.11j 加首个详细 Plan 切片（尚未提交的工作区）。
+- **源码身份：** 当前是无 tag 的私有预发布版本。源码以 Git commit、存在时的 dirty state 及 active DP 里程碑标识；历史 v0.x 标签代表保存的开发快照，不是 release。
 - **可运行基线：** 真实流式 Discuss、可复用模型席位、会话 BYOK、人工决定 Gate、不含凭证的 IndexedDB Event Store、确定性 Canonical Meeting State，以及持久化、由人主持的可恢复编排器。
 - **真实证据 Gate：** 已于 2026-08-04 使用 OpenAI `gpt-5-mini` 与 Anthropic `claude-haiku-4-5-20251001` 完成；见[真实基线 001](evaluations/2026-08-04-v0.6-live-baseline.md)。
 - **立即证据 Gate：** [Artifact v2 Benchmark 005](evaluations/2026-08-26-v0.11-artifact-v2-benchmark-005.md) 以六次混合供应商调用和 `$0.046` 应用估算到达待决定 Human Gate。机械路径通过，但质量 Gate 失败：明确指标约束被漏掉，Verifier 又通过了语义薄弱的改写。不扩建其他范围。
@@ -37,7 +39,7 @@
 - **DP-3 - 计划中：** 从两个已验证消费者形成 Pack contract。
 - **DP-4 到 DP-9 - 计划中：** Explore／Create、Research、Play proof、只读 Project Room、受控 Execute、选择性产品化。
 
-DP-0.0 方向批准已完成。DP-0.1“产品与仓库真实性基线”是唯一当前实现里程碑。具体子里程碑、依赖、预算、验收和停止规则见[详细开发里程碑](DEVELOPMENT_MILESTONES.md)。
+DP-0.0 方向批准与 DP-0.1 仓库真实性均已完成。DP-0.2“工程可移植性基线”是唯一当前实现里程碑。具体子里程碑、依赖、预算、验收和停止规则见[详细开发里程碑](DEVELOPMENT_MILESTONES.md)。
 
 ## 保留的旧校正路径
 
@@ -45,7 +47,7 @@ DP-0.0 方向批准已完成。DP-0.1“产品与仓库真实性基线”是唯�
 
 1. **M2.11 收尾：** 逐项编辑、Artifact v3、不可变批准及有限 Verifier v2 供应商 Gate 已完成。Keep original 补齐零已接受 Finding 的结束路径，保留准确 v1、明确未验证并等待人工批准。更广 Review 机器仍冻结。
 2. **M2.12 产品对照 - 暂缓：** 保留 S1 和既有工具包，不扩建工具或自动跑 M3/R6。明确新的信息增益并获新预算后再返回；这不等于比较成功。
-3. **M2.13 Artifact-first 进入，当前：** 结构化 Plan、恢复、人工编辑、显式模型修改/复核现已实现。D-060不重生成保存Plan，已本地关闭Fable审阅格式边界。脚本化第2天意见能只改第2天，并保留原版、拒绝理由与剩余意见。下一步证明一份有据真实审阅，再进入修改/复核及人工采用；不扩展通用编辑器/配置或新评测平台。离线闭环不代表教学质量和比较成功。
+3. **M2.13 Artifact-first 进入，保留／未关闭：** 结构化 Plan、恢复、人工编辑、显式模型修改/复核现已实现。D-060不重生成保存Plan，已本地关闭Fable审阅格式边界。脚本化第2天意见能只改第2天，并保留原版、拒绝理由与剩余意见。DP-2 后续可证明一份有据真实审阅，再进入修改/复核及人工采用；不扩展通用编辑器/配置或新评测平台。离线闭环不代表教学质量和比较成功。
 4. **模型证据：** 在每次只改变一个变量的前提下，对比强单模型、有限多模型路径、较强独立 Artifact Builder 和分阶段 reasoning 设置。
 5. **体验阶段：** Artifact 路径通过后，显示阶段进度和已完成 Artifact 单元，不暴露流式传输 JSON。广泛视觉重设计不属于本次校正路径。
 

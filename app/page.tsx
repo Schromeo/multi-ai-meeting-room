@@ -2215,8 +2215,16 @@ export default function Home() {
             planArtifact: plan, planAmendmentAction: action, seats,
             connections: sessionConnectionPayload(seats, connectionById), meetingState: meetingStateRef.current, requestId: createRequestId() }),
         });
-        const result = await response.json();
-        if (result.usage) updateUsage((current) => mergeUsage(current, result.usage));
+        const result = (await response.json()) as {
+          artifact?: unknown;
+          error?: string;
+          usage?: UsageSummary;
+          usageUnknown?: boolean;
+        };
+        if (result.usage) {
+          const reportedUsage = result.usage;
+          updateUsage((current) => mergeUsage(current, reportedUsage));
+        }
         if (!response.ok) throw new Error(`${result.error ?? "The amendment failed."}${result.usageUnknown ? " Provider usage is unknown; check your provider account." : ""}`);
         const next = parsePlanArtifact(result.artifact, plan.request, plan.objective);
         if (!next || JSON.stringify({ ...next, amendment: undefined }) !== JSON.stringify({ ...plan, amendment: undefined }) ||

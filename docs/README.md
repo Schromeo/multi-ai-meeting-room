@@ -2,7 +2,9 @@
 
 These documents preserve project intent and prevent repeated work, scope drift, and unbounded agent behavior.
 
-Current execution entry: [Detailed Development Milestones](DEVELOPMENT_MILESTONES.md), DP-0.1 Product and Repository Truth Baseline. The [Plan Issue Register](PLAN_ISSUE_REGISTER.md) remains preserved evidence for DP-2; it is not the immediate build queue.
+Current execution entry: [Detailed Development Milestones](DEVELOPMENT_MILESTONES.md), DP-0.2 Engineering Portability Baseline. DP-0.1 is complete; DP-0.2 passes locally and awaits its first committed Windows/Ubuntu CI run. The [Plan Issue Register](PLAN_ISSUE_REGISTER.md) remains preserved evidence for DP-2; it is not the immediate build queue.
+
+Repository policy: this is a private, unlicensed pre-release build. Current source is identified by commit and active DP milestone; historical `v0.x` labels are development snapshots, not package releases. pnpm 11.19.0 and `pnpm-lock.yaml` are the only supported package-management path. Public deployments must not expose workspace-funded provider credentials before DP-0.6 verifies the required access and abuse controls.
 
 ## Read Order
 
