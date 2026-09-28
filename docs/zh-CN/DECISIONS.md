@@ -442,3 +442,11 @@ S1 009 暴露了下载取回失败和看似精确的通用估价。开放现有�
   不采原文，不还原历史失败。
 - **证据：** [P2 简报](correction-briefs/2026-09-27-p2-source-attempts.md)。
   D-069 解释后缀仍非 API，采集使用其内部诊断对象，不解析错误字符串。
+
+## D-071 单间会议诊断导出采用新的字段白名单
+
+- **状态：** 本地已接受；浏览器下载和远程 CI 未验收。
+- **日期：** 2026-09-27
+- **决定：** 从一间已保存普通 Decide 会议，用全新的明确字段投影生成确定性、版本化 JSON。保留 P2 回执生命周期、原时间、reported/unknown 用量及缺失证据，不重建回执。Turn Envelope 拒绝、流程中断、人工决定和尚未评估质量分开表示。
+- **边界：** 不导出目标、prompt、回答／transcript／memo 正文、凭据、配置模型字符串或任意错误文本。不直接序列化 MeetingRecord，不加入 Plan、Review、Observer、Solo、导入、SDK 或远程同步。P1/P1B/P2 已另行提交为 `4d16c9c`。
+- **原因：** 诊断产物应可检查，但不能把本地会议档案变成敏感 transcript 导出，也不能伪造计费／质量账本。[P3 证据](correction-briefs/2026-09-27-p3-one-room-diagnostic-export.md)。

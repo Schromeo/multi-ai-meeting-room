@@ -520,3 +520,11 @@ Durable product and architecture choices live here. New entries are append-only.
 - **Evidence:** [P2 brief](correction-briefs/2026-09-27-p2-source-attempts.md).
   D-069's explanatory suffix remains non-API; source capture uses its internal
   diagnostic object, not string parsing.
+
+## D-071 - One-Room Diagnostic Export Uses A Fresh Allowlist
+
+- **Status:** Accepted locally; browser download and remote CI unverified.
+- **Date:** 2026-09-27
+- **Decision:** export one saved ordinary Decide meeting as deterministic versioned JSON through a fresh explicit field projection. Preserve P2 receipt lifecycle, original timestamps, reported/unknown usage, and missing evidence without reconstructing receipts. Keep Turn Envelope rejection, workflow interruption, human decision and unevaluated quality as separate signals.
+- **Boundary:** omit objective, prompts, response/transcript/memo bodies, credentials, configured model strings and arbitrary error text. Do not reuse raw MeetingRecord serialization or add Plan, Review, Observer, Solo, import, SDK or remote sync. P1/P1B/P2 are separately committed at `4d16c9c`.
+- **Reason:** a reusable diagnostic must be inspectable without turning a local meeting archive into a sensitive transcript export or a fictional billing/quality ledger. [P3 evidence](correction-briefs/2026-09-27-p3-one-room-diagnostic-export.md).

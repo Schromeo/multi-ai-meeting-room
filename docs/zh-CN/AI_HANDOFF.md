@@ -1,5 +1,9 @@
 # AI 交接说明
 
+## 2026-09-27 — P3 单间诊断导出本地 Gate
+
+P1/P1B/P2 已单独提交为 `4d16c9c`。`lib/meeting-diagnostic-export.ts` 是唯一 v1 导出契约：对一间已保存普通 Decide 房间做纯白名单投影。历史列表提供单行下载；三份脱敏 fixture 与 75/75 测试验证确定性 JSON、隐私及不补造 P2 回执。不做 Plan／Review／Observer／Solo 导出或导入／SDK。浏览器点击／下载与远程 CI 尚未验收；未推送或部署。[P3 简报](correction-briefs/2026-09-27-p3-one-room-diagnostic-export.md)。
+
 ## 2026-09-27 — P2 源头证据本地验收完成
 
 普通 `runAgent` 会议调用现有严格的开始／终态回执，失败时保留已上报用量，

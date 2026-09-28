@@ -1,5 +1,9 @@
 # Roadmap
 
+## 2026-09-27 — P3 one-room diagnostic export locally validated
+
+P1/P1B/P2 are isolated in local commit `4d16c9c`; the bounded P3 export is locally implemented with 75/75 tests passing. Three sanitized examples and old-room missing-P2 behavior are checked. No generic import, Plan/Observer/Solo scope, live call, push, remote CI or deployment. Actual browser download remains an unverified UI gate. This cross-project diagnostic slice does not close MAMR DP-0.3. [P3 brief](correction-briefs/2026-09-27-p3-one-room-diagnostic-export.md).
+
 ## 2026-09-27 — P2 bounded source capture complete locally
 
 P1/P1B are followed by locally validated P2 ordinary-turn evidence. SledTrace's

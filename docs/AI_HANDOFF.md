@@ -1,5 +1,9 @@
 # AI Handoff
 
+## 2026-09-27 — P3 one-room diagnostic export local gate
+
+P1/P1B/P2 were committed separately at `4d16c9c`. `lib/meeting-diagnostic-export.ts` is the only v1 export contract: a pure allowlisted projection of one saved ordinary Decide record. History exposes one-row download; three sanitized fixtures and 75/75 tests validate deterministic JSON, privacy and no backfilled P2 receipts. No Plan/Review/Observer/Solo export or import/SDK. Browser click/download and remote CI remain unverified; no push or deployment. [P3 brief](correction-briefs/2026-09-27-p3-one-room-diagnostic-export.md).
+
 ## 2026-09-27 — P2 source evidence locally validated
 
 Ordinary `runAgent` meeting calls now emit strict started/terminal receipts, keep

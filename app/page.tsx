@@ -3,7 +3,7 @@
 import { FormEvent, useEffect, useMemo, useRef, useState } from "react";
 import { PlanView } from "./plan-view";
 import { SourceAttemptView } from "./source-attempt-view";
-import { appendSourceAttempt, type SourceAttempt } from "../lib/source-attempt";
+import { appendSourceAttempt, optionalSourceAttempts, type SourceAttempt } from "../lib/source-attempt";
 import { PlanAmendmentPanel } from "./plan-amendment";
 import { modelRevisedPlan, planDecisionReady, validPlanConcernSelection, preparePlanRecovery } from "../lib/plan-artifact";
 import { PlanDayEditor } from "./plan-day-editor";
@@ -37,6 +37,7 @@ import {
   upsertMeetingRecord,
 } from "../lib/meeting-record";
 import { createBrowserRoomStore, RoomStore } from "../lib/room-store";
+import { canExportOrdinaryMeeting, serializeMeetingDiagnosticExport } from "../lib/meeting-diagnostic-export";
 import { inferProviderFromApiKey } from "../lib/provider-key-detection";
 import {
   addChairFindingByChair,
@@ -596,7 +597,7 @@ export default function Home() {
       ...(reviewApprovedArtifact ? { reviewApprovedArtifact } : {}),
       stage: memo ? "decision" : "meeting",
       transcript,
-      sourceAttempts: sourceAttemptsRef.current,
+      ...optionalSourceAttempts(sourceAttemptsRef.current, meetingRecordsRef.current.find((item) => item.id === currentRoomId)),
       memo,
       decision,
       usage,
@@ -762,7 +763,7 @@ export default function Home() {
         : {}),
       stage: memoRef.current ? "decision" : "meeting",
       transcript: transcriptRef.current,
-      sourceAttempts: sourceAttemptsRef.current,
+      ...optionalSourceAttempts(sourceAttemptsRef.current, meetingRecordsRef.current.find((item) => item.id === roomId)),
       memo: memoRef.current,
       decision: decisionRef.current,
       usage: usageRef.current,
@@ -1109,7 +1110,7 @@ export default function Home() {
       ...(reviewApprovedArtifact ? { reviewApprovedArtifact } : {}),
       stage: memo ? "decision" : "meeting",
       transcript,
-      sourceAttempts: sourceAttemptsRef.current,
+      ...optionalSourceAttempts(sourceAttemptsRef.current, meetingRecordsRef.current.find((item) => item.id === currentRoomId)),
       memo,
       decision,
       usage,
@@ -1864,6 +1865,23 @@ export default function Home() {
     }
     updateProtocol(started.state);
     void runProtocol(started.state);
+  }
+
+  function downloadMeetingDiagnostic(roomId: string) {
+    const record = meetingRecordsRef.current.find((item) => item.id === roomId);
+    if (!record || !canExportOrdinaryMeeting(record)) return;
+    try {
+      const json = serializeMeetingDiagnosticExport(record);
+      const url = URL.createObjectURL(new Blob([json], { type: "application/json" }));
+      const anchor = document.createElement("a");
+      anchor.href = url;
+      anchor.download = `meeting-diagnostic-v1-${record.id.replace(/[^a-zA-Z0-9_-]/g, "_")}.json`;
+      anchor.click();
+      setTimeout(() => URL.revokeObjectURL(url), 1_000);
+      setHistoryError("");
+    } catch {
+      setHistoryError("This saved meeting could not be exported as diagnostics.");
+    }
   }
 
   function handleEvent(event: DiscussEvent) {
@@ -3567,6 +3585,7 @@ export default function Home() {
                       </span>
                     </button>
                     <div className="history-row-actions">
+                      {canExportOrdinaryMeeting(record) && <button type="button" onClick={() => downloadMeetingDiagnostic(record.id)}>Export diagnostics</button>}
                       {deletePending ? (
                         <>
                           <span>Delete this record?</span>
@@ -3583,7 +3602,7 @@ export default function Home() {
             </div>
             <footer className="history-footer">
               <strong>Credentials are excluded.</strong>
-              <span>API keys and session connections still clear on refresh. Account sync, export, and cloud recovery are not implemented yet.</span>
+              <span>Diagnostic JSON is available only for one saved ordinary Decide meeting. It excludes task text and credentials. Account sync and cloud recovery are not implemented.</span>
               {historyError ? <em>{historyError}</em> : null}
             </footer>
           </aside>

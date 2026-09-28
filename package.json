@@ -12,7 +12,7 @@
     "launch": "node scripts/start-meeting-room.mjs",
     "build": "node scripts/run-vinext.mjs build",
     "start": "node scripts/run-vinext.mjs start",
-    "test": "node --test tests/rendered-html.test.mjs tests/review-evaluation.test.mjs",
+    "test": "node --test tests/rendered-html.test.mjs tests/review-evaluation.test.mjs tests/meeting-diagnostic-export.test.mjs",
     "test:review-eval": "node --test tests/review-evaluation.test.mjs",
     "review:case": "node scripts/review-evaluation.mjs",
     "lint": "eslint . --ignore-pattern dist --ignore-pattern .next --ignore-pattern worker-configuration.d.ts",

@@ -1,5 +1,11 @@
 # Development Log
 
+## 2026-09-27 — P1/P1B/P2 closeout and one-room diagnostic export
+
+- Preserved and separately committed the existing P1/P1B/P2 work as `4d16c9c` after `pnpm.cmd check` passed 71/71 tests. No push or deployment.
+- Added a versioned, allowlisted JSON diagnostic export to each eligible saved ordinary Decide meeting. It projects persisted IDs, source receipts, workflow and task-outcome signals without objective, prompt, raw answer, memo, credential or arbitrary error text. Three sanitized offline examples cover completion, contract rejection/interruption and unresolved start.
+- Local check passes 75/75 tests, build, lint and types; deterministic, privacy and legacy-no-P2 cases pass. Actual browser download was not separately exercised. No paid call, import/SDK, remote CI or deployment. [P3 scope and evidence](correction-briefs/2026-09-27-p3-one-room-diagnostic-export.md).
+
 ## 2026-09-27 — P2 approved source-attempt capture
 
 - Owner approved the additive event/local-record boundary. Added strict metadata

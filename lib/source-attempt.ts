@@ -18,6 +18,9 @@ export type SourceAttempt = {
   outputTokenBasis: "provider_output" | "visible_output";
 };
 export const sourceAttemptLimit = 1024;
+export function optionalSourceAttempts(current: SourceAttempt[], previous?: { sourceAttempts?: SourceAttempt[] }) {
+  return current.length > 0 || previous?.sourceAttempts !== undefined ? { sourceAttempts: current } : {};
+}
 const codes = ["output_too_long", "invalid_json", "unsupported_fields", "invalid_type", "missing_field", "empty_string", "string_too_long", "invalid_enum", "too_many_items", "invalid_record", "state_changes_forbidden"];
 const keys = ["version", "captureVersion", "validatorVersion", "attemptId", "requestId", "turnId", "seatId", "provider", "configuredModel", "phase", "round", "outputLimit", "lifecycle", "startedAt", "endedAt", "elapsedMs", "callStatus", "providerFinish", "providerReason", "validation", "validationCode", "validationPath", "inputTokens", "outputTokens", "reasoningTokens", "outputTokenBasis"];
 const object = (v: unknown): v is Record<string, unknown> => !!v && typeof v === "object" && !Array.isArray(v);
