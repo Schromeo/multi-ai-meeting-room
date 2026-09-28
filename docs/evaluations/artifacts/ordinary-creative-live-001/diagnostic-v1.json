@@ -1,0 +1,765 @@
+{
+  "schemaVersion": 1,
+  "kind": "mamr-ordinary-meeting-diagnostic",
+  "room": {
+    "id": "meeting-04563acf-4945-4933-96ad-a2d500ae9428",
+    "createdAt": "2026-09-28T04:25:10.411Z",
+    "updatedAt": "2026-09-28T04:35:30.199Z"
+  },
+  "workflow": {
+    "stage": "decision",
+    "phase": "complete",
+    "status": "complete",
+    "round": 1,
+    "stopReason": null,
+    "updatedAt": "2026-09-28T04:35:30.195Z"
+  },
+  "taskResult": {
+    "memoPresent": true,
+    "humanDecision": "approved",
+    "qualityEvaluation": "not_evaluated"
+  },
+  "outcomeSignals": {
+    "turnEnvelopeRejectionObserved": true,
+    "meetingInterrupted": false,
+    "humanDecision": "approved",
+    "qualityEvaluation": "not_evaluated"
+  },
+  "turns": [
+    {
+      "id": "f26f4286-b14d-4442-8651-605ba4f0d108-1-seat-1-proposal",
+      "seatId": "seat-1",
+      "round": 1,
+      "phase": "proposal",
+      "status": "done",
+      "formatFailureObserved": false,
+      "reductionFailureObserved": false
+    },
+    {
+      "id": "f26f4286-b14d-4442-8651-605ba4f0d108-1-seat-2-proposal",
+      "seatId": "seat-2",
+      "round": 1,
+      "phase": "proposal",
+      "status": "error",
+      "formatFailureObserved": true,
+      "reductionFailureObserved": false
+    },
+    {
+      "id": "f26f4286-b14d-4442-8651-605ba4f0d108-1-seat-3-proposal",
+      "seatId": "seat-3",
+      "round": 1,
+      "phase": "proposal",
+      "status": "done",
+      "formatFailureObserved": false,
+      "reductionFailureObserved": false
+    },
+    {
+      "id": "164240fe-8a6f-49c2-866f-5a17842f9b10-1-seat-2-proposal",
+      "seatId": "seat-2",
+      "round": 1,
+      "phase": "proposal",
+      "status": "done",
+      "formatFailureObserved": false,
+      "reductionFailureObserved": false
+    },
+    {
+      "id": "0cf2022e-cfc6-451b-8a47-28c37ed07c3e-1-seat-1-review",
+      "seatId": "seat-1",
+      "round": 1,
+      "phase": "review",
+      "status": "done",
+      "formatFailureObserved": false,
+      "reductionFailureObserved": false
+    },
+    {
+      "id": "0cf2022e-cfc6-451b-8a47-28c37ed07c3e-1-seat-2-review",
+      "seatId": "seat-2",
+      "round": 1,
+      "phase": "review",
+      "status": "done",
+      "formatFailureObserved": false,
+      "reductionFailureObserved": false
+    },
+    {
+      "id": "0cf2022e-cfc6-451b-8a47-28c37ed07c3e-1-seat-3-review",
+      "seatId": "seat-3",
+      "round": 1,
+      "phase": "review",
+      "status": "error",
+      "formatFailureObserved": false,
+      "reductionFailureObserved": true
+    },
+    {
+      "id": "65852e63-a732-43b5-b551-7b56e00ea867-1-seat-3-review",
+      "seatId": "seat-3",
+      "round": 1,
+      "phase": "review",
+      "status": "done",
+      "formatFailureObserved": false,
+      "reductionFailureObserved": false
+    },
+    {
+      "id": "209486c5-906c-49d4-a516-4c628424f4fc-1-seat-1-synthesis",
+      "seatId": "seat-1",
+      "round": 1,
+      "phase": "synthesis",
+      "status": "done",
+      "formatFailureObserved": false,
+      "reductionFailureObserved": false
+    }
+  ],
+  "sourceEvidence": {
+    "state": "recorded",
+    "unresolvedAttemptIds": [],
+    "receipts": [
+      {
+        "version": 1,
+        "captureVersion": "mamr-turn-v1",
+        "validatorVersion": "turn-envelope/v1",
+        "attemptId": "3f9c44cd-7585-4acf-a21d-fb7cf5435895",
+        "requestId": "f26f4286-b14d-4442-8651-605ba4f0d108",
+        "turnId": "f26f4286-b14d-4442-8651-605ba4f0d108-1-seat-1-proposal",
+        "seatId": "seat-1",
+        "provider": "anthropic",
+        "phase": "proposal",
+        "round": 1,
+        "outputLimit": 12000,
+        "lifecycle": "started",
+        "startedAt": "2026-09-28T04:25:10.435Z",
+        "endedAt": null,
+        "elapsedMs": null,
+        "callStatus": "started",
+        "providerFinish": "unknown",
+        "providerReason": "unknown",
+        "validation": "not_run",
+        "validationCode": null,
+        "validationPath": null,
+        "inputTokens": {
+          "value": null,
+          "source": "unknown"
+        },
+        "outputTokens": {
+          "value": null,
+          "source": "unknown"
+        },
+        "reasoningTokens": {
+          "value": null,
+          "source": "unknown"
+        },
+        "outputTokenBasis": "provider_output"
+      },
+      {
+        "version": 1,
+        "captureVersion": "mamr-turn-v1",
+        "validatorVersion": "turn-envelope/v1",
+        "attemptId": "691495f5-f3ac-4736-9101-b5397d91395c",
+        "requestId": "f26f4286-b14d-4442-8651-605ba4f0d108",
+        "turnId": "f26f4286-b14d-4442-8651-605ba4f0d108-1-seat-2-proposal",
+        "seatId": "seat-2",
+        "provider": "anthropic",
+        "phase": "proposal",
+        "round": 1,
+        "outputLimit": 12000,
+        "lifecycle": "started",
+        "startedAt": "2026-09-28T04:25:10.436Z",
+        "endedAt": null,
+        "elapsedMs": null,
+        "callStatus": "started",
+        "providerFinish": "unknown",
+        "providerReason": "unknown",
+        "validation": "not_run",
+        "validationCode": null,
+        "validationPath": null,
+        "inputTokens": {
+          "value": null,
+          "source": "unknown"
+        },
+        "outputTokens": {
+          "value": null,
+          "source": "unknown"
+        },
+        "reasoningTokens": {
+          "value": null,
+          "source": "unknown"
+        },
+        "outputTokenBasis": "provider_output"
+      },
+      {
+        "version": 1,
+        "captureVersion": "mamr-turn-v1",
+        "validatorVersion": "turn-envelope/v1",
+        "attemptId": "5ab29891-a9a7-44b1-9893-a3c16f572699",
+        "requestId": "f26f4286-b14d-4442-8651-605ba4f0d108",
+        "turnId": "f26f4286-b14d-4442-8651-605ba4f0d108-1-seat-3-proposal",
+        "seatId": "seat-3",
+        "provider": "openai",
+        "phase": "proposal",
+        "round": 1,
+        "outputLimit": 12000,
+        "lifecycle": "started",
+        "startedAt": "2026-09-28T04:25:10.436Z",
+        "endedAt": null,
+        "elapsedMs": null,
+        "callStatus": "started",
+        "providerFinish": "unknown",
+        "providerReason": "unknown",
+        "validation": "not_run",
+        "validationCode": null,
+        "validationPath": null,
+        "inputTokens": {
+          "value": null,
+          "source": "unknown"
+        },
+        "outputTokens": {
+          "value": null,
+          "source": "unknown"
+        },
+        "reasoningTokens": {
+          "value": null,
+          "source": "unknown"
+        },
+        "outputTokenBasis": "provider_output"
+      },
+      {
+        "version": 1,
+        "captureVersion": "mamr-turn-v1",
+        "validatorVersion": "turn-envelope/v1",
+        "attemptId": "5ab29891-a9a7-44b1-9893-a3c16f572699",
+        "requestId": "f26f4286-b14d-4442-8651-605ba4f0d108",
+        "turnId": "f26f4286-b14d-4442-8651-605ba4f0d108-1-seat-3-proposal",
+        "seatId": "seat-3",
+        "provider": "openai",
+        "phase": "proposal",
+        "round": 1,
+        "outputLimit": 12000,
+        "lifecycle": "terminal",
+        "startedAt": "2026-09-28T04:25:10.436Z",
+        "endedAt": "2026-09-28T04:25:19.175Z",
+        "elapsedMs": 8739,
+        "callStatus": "returned",
+        "providerFinish": "completed",
+        "providerReason": "unknown",
+        "validation": "passed",
+        "validationCode": null,
+        "validationPath": null,
+        "inputTokens": {
+          "value": 573,
+          "source": "reported"
+        },
+        "outputTokens": {
+          "value": 650,
+          "source": "reported"
+        },
+        "reasoningTokens": {
+          "value": 0,
+          "source": "reported"
+        },
+        "outputTokenBasis": "provider_output"
+      },
+      {
+        "version": 1,
+        "captureVersion": "mamr-turn-v1",
+        "validatorVersion": "turn-envelope/v1",
+        "attemptId": "3f9c44cd-7585-4acf-a21d-fb7cf5435895",
+        "requestId": "f26f4286-b14d-4442-8651-605ba4f0d108",
+        "turnId": "f26f4286-b14d-4442-8651-605ba4f0d108-1-seat-1-proposal",
+        "seatId": "seat-1",
+        "provider": "anthropic",
+        "phase": "proposal",
+        "round": 1,
+        "outputLimit": 12000,
+        "lifecycle": "terminal",
+        "startedAt": "2026-09-28T04:25:10.435Z",
+        "endedAt": "2026-09-28T04:25:33.158Z",
+        "elapsedMs": 22723,
+        "callStatus": "returned",
+        "providerFinish": "completed",
+        "providerReason": "other",
+        "validation": "passed",
+        "validationCode": null,
+        "validationPath": null,
+        "inputTokens": {
+          "value": 678,
+          "source": "reported"
+        },
+        "outputTokens": {
+          "value": 1080,
+          "source": "reported"
+        },
+        "reasoningTokens": {
+          "value": null,
+          "source": "unknown"
+        },
+        "outputTokenBasis": "provider_output"
+      },
+      {
+        "version": 1,
+        "captureVersion": "mamr-turn-v1",
+        "validatorVersion": "turn-envelope/v1",
+        "attemptId": "691495f5-f3ac-4736-9101-b5397d91395c",
+        "requestId": "f26f4286-b14d-4442-8651-605ba4f0d108",
+        "turnId": "f26f4286-b14d-4442-8651-605ba4f0d108-1-seat-2-proposal",
+        "seatId": "seat-2",
+        "provider": "anthropic",
+        "phase": "proposal",
+        "round": 1,
+        "outputLimit": 12000,
+        "lifecycle": "terminal",
+        "startedAt": "2026-09-28T04:25:10.436Z",
+        "endedAt": "2026-09-28T04:26:04.451Z",
+        "elapsedMs": 54015,
+        "callStatus": "returned",
+        "providerFinish": "completed",
+        "providerReason": "other",
+        "validation": "rejected",
+        "validationCode": "invalid_json",
+        "validationPath": "$",
+        "inputTokens": {
+          "value": 938,
+          "source": "reported"
+        },
+        "outputTokens": {
+          "value": 2918,
+          "source": "reported"
+        },
+        "reasoningTokens": {
+          "value": null,
+          "source": "unknown"
+        },
+        "outputTokenBasis": "provider_output"
+      },
+      {
+        "version": 1,
+        "captureVersion": "mamr-turn-v1",
+        "validatorVersion": "turn-envelope/v1",
+        "attemptId": "c44eaea6-85af-48a2-8746-2c4cdd3c80a1",
+        "requestId": "164240fe-8a6f-49c2-866f-5a17842f9b10",
+        "turnId": "164240fe-8a6f-49c2-866f-5a17842f9b10-1-seat-2-proposal",
+        "seatId": "seat-2",
+        "provider": "anthropic",
+        "phase": "proposal",
+        "round": 1,
+        "outputLimit": 12000,
+        "lifecycle": "started",
+        "startedAt": "2026-09-28T04:27:44.618Z",
+        "endedAt": null,
+        "elapsedMs": null,
+        "callStatus": "started",
+        "providerFinish": "unknown",
+        "providerReason": "unknown",
+        "validation": "not_run",
+        "validationCode": null,
+        "validationPath": null,
+        "inputTokens": {
+          "value": null,
+          "source": "unknown"
+        },
+        "outputTokens": {
+          "value": null,
+          "source": "unknown"
+        },
+        "reasoningTokens": {
+          "value": null,
+          "source": "unknown"
+        },
+        "outputTokenBasis": "provider_output"
+      },
+      {
+        "version": 1,
+        "captureVersion": "mamr-turn-v1",
+        "validatorVersion": "turn-envelope/v1",
+        "attemptId": "c44eaea6-85af-48a2-8746-2c4cdd3c80a1",
+        "requestId": "164240fe-8a6f-49c2-866f-5a17842f9b10",
+        "turnId": "164240fe-8a6f-49c2-866f-5a17842f9b10-1-seat-2-proposal",
+        "seatId": "seat-2",
+        "provider": "anthropic",
+        "phase": "proposal",
+        "round": 1,
+        "outputLimit": 12000,
+        "lifecycle": "terminal",
+        "startedAt": "2026-09-28T04:27:44.618Z",
+        "endedAt": "2026-09-28T04:28:35.394Z",
+        "elapsedMs": 50776,
+        "callStatus": "returned",
+        "providerFinish": "completed",
+        "providerReason": "other",
+        "validation": "passed",
+        "validationCode": null,
+        "validationPath": null,
+        "inputTokens": {
+          "value": 938,
+          "source": "reported"
+        },
+        "outputTokens": {
+          "value": 2824,
+          "source": "reported"
+        },
+        "reasoningTokens": {
+          "value": null,
+          "source": "unknown"
+        },
+        "outputTokenBasis": "provider_output"
+      },
+      {
+        "version": 1,
+        "captureVersion": "mamr-turn-v1",
+        "validatorVersion": "turn-envelope/v1",
+        "attemptId": "f539a849-02a9-4bc5-83bf-e540f5760549",
+        "requestId": "0cf2022e-cfc6-451b-8a47-28c37ed07c3e",
+        "turnId": "0cf2022e-cfc6-451b-8a47-28c37ed07c3e-1-seat-1-review",
+        "seatId": "seat-1",
+        "provider": "anthropic",
+        "phase": "review",
+        "round": 1,
+        "outputLimit": 12000,
+        "lifecycle": "started",
+        "startedAt": "2026-09-28T04:29:11.586Z",
+        "endedAt": null,
+        "elapsedMs": null,
+        "callStatus": "started",
+        "providerFinish": "unknown",
+        "providerReason": "unknown",
+        "validation": "not_run",
+        "validationCode": null,
+        "validationPath": null,
+        "inputTokens": {
+          "value": null,
+          "source": "unknown"
+        },
+        "outputTokens": {
+          "value": null,
+          "source": "unknown"
+        },
+        "reasoningTokens": {
+          "value": null,
+          "source": "unknown"
+        },
+        "outputTokenBasis": "provider_output"
+      },
+      {
+        "version": 1,
+        "captureVersion": "mamr-turn-v1",
+        "validatorVersion": "turn-envelope/v1",
+        "attemptId": "f85e7a85-1b6b-473d-a4f4-f469453be0b0",
+        "requestId": "0cf2022e-cfc6-451b-8a47-28c37ed07c3e",
+        "turnId": "0cf2022e-cfc6-451b-8a47-28c37ed07c3e-1-seat-2-review",
+        "seatId": "seat-2",
+        "provider": "anthropic",
+        "phase": "review",
+        "round": 1,
+        "outputLimit": 12000,
+        "lifecycle": "started",
+        "startedAt": "2026-09-28T04:29:11.586Z",
+        "endedAt": null,
+        "elapsedMs": null,
+        "callStatus": "started",
+        "providerFinish": "unknown",
+        "providerReason": "unknown",
+        "validation": "not_run",
+        "validationCode": null,
+        "validationPath": null,
+        "inputTokens": {
+          "value": null,
+          "source": "unknown"
+        },
+        "outputTokens": {
+          "value": null,
+          "source": "unknown"
+        },
+        "reasoningTokens": {
+          "value": null,
+          "source": "unknown"
+        },
+        "outputTokenBasis": "provider_output"
+      },
+      {
+        "version": 1,
+        "captureVersion": "mamr-turn-v1",
+        "validatorVersion": "turn-envelope/v1",
+        "attemptId": "681c4b2e-94e8-434e-b839-c6d5e93de7ab",
+        "requestId": "0cf2022e-cfc6-451b-8a47-28c37ed07c3e",
+        "turnId": "0cf2022e-cfc6-451b-8a47-28c37ed07c3e-1-seat-3-review",
+        "seatId": "seat-3",
+        "provider": "openai",
+        "phase": "review",
+        "round": 1,
+        "outputLimit": 12000,
+        "lifecycle": "started",
+        "startedAt": "2026-09-28T04:29:11.586Z",
+        "endedAt": null,
+        "elapsedMs": null,
+        "callStatus": "started",
+        "providerFinish": "unknown",
+        "providerReason": "unknown",
+        "validation": "not_run",
+        "validationCode": null,
+        "validationPath": null,
+        "inputTokens": {
+          "value": null,
+          "source": "unknown"
+        },
+        "outputTokens": {
+          "value": null,
+          "source": "unknown"
+        },
+        "reasoningTokens": {
+          "value": null,
+          "source": "unknown"
+        },
+        "outputTokenBasis": "provider_output"
+      },
+      {
+        "version": 1,
+        "captureVersion": "mamr-turn-v1",
+        "validatorVersion": "turn-envelope/v1",
+        "attemptId": "681c4b2e-94e8-434e-b839-c6d5e93de7ab",
+        "requestId": "0cf2022e-cfc6-451b-8a47-28c37ed07c3e",
+        "turnId": "0cf2022e-cfc6-451b-8a47-28c37ed07c3e-1-seat-3-review",
+        "seatId": "seat-3",
+        "provider": "openai",
+        "phase": "review",
+        "round": 1,
+        "outputLimit": 12000,
+        "lifecycle": "terminal",
+        "startedAt": "2026-09-28T04:29:11.586Z",
+        "endedAt": "2026-09-28T04:29:17.713Z",
+        "elapsedMs": 6127,
+        "callStatus": "returned",
+        "providerFinish": "completed",
+        "providerReason": "unknown",
+        "validation": "passed",
+        "validationCode": null,
+        "validationPath": null,
+        "inputTokens": {
+          "value": 3688,
+          "source": "reported"
+        },
+        "outputTokens": {
+          "value": 682,
+          "source": "reported"
+        },
+        "reasoningTokens": {
+          "value": 0,
+          "source": "reported"
+        },
+        "outputTokenBasis": "provider_output"
+      },
+      {
+        "version": 1,
+        "captureVersion": "mamr-turn-v1",
+        "validatorVersion": "turn-envelope/v1",
+        "attemptId": "f539a849-02a9-4bc5-83bf-e540f5760549",
+        "requestId": "0cf2022e-cfc6-451b-8a47-28c37ed07c3e",
+        "turnId": "0cf2022e-cfc6-451b-8a47-28c37ed07c3e-1-seat-1-review",
+        "seatId": "seat-1",
+        "provider": "anthropic",
+        "phase": "review",
+        "round": 1,
+        "outputLimit": 12000,
+        "lifecycle": "terminal",
+        "startedAt": "2026-09-28T04:29:11.586Z",
+        "endedAt": "2026-09-28T04:29:30.855Z",
+        "elapsedMs": 19269,
+        "callStatus": "returned",
+        "providerFinish": "completed",
+        "providerReason": "other",
+        "validation": "passed",
+        "validationCode": null,
+        "validationPath": null,
+        "inputTokens": {
+          "value": 4566,
+          "source": "reported"
+        },
+        "outputTokens": {
+          "value": 979,
+          "source": "reported"
+        },
+        "reasoningTokens": {
+          "value": null,
+          "source": "unknown"
+        },
+        "outputTokenBasis": "provider_output"
+      },
+      {
+        "version": 1,
+        "captureVersion": "mamr-turn-v1",
+        "validatorVersion": "turn-envelope/v1",
+        "attemptId": "f85e7a85-1b6b-473d-a4f4-f469453be0b0",
+        "requestId": "0cf2022e-cfc6-451b-8a47-28c37ed07c3e",
+        "turnId": "0cf2022e-cfc6-451b-8a47-28c37ed07c3e-1-seat-2-review",
+        "seatId": "seat-2",
+        "provider": "anthropic",
+        "phase": "review",
+        "round": 1,
+        "outputLimit": 12000,
+        "lifecycle": "terminal",
+        "startedAt": "2026-09-28T04:29:11.586Z",
+        "endedAt": "2026-09-28T04:29:44.821Z",
+        "elapsedMs": 33235,
+        "callStatus": "returned",
+        "providerFinish": "completed",
+        "providerReason": "other",
+        "validation": "passed",
+        "validationCode": null,
+        "validationPath": null,
+        "inputTokens": {
+          "value": 4664,
+          "source": "reported"
+        },
+        "outputTokens": {
+          "value": 2061,
+          "source": "reported"
+        },
+        "reasoningTokens": {
+          "value": null,
+          "source": "unknown"
+        },
+        "outputTokenBasis": "provider_output"
+      },
+      {
+        "version": 1,
+        "captureVersion": "mamr-turn-v1",
+        "validatorVersion": "turn-envelope/v1",
+        "attemptId": "53542e55-741d-4acc-8475-5d1cd688acc5",
+        "requestId": "65852e63-a732-43b5-b551-7b56e00ea867",
+        "turnId": "65852e63-a732-43b5-b551-7b56e00ea867-1-seat-3-review",
+        "seatId": "seat-3",
+        "provider": "openai",
+        "phase": "review",
+        "round": 1,
+        "outputLimit": 12000,
+        "lifecycle": "started",
+        "startedAt": "2026-09-28T04:30:27.034Z",
+        "endedAt": null,
+        "elapsedMs": null,
+        "callStatus": "started",
+        "providerFinish": "unknown",
+        "providerReason": "unknown",
+        "validation": "not_run",
+        "validationCode": null,
+        "validationPath": null,
+        "inputTokens": {
+          "value": null,
+          "source": "unknown"
+        },
+        "outputTokens": {
+          "value": null,
+          "source": "unknown"
+        },
+        "reasoningTokens": {
+          "value": null,
+          "source": "unknown"
+        },
+        "outputTokenBasis": "provider_output"
+      },
+      {
+        "version": 1,
+        "captureVersion": "mamr-turn-v1",
+        "validatorVersion": "turn-envelope/v1",
+        "attemptId": "53542e55-741d-4acc-8475-5d1cd688acc5",
+        "requestId": "65852e63-a732-43b5-b551-7b56e00ea867",
+        "turnId": "65852e63-a732-43b5-b551-7b56e00ea867-1-seat-3-review",
+        "seatId": "seat-3",
+        "provider": "openai",
+        "phase": "review",
+        "round": 1,
+        "outputLimit": 12000,
+        "lifecycle": "terminal",
+        "startedAt": "2026-09-28T04:30:27.034Z",
+        "endedAt": "2026-09-28T04:30:36.752Z",
+        "elapsedMs": 9718,
+        "callStatus": "returned",
+        "providerFinish": "completed",
+        "providerReason": "unknown",
+        "validation": "passed",
+        "validationCode": null,
+        "validationPath": null,
+        "inputTokens": {
+          "value": 4196,
+          "source": "reported"
+        },
+        "outputTokens": {
+          "value": 682,
+          "source": "reported"
+        },
+        "reasoningTokens": {
+          "value": 0,
+          "source": "reported"
+        },
+        "outputTokenBasis": "provider_output"
+      },
+      {
+        "version": 1,
+        "captureVersion": "mamr-turn-v1",
+        "validatorVersion": "turn-envelope/v1",
+        "attemptId": "58b10d9d-f6a2-4397-93ae-8a8c95d53ef3",
+        "requestId": "209486c5-906c-49d4-a516-4c628424f4fc",
+        "turnId": "209486c5-906c-49d4-a516-4c628424f4fc-1-seat-1-synthesis",
+        "seatId": "seat-1",
+        "provider": "anthropic",
+        "phase": "synthesis",
+        "round": 1,
+        "outputLimit": 16000,
+        "lifecycle": "started",
+        "startedAt": "2026-09-28T04:30:45.458Z",
+        "endedAt": null,
+        "elapsedMs": null,
+        "callStatus": "started",
+        "providerFinish": "unknown",
+        "providerReason": "unknown",
+        "validation": "not_run",
+        "validationCode": null,
+        "validationPath": null,
+        "inputTokens": {
+          "value": null,
+          "source": "unknown"
+        },
+        "outputTokens": {
+          "value": null,
+          "source": "unknown"
+        },
+        "reasoningTokens": {
+          "value": null,
+          "source": "unknown"
+        },
+        "outputTokenBasis": "provider_output"
+      },
+      {
+        "version": 1,
+        "captureVersion": "mamr-turn-v1",
+        "validatorVersion": "turn-envelope/v1",
+        "attemptId": "58b10d9d-f6a2-4397-93ae-8a8c95d53ef3",
+        "requestId": "209486c5-906c-49d4-a516-4c628424f4fc",
+        "turnId": "209486c5-906c-49d4-a516-4c628424f4fc-1-seat-1-synthesis",
+        "seatId": "seat-1",
+        "provider": "anthropic",
+        "phase": "synthesis",
+        "round": 1,
+        "outputLimit": 16000,
+        "lifecycle": "terminal",
+        "startedAt": "2026-09-28T04:30:45.458Z",
+        "endedAt": "2026-09-28T04:32:29.117Z",
+        "elapsedMs": 103659,
+        "callStatus": "returned",
+        "providerFinish": "completed",
+        "providerReason": "other",
+        "validation": "passed",
+        "validationCode": null,
+        "validationPath": null,
+        "inputTokens": {
+          "value": 7487,
+          "source": "reported"
+        },
+        "outputTokens": {
+          "value": 5720,
+          "source": "reported"
+        },
+        "reasoningTokens": {
+          "value": null,
+          "source": "unknown"
+        },
+        "outputTokenBasis": "provider_output"
+      }
+    ]
+  }
+}
