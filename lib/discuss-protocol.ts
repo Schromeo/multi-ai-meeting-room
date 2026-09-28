@@ -11,6 +11,7 @@ export const roleIds = [
   "technical",
   "skeptic",
   "synthesizer",
+  "custom",
 ] as const;
 export type RoleId = (typeof roleIds)[number];
 
@@ -21,6 +22,7 @@ export const roleLabels: Record<RoleId, string> = {
   technical: "Technical Lead",
   skeptic: "Skeptic",
   synthesizer: "Synthesizer",
+  custom: "Custom role",
 };
 
 export const roleBriefs: Record<RoleId, string> = {
@@ -30,6 +32,7 @@ export const roleBriefs: Record<RoleId, string> = {
   technical: "Test feasibility, dependencies, failure modes, and implementation sequence.",
   skeptic: "Look for counterexamples, unsupported certainty, and reasons the room may be wrong.",
   synthesizer: "Preserve agreement and dissent while producing a decision-ready memo.",
+  custom: "Follow the bounded responsibility and method supplied for this Seat.",
 };
 
 export type SeatRequest = {
@@ -38,6 +41,8 @@ export type SeatRequest = {
   provider: ProviderId;
   model: string;
   role: RoleId;
+  roleName?: string;
+  skill?: string;
 };
 
 export type ObserverRequest = {
@@ -97,6 +102,7 @@ export type RoundBrief = {
 };
 
 export type DiscussEvent =
+  | { type: "source.attempt"; receipt: import("./source-attempt").SourceAttempt }
   | { type: "plan.checkpoint"; artifact: import("./plan-artifact").PlanArtifact }
   | { type: "plan.work"; stage: "building" | "reviewing"; status: "started" | "done"; usage?: UsageSummary }
   | {

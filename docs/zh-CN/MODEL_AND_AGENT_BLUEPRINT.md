@@ -58,7 +58,7 @@ Task Pack 会为具体用户工作组合这些对象。Review、Decide / Plan、
 
 D-058规定：现有能力匹配范围内的`gpt-5`、`gpt-5-mini`、`gpt-5-nano`及日期快照，结构化Builder使用`low`；实际Plan Reviewer、修改、复核继续`medium`，普通讨论仍`minimal`。其他OpenAI ID及Anthropic/Gemini保留供应商默认，不保证各厂商推理强度一致或启用深度思考。请求档位是诊断证据，不代表已观察内部行为；不增加通用配置界面。
 
-输出上限：Builder16K、Reviewer6K、显式修改12K、复核6K。D-056取消这些Plan调用的应用硬时间截止及累计Plan时间截止，普通讨论仍90秒。保留人工取消、token/调用额度及不自动重试；供应商/传输/宿主限制是另一层。Builder恢复仍只补缺失天；用户启动前披露独立修改额度。这些是上限，不是消耗目标或可见输出保证。OpenAI推理共用输出预算，不完整Plan响应保留已报告用量；[GPT-5模型页](https://developers.openai.com/api/docs/models/gpt-5)列出minimal/low/medium/high。Anthropic/Gemini thinking控制随模型而变，本轮不推断。
+输出上限：Builder16K、Reviewer6K、显式修改12K、复核6K。D-056取消这些Plan调用的应用硬时间截止及累计Plan时间截止；D-073将普通会议参与者／总结调用设为 Lite／Medium／Uncapped 180／240／300 秒有限截止时间，并对齐房间时间额度，其他调用族仍为90秒。保留人工取消、token/调用额度及不自动重试；供应商/传输/宿主限制是另一层。Builder恢复仍只补缺失天；用户启动前披露独立修改额度。这些是上限，不是消耗目标或可见输出保证。OpenAI推理共用输出预算，不完整Plan响应保留已报告用量；[GPT-5模型页](https://developers.openai.com/api/docs/models/gpt-5)列出minimal/low/medium/high。Anthropic/Gemini thinking控制随模型而变，本轮不推断。
 
 Gemini 输出统计包含 `candidatesTokenCount` 和 `thoughtsTokenCount`，thought 部分不会被当成交付 JSON；见 [Gemini 思考用量](https://ai.google.dev/gemini-api/docs/generate-content/thinking#pricing)。应用仍使用既有厂商通用估价，不是权威模型账单。仅为明确质量问题选择更强模型；实现配置不等于授权付费测试。
 

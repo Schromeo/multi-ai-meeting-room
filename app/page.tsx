@@ -2,6 +2,9 @@
 
 import { FormEvent, useEffect, useMemo, useRef, useState } from "react";
 import { PlanView } from "./plan-view";
+import { SourceAttemptView } from "./source-attempt-view";
+import { MeetingMarkdown } from "./meeting-markdown";
+import { appendSourceAttempt, optionalSourceAttempts, type SourceAttempt } from "../lib/source-attempt";
 import { PlanAmendmentPanel } from "./plan-amendment";
 import { modelRevisedPlan, planDecisionReady, validPlanConcernSelection, preparePlanRecovery } from "../lib/plan-artifact";
 import { PlanDayEditor } from "./plan-day-editor";
@@ -35,6 +38,10 @@ import {
   upsertMeetingRecord,
 } from "../lib/meeting-record";
 import { createBrowserRoomStore, RoomStore } from "../lib/room-store";
+import { canExportOrdinaryMeeting, serializeMeetingDiagnosticExport } from "../lib/meeting-diagnostic-export";
+import { serializeMeetingMarkdown } from "../lib/meeting-markdown-export";
+import { defaultMeetingOutputLimits, meetingOutputRanges, type MeetingOutputLimits, type OutputProfile } from "../lib/meeting-output-profile";
+import { seatSetupIssue } from "../lib/seat-setup";
 import { inferProviderFromApiKey } from "../lib/provider-key-detection";
 import {
   addChairFindingByChair,
@@ -42,6 +49,7 @@ import {
   ChairDirective,
   ClaimDecision,
   createInitialMeetingState,
+  compactMeetingStateForNextRound,
   decideClaimByChair,
   MeetingState,
   reduceTurnEnvelope,
@@ -80,12 +88,14 @@ import {
   ReviewArtifactResult,
   ReviewEditCheckpoint,
   ReviewHumanRevision,
+  reviewArtifactLimits,
   selectReviewArtifactSeatIds,
   validateReviewFindingSource,
 } from "../lib/review-artifact";
 import ReplayReceipt from "./replay-receipt";
 
 type WorkspaceStage = "agenda" | "meeting" | "decision";
+type EntryMode = "chat" | "council" | "artifact" | "packs";
 type TranscriptMode = "focus" | "overview";
 type ProviderChoice = ProviderId | "auto";
 type ReviewResultView = "artifact" | "changes" | "verification" | "brief";
@@ -126,6 +136,8 @@ type SeatDraft = {
   connectionId: string;
   model: string;
   role: RoleId;
+  roleName: string;
+  skill: string;
 };
 
 type ObserverDraft = {
@@ -134,7 +146,7 @@ type ObserverDraft = {
   model: string;
 };
 
-const defaultObjective = "Review Artifact v1 against the supplied references and truth constraints";
+const defaultObjective = "";
 
 const providerUi: Record<
   ProviderId,
@@ -164,9 +176,9 @@ const providerUi: Record<
 };
 
 const initialSeatDrafts: SeatDraft[] = [
-  { id: "seat-1", enabled: true, connectionId: "", model: "", role: "strategist" },
-  { id: "seat-2", enabled: true, connectionId: "", model: "", role: "critic" },
-  { id: "seat-3", enabled: false, connectionId: "", model: "", role: "technical" },
+  { id: "seat-1", enabled: true, connectionId: "", model: "", role: "strategist", roleName: "", skill: "" },
+  { id: "seat-2", enabled: true, connectionId: "", model: "", role: "critic", roleName: "", skill: "" },
+  { id: "seat-3", enabled: false, connectionId: "", model: "", role: "technical", roleName: "", skill: "" },
 ];
 
 const milestones = [
@@ -184,12 +196,27 @@ const milestones = [
 export default function Home() {
   const [objective, setObjective] = useState(defaultObjective);
   const [taskMode, setTaskMode] = useState<TaskMode>("review");
+  const objectiveDraftsRef = useRef<Record<TaskMode, string>>({ review: defaultObjective, decide: "" });
+  const [entryMode, setEntryMode] = useState<EntryMode>("chat");
+  const [soloConnectionId, setSoloConnectionId] = useState("");
+  const [soloModel, setSoloModel] = useState("");
+  const [soloInput, setSoloInput] = useState("");
+  const [soloMessages, setSoloMessages] = useState<Array<{ role: "user" | "assistant"; content: string }>>([]);
+  const [soloRunning, setSoloRunning] = useState(false);
+  const soloRunningRef = useRef(false);
+  const [soloError, setSoloError] = useState("");
+  const [soloUsage, setSoloUsage] = useState<UsageSummary | null>(null);
   const [reviewArtifact, setReviewArtifact] = useState("");
   const [reviewReferences, setReviewReferences] = useState("");
   const [reviewTruthConstraints, setReviewTruthConstraints] = useState("");
   const [providers, setProviders] = useState<ProviderSummary[]>([]);
   const [sessionConnections, setSessionConnections] = useState<ConnectionRecord[]>([]);
   const [seatDrafts, setSeatDrafts] = useState<SeatDraft[]>(initialSeatDrafts);
+  const [outputOverrides, setOutputOverrides] = useState<Record<OutputProfile, MeetingOutputLimits>>({
+    lite: defaultMeetingOutputLimits("lite"),
+    medium: defaultMeetingOutputLimits("medium"),
+    unlimited: defaultMeetingOutputLimits("unlimited"),
+  });
   const [observerDraft, setObserverDraft] = useState<ObserverDraft>({
     enabled: false,
     connectionId: "",
@@ -268,6 +295,8 @@ export default function Home() {
   const [protocolState, setProtocolState] = useState<MeetingProtocolState | null>(null);
   const [controlMode, setControlMode] = useState<ControlMode>("checkpoints");
   const [maxRounds, setMaxRounds] = useState(2);
+  const [outputProfile, setOutputProfile] = useState<OutputProfile>("medium");
+  const selectedOutputLimits = outputOverrides[outputProfile];
   const [directiveKind, setDirectiveKind] = useState<ChairDirective["kind"]>("constraint");
   const [directiveTarget, setDirectiveTarget] = useState("all");
   const [directiveText, setDirectiveText] = useState("");
@@ -289,6 +318,8 @@ export default function Home() {
   const meetingStateRef = useRef<MeetingState | null>(null);
   const protocolStateRef = useRef<MeetingProtocolState | null>(null);
   const transcriptRef = useRef<TranscriptItem[]>([]);
+  const [sourceAttempts, setSourceAttempts] = useState<SourceAttempt[]>([]);
+  const sourceAttemptsRef = useRef<SourceAttempt[]>([]);
   const usageRef = useRef<UsageSummary>(emptyUsage);
   const memoRef = useRef("");
   const reviewEditCheckpointRef = useRef<ReviewEditCheckpoint | null>(null);
@@ -371,8 +402,6 @@ export default function Home() {
               };
             }),
           );
-        } else {
-          setConnectionOpen(true);
         }
       })
       .catch((configError) => setError(safeClientError(configError)))
@@ -417,8 +446,9 @@ export default function Home() {
   const seats = useMemo<SeatRequest[]>(
     () =>
       seatDrafts.flatMap((seat) => {
-        if (!seat.enabled || !seat.connectionId || !seat.model) return [];
+        if (!seat.enabled) return [];
         const connection = connectionById.get(seat.connectionId);
+        if (seatSetupIssue(seat, connection, roleIds)) return [];
         return connection
           ? [{
               id: seat.id,
@@ -426,6 +456,8 @@ export default function Home() {
               provider: connection.provider,
               model: seat.model,
               role: seat.role,
+              ...(seat.roleName.trim() ? { roleName: seat.roleName.trim() } : {}),
+              ...(seat.skill.trim() ? { skill: seat.skill.trim() } : {}),
             }]
           : [];
       }),
@@ -462,7 +494,8 @@ export default function Home() {
     (taskMode !== "review" || Boolean(reviewInput)) &&
     (taskMode !== "decide" || !planEnabled || Boolean(planRequest)) &&
     seats.length >= 2 &&
-    seats.length <= 3 &&
+    seats.length <= (taskMode === "decide" && !planEnabled ? 12 : 3) &&
+    seatDrafts.every((seat) => !seat.enabled || !seatSetupIssue(seat, connectionById.get(seat.connectionId), roleIds)) &&
     observerReady;
   const maximumProviderCalls = seats.length >= 2
     ? planRequest
@@ -473,10 +506,10 @@ export default function Home() {
     () => {
       const base = createDefaultMeetingBudget(Math.max(2, seats.length), maxRounds, observerDraft.enabled);
       return planRequest ? createPlanBudget() : taskMode === "review"
-        ? createReviewArtifactBudget(base, maxRounds)
-        : createDecisionPackageBudget(base, maxRounds);
+        ? createReviewArtifactBudget(base, maxRounds, outputProfile, Math.max(2, seats.length), observerDraft.enabled)
+        : createDecisionPackageBudget(base, maxRounds, outputProfile, Math.max(2, seats.length), observerDraft.enabled, selectedOutputLimits);
     },
-    [maxRounds, observerDraft.enabled, seats.length, taskMode, planRequest],
+    [maxRounds, observerDraft.enabled, outputProfile, selectedOutputLimits, seats.length, taskMode, planRequest],
   );
   const activeBudgetStatus = useMemo(
     () => protocolState ? evaluateMeetingBudget(protocolState, usage) : null,
@@ -484,6 +517,8 @@ export default function Home() {
   );
   const latestProcessReport = protocolState?.processReports.at(-1);
   const latestRoundBrief = protocolState?.roundBriefs.at(-1);
+  const displayRole = (role: RoleId | "host", seatId?: string) => role === "host" ? "Human Chair"
+    : currentParticipants.find((participant) => participant.id === seatId)?.roleName ?? roleLabels[role];
   const openDisputes = useMemo(
     () => meetingState?.disputes.filter((dispute) => dispute.status === "open") ?? [],
     [meetingState],
@@ -568,6 +603,7 @@ export default function Home() {
       id: currentRoomId,
       objective: objective.trim() || "Untitled meeting",
       taskMode,
+      ...(taskMode === "decide" && !planRequest ? { outputProfile, outputLimits: selectedOutputLimits } : {}),
       ...(taskMode === "review" && reviewInput ? { reviewInput } : {}),
       ...(reviewEditCheckpoint ? { reviewEditCheckpoint } : {}),
       ...(reviewResult ? { reviewResult } : {}),
@@ -579,6 +615,7 @@ export default function Home() {
       ...(reviewApprovedArtifact ? { reviewApprovedArtifact } : {}),
       stage: memo ? "decision" : "meeting",
       transcript,
+      ...optionalSourceAttempts(sourceAttemptsRef.current, meetingRecordsRef.current.find((item) => item.id === currentRoomId)),
       memo,
       decision,
       usage,
@@ -620,6 +657,8 @@ export default function Home() {
     memo,
     meetingState,
     objective,
+    outputProfile,
+    selectedOutputLimits,
     protocolState,
     reviewInput,
     reviewEditCheckpoint,
@@ -633,8 +672,14 @@ export default function Home() {
     planSaving,
     taskMode,
     transcript,
+    sourceAttempts,
     usage,
   ]);
+
+  function updateSourceAttempts(next: SourceAttempt[]) {
+    sourceAttemptsRef.current = next;
+    setSourceAttempts(next);
+  }
 
   function updateTranscript(
     update: TranscriptItem[] | ((current: TranscriptItem[]) => TranscriptItem[]),
@@ -721,6 +766,7 @@ export default function Home() {
       id: roomId,
       objective: objective.trim() || "Untitled meeting",
       taskMode,
+      ...(taskMode === "decide" && !planRequest ? { outputProfile, outputLimits: selectedOutputLimits } : {}),
       ...(taskMode === "review" && reviewInput ? { reviewInput } : {}),
       ...(reviewEditCheckpointRef.current
         ? { reviewEditCheckpoint: reviewEditCheckpointRef.current }
@@ -738,6 +784,7 @@ export default function Home() {
         : {}),
       stage: memoRef.current ? "decision" : "meeting",
       transcript: transcriptRef.current,
+      ...optionalSourceAttempts(sourceAttemptsRef.current, meetingRecordsRef.current.find((item) => item.id === roomId)),
       memo: memoRef.current,
       decision: decisionRef.current,
       usage: usageRef.current,
@@ -1055,24 +1102,27 @@ export default function Home() {
     const store = roomStoreRef.current;
     if (!store) {
       setHistoryError("The local meeting database is unavailable.");
-      return;
+      return false;
     }
     try {
       await store.putRoom(record);
       setHistoryError("");
+      return true;
     } catch {
       setHistoryError("This browser could not update meeting history.");
+      return false;
     }
   }
 
   async function saveCurrentMeetingNow() {
     if (planSavingRef.current) return;
     if (!historyReady || !currentRoomId || iteration === 0 || transcript.length === 0) return;
-    await persistMeetingRecord({
+    return persistMeetingRecord({
       version: 1,
       id: currentRoomId,
       objective: objective.trim() || "Untitled meeting",
       taskMode,
+      ...(taskMode === "decide" && !planRequest ? { outputProfile, outputLimits: selectedOutputLimits } : {}),
       ...(taskMode === "review" && reviewInput ? { reviewInput } : {}),
       ...(reviewEditCheckpoint ? { reviewEditCheckpoint } : {}),
       ...(reviewResult ? { reviewResult } : {}),
@@ -1084,6 +1134,7 @@ export default function Home() {
       ...(reviewApprovedArtifact ? { reviewApprovedArtifact } : {}),
       stage: memo ? "decision" : "meeting",
       transcript,
+      ...optionalSourceAttempts(sourceAttemptsRef.current, meetingRecordsRef.current.find((item) => item.id === currentRoomId)),
       memo,
       decision,
       usage,
@@ -1109,9 +1160,18 @@ export default function Home() {
     setCurrentRoomCreatedAt(record.createdAt);
     currentRoomCreatedAtRef.current = record.createdAt;
     updateParticipants(record.participants);
+    setSeatDrafts(record.participants.map((participant, index) => {
+      const connection = connections.find((item) => item.provider === participant.provider && item.models.some((model) => model.id === participant.model) && item.name === participant.providerName)
+        ?? connections.find((item) => item.provider === participant.provider && item.models.some((model) => model.id === participant.model));
+      return { id: participant.id ?? `seat-${index + 1}`, enabled: true, connectionId: connection?.id ?? "", model: participant.model, role: participant.role, roleName: participant.roleName ?? "", skill: participant.skill ?? "" };
+    }));
     updateObserver(record.observer ?? null);
+    objectiveDraftsRef.current = { review: "", decide: "", [record.taskMode]: record.objective };
     setObjective(record.objective);
     setTaskMode(record.taskMode);
+    if (record.outputProfile) setOutputProfile(record.outputProfile);
+    if (record.outputProfile && record.outputLimits) setOutputOverrides((current) => ({ ...current, [record.outputProfile!]: record.outputLimits! }));
+    setEntryMode(record.taskMode === "review" ? "artifact" : "council");
     setPlanEnabled(Boolean(record.planRequest));
     if (record.planRequest) setPlanSettings(record.planRequest);
     updatePlan(record.planArtifact ?? null);
@@ -1128,6 +1188,7 @@ export default function Home() {
     updateReviewHumanRevision(record.reviewHumanRevision ?? null);
     updateReviewApprovedArtifact(record.reviewApprovedArtifact ?? null);
     updateTranscript(record.transcript);
+    updateSourceAttempts(record.sourceAttempts ?? []);
     updateMemo(record.memo);
     updateDecision(record.decision);
     updateUsage(record.usage);
@@ -1137,8 +1198,8 @@ export default function Home() {
     const rawProtocol = record.protocolState ?? legacyProtocolState(record);
     const restoredProtocol = rawProtocol
       ? record.planRequest ? rawProtocol : record.taskMode === "review"
-        ? ensureReviewArtifactBudget(rawProtocol, record.participants.length)
-        : ensureDecisionPackageBudget(rawProtocol, record.participants.length, record.transcript)
+        ? ensureReviewArtifactBudget(rawProtocol, record.participants.length, outputProfile)
+        : ensureDecisionPackageBudget(rawProtocol, record.participants.length, record.transcript, record.outputProfile ?? outputProfile, record.outputLimits)
       : rawProtocol;
     updateProtocol(restoredProtocol);
     setControlMode(restoredProtocol?.controlMode ?? "checkpoints");
@@ -1190,8 +1251,10 @@ export default function Home() {
     currentRoomCreatedAtRef.current = now;
     updateParticipants([]);
     updateObserver(null);
+    objectiveDraftsRef.current = { review: "", decide: "" };
     setObjective("");
     setTaskMode("review");
+    setEntryMode("chat");
     setPlanEnabled(false);
     updatePlan(null);
     updatePlanApproval(null);
@@ -1205,6 +1268,7 @@ export default function Home() {
     updateReviewApprovedArtifact(null);
     setReviewWork(null);
     updateTranscript([]);
+    updateSourceAttempts([]);
     updateMemo("");
     updateUsage(emptyUsage);
     updateDecision("waiting");
@@ -1256,10 +1320,13 @@ export default function Home() {
     const participants = seats.map((seat) => {
       const connection = connectionById.get(seat.connectionId);
       return {
+        id: seat.id,
         provider: seat.provider,
         providerName: connection?.name ?? providerUi[seat.provider].label,
         model: seat.model,
         role: seat.role,
+        ...(seat.roleName ? { roleName: seat.roleName } : {}),
+        ...(seat.skill ? { skill: seat.skill } : {}),
       };
     });
     const observerSnapshot = observerRequest
@@ -1281,6 +1348,7 @@ export default function Home() {
       status: "done",
     }];
     updateTranscript(openingTranscript);
+    updateSourceAttempts([]);
     updatePlan(null);
     updatePlanApproval(null);
     updateMemo("");
@@ -1360,6 +1428,8 @@ export default function Home() {
         iteration: nextState.round,
         priorMemo: memoRef.current,
         meetingState: canonicalState,
+        outputProfile,
+        ...(taskMode === "decide" && !planRequest ? { outputLimits: selectedOutputLimits } : {}),
         protocolPhase: "observer",
         seatIds: [],
         processReport: report,
@@ -1421,8 +1491,8 @@ export default function Home() {
     setError("");
     setCopied(false);
     let nextState = planRequest ? startState : taskMode === "review"
-      ? ensureReviewArtifactBudget(startState, seats.length)
-      : ensureDecisionPackageBudget(startState, seats.length, transcriptRef.current);
+      ? ensureReviewArtifactBudget(startState, seats.length, outputProfile)
+      : ensureDecisionPackageBudget(startState, seats.length, transcriptRef.current, outputProfile, selectedOutputLimits);
     let activeTransitionId = "";
     try {
       while (true) {
@@ -1499,6 +1569,8 @@ export default function Home() {
             iteration: nextState.round,
             priorMemo: memoRef.current,
             meetingState: meetingStateRef.current,
+            outputProfile,
+            ...(taskMode === "decide" && !planRequest ? { outputLimits: selectedOutputLimits } : {}),
             protocolPhase,
             seatIds: pendingSeatIds,
             contextTurns: protocolPhase === "targeted_debate"
@@ -1559,6 +1631,15 @@ export default function Home() {
           }
           if (roomEvent.type === "review.work.error" && !phaseBoundary.detail) {
             phaseBoundary.detail = `${roomEvent.stage === "editing" ? "Editor" : "Verifier"} stopped: ${roomEvent.message}`;
+          }
+          if (roomEvent.type === "source.attempt") {
+            try {
+              updateSourceAttempts(appendSourceAttempt(sourceAttemptsRef.current, roomEvent.receipt));
+              await flushProtocolRecord(nextState);
+            } catch {
+              setHistoryError("Source evidence could not be saved. Missing receipts remain unknown; the meeting is not retried.");
+            }
+            return;
           }
           handleEvent(roomEvent);
         });
@@ -1652,7 +1733,13 @@ export default function Home() {
           if (interrupted.ok) nextState = interrupted.state;
         }
         setError(safeClientError(meetingError));
-        setPhase("Interrupted at a recoverable boundary");
+        if (memoRef.current.trim()) {
+          updateDecision("pending");
+          setStage("decision");
+          setPhase("Round interrupted; the previous summary is preserved");
+        } else {
+          setPhase("Interrupted at a recoverable boundary");
+        }
       }
       updateProtocol(nextState);
       try {
@@ -1747,6 +1834,18 @@ export default function Home() {
       setError("Accept at least one Finding before building Artifact v2.");
       return;
     }
+    const continuingFromHumanGate = current.phase === "human_gate" && Boolean(memoRef.current.trim());
+    const compactedState = continuingFromHumanGate && meetingStateRef.current
+      ? compactMeetingStateForNextRound(
+          meetingStateRef.current,
+          memoRef.current,
+          `round-${current.round}-decision-context`,
+        )
+      : meetingStateRef.current;
+    if (compactedState) {
+      meetingStateRef.current = compactedState;
+      setMeetingState(compactedState);
+    }
     const continued = continueProtocol(current, seats.map((seat) => seat.id));
     if (!continued.ok) {
       setError(continued.error);
@@ -1758,7 +1857,7 @@ export default function Home() {
     setStage("meeting");
     setError("");
     try {
-      await flushProtocolRecord(continued.state, meetingStateRef.current, leaveOriginalResult
+      await flushProtocolRecord(continued.state, compactedState, leaveOriginalResult
         ? { reviewResult: undefined, memo: "", decision: "waiting", stage: "meeting" }
         : undefined);
     } catch (storageError) {
@@ -1804,7 +1903,65 @@ export default function Home() {
     void runProtocol(started.state);
   }
 
+  function addSeat() {
+    if (running || seatDrafts.length >= 12) return;
+    const id = `seat-${crypto.randomUUID()}`;
+    setSeatDrafts((current) => [...current, { id, enabled: false, connectionId: "", model: "", role: "custom", roleName: "", skill: "" }]);
+  }
+
+  function removeSeat(id: string) {
+    if (running || seatDrafts.length <= 2) return;
+    setSeatDrafts((current) => current.filter((seat) => seat.id !== id));
+  }
+
+  function downloadMeetingDiagnostic(roomId: string) {
+    const record = meetingRecordsRef.current.find((item) => item.id === roomId);
+    if (!record || !canExportOrdinaryMeeting(record)) return;
+    try {
+      const json = serializeMeetingDiagnosticExport(record);
+      const url = URL.createObjectURL(new Blob([json], { type: "application/json" }));
+      const anchor = document.createElement("a");
+      anchor.href = url;
+      anchor.download = `meeting-diagnostic-v1-${record.id.replace(/[^a-zA-Z0-9_-]/g, "_")}.json`;
+      anchor.click();
+      setTimeout(() => URL.revokeObjectURL(url), 1_000);
+      setHistoryError("");
+    } catch {
+      setHistoryError("This saved meeting could not be exported as diagnostics.");
+    }
+  }
+
+  async function downloadMeetingMarkdown(roomId: string) {
+    try {
+      if (roomId === currentRoomId && !await saveCurrentMeetingNow()) throw new Error("Could not save current room");
+      const record = meetingRecordsRef.current.find((item) => item.id === roomId);
+      if (!record) throw new Error("No saved room");
+      const store = roomStoreRef.current;
+      if (!store) throw new Error("No local store");
+      const events = await store.listHumanEvents(roomId);
+      const savedPlan = record.planApproval?.artifact ?? (record.planArtifact ? revisedPlan(record.planArtifact, record.planHumanRevision) : null);
+      const resultArtifact = savedPlan
+        ? planText(savedPlan, record.planHumanRevision?.days.map((day) => day.day) ?? [], record.planArtifact)
+        : record.reviewApprovedArtifact?.artifact ?? record.reviewHumanRevision?.artifactV3 ?? record.reviewResult?.artifactV2;
+      const markdown = serializeMeetingMarkdown(record, events, resultArtifact);
+      const url = URL.createObjectURL(new Blob(["\uFEFF", markdown], { type: "text/markdown;charset=utf-8" }));
+      const anchor = document.createElement("a");
+      anchor.href = url;
+      anchor.download = `meeting-record-${record.id.replace(/[^a-zA-Z0-9_-]/g, "_")}.md`;
+      anchor.click();
+      setTimeout(() => URL.revokeObjectURL(url), 1_000);
+      setHistoryError("");
+    } catch {
+      setHistoryError("The full meeting record could not be exported. Check local storage and try again.");
+    }
+  }
+
   function handleEvent(event: DiscussEvent) {
+    if (event.type === "source.attempt") {
+      try { updateSourceAttempts(appendSourceAttempt(sourceAttemptsRef.current, event.receipt)); }
+      catch { setHistoryError("Invalid or conflicting source evidence was not saved."); }
+      return;
+    }
     if (event.type === "plan.work") {
       setPlanWork(event.stage);
       if (event.usage) updateUsage((current) => mergeUsage(current, event.usage!));
@@ -2215,8 +2372,16 @@ export default function Home() {
             planArtifact: plan, planAmendmentAction: action, seats,
             connections: sessionConnectionPayload(seats, connectionById), meetingState: meetingStateRef.current, requestId: createRequestId() }),
         });
-        const result = await response.json();
-        if (result.usage) updateUsage((current) => mergeUsage(current, result.usage));
+        const result = (await response.json()) as {
+          artifact?: unknown;
+          error?: string;
+          usage?: UsageSummary;
+          usageUnknown?: boolean;
+        };
+        if (result.usage) {
+          const reportedUsage = result.usage;
+          updateUsage((current) => mergeUsage(current, reportedUsage));
+        }
         if (!response.ok) throw new Error(`${result.error ?? "The amendment failed."}${result.usageUnknown ? " Provider usage is unknown; check your provider account." : ""}`);
         const next = parsePlanArtifact(result.artifact, plan.request, plan.objective);
         if (!next || JSON.stringify({ ...next, amendment: undefined }) !== JSON.stringify({ ...plan, amendment: undefined }) ||
@@ -2330,6 +2495,7 @@ export default function Home() {
     updatePlan(null);
     updatePlanApproval(null);
     updateTranscript([]);
+    updateSourceAttempts([]);
     updateMemo("");
     updateReviewEditCheckpoint(null);
     updateReviewResult(null);
@@ -2400,6 +2566,59 @@ export default function Home() {
     }
   }
 
+  function updateObjectiveDraft(value: string) {
+    objectiveDraftsRef.current[taskMode] = value;
+    setObjective(value);
+  }
+
+  function switchTaskMode(next: TaskMode) {
+    if (running || next === taskMode) return;
+    objectiveDraftsRef.current[taskMode] = objective;
+    setTaskMode(next);
+    setObjective(objectiveDraftsRef.current[next]);
+  }
+
+  function selectEntry(next: EntryMode) {
+    if (running || soloRunning) return;
+    setEntryMode(next);
+    setStage("agenda");
+    if (next === "artifact") switchTaskMode("review");
+    if (next === "council") switchTaskMode("decide");
+  }
+
+  async function submitSolo(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    const connection = sessionConnections.find((item) => item.id === soloConnectionId && item.apiKey);
+    const model = soloModel || connection?.models[0]?.id;
+    const content = soloInput.trim();
+    if (!connection || !model || !content || soloRunningRef.current) return;
+    soloRunningRef.current = true;
+    const messages = [...soloMessages, { role: "user" as const, content }].slice(-12);
+    setSoloMessages(messages);
+    setSoloInput("");
+    setSoloError("");
+    setSoloRunning(true);
+    try {
+      const response = await fetch("/api/discuss", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ solo: { connectionId: connection.id, provider: connection.provider, model, messages }, connections: { [connection.id]: { provider: connection.provider, apiKey: connection.apiKey } }, outputProfile }),
+      });
+      const payload = await response.json() as { text?: string; error?: string; usage?: UsageSummary; incomplete?: boolean };
+      if (!response.ok || !payload.text) throw new Error(payload.error || "The Solo response was unavailable.");
+      setSoloMessages([...messages, { role: "assistant", content: payload.text }]);
+      setSoloUsage(payload.usage ?? null);
+      if (payload.incomplete) setSoloError("The provider stopped before the reply was complete.");
+    } catch (reason) {
+      setSoloMessages(soloMessages);
+      setSoloInput(content);
+      setSoloError(`${safeClientError(reason)} Usage may be unknown; no automatic retry was made.`);
+    } finally {
+      soloRunningRef.current = false;
+      setSoloRunning(false);
+    }
+  }
+
   async function saveReviewChangeEdit(changeId: string) {
     if (!reviewResult || !reviewInput || decision !== "pending") return;
     const edits = currentHumanReviewEdits();
@@ -2440,10 +2659,12 @@ export default function Home() {
     await persistReviewHumanRevision(created.revision);
   }
 
+  const visibleStage = connectionOpen ? "setup" : stage;
+
   return (
     <main className="meeting-app">
       <header className="app-header">
-        <button className="brand" type="button" onClick={() => !running && setStage("agenda")}>
+        <button className="brand" type="button" onClick={() => { if (!running) { setStage("agenda"); setEntryMode("chat"); } }}>
           <span className="brand-mark">M</span>
           <span>
             <strong>Meeting Room</strong>
@@ -2451,20 +2672,20 @@ export default function Home() {
           </span>
         </button>
 
-        <nav className="stage-nav" aria-label="Meeting stages">
-          <button type="button" className={readySeatCount >= 2 ? "complete" : "active"} onClick={() => openConnectionManager()}>
+        {entryMode !== "chat" && <nav className="stage-nav" aria-label="Meeting stages">
+          <button type="button" className={visibleStage === "setup" ? "active" : readySeatCount >= 2 ? "complete" : ""} aria-current={visibleStage === "setup" ? "step" : undefined} onClick={() => openConnectionManager()}>
             <span>1</span> Setup
           </button>
-          <button type="button" className={stage === "agenda" ? "active" : transcript.length ? "complete" : ""} onClick={() => !running && setStage("agenda")}>
+          <button type="button" className={visibleStage === "agenda" ? "active" : transcript.length ? "complete" : ""} aria-current={visibleStage === "agenda" ? "step" : undefined} onClick={() => { if (!running) { closeConnectionManager(); setStage("agenda"); } }}>
             <span>2</span> Agenda
           </button>
-          <button type="button" className={stage === "meeting" ? "active" : memo ? "complete" : ""} disabled={!transcript.length} onClick={() => setStage("meeting")}>
+          <button type="button" className={visibleStage === "meeting" ? "active" : memo ? "complete" : ""} aria-current={visibleStage === "meeting" ? "step" : undefined} disabled={!transcript.length} onClick={() => { closeConnectionManager(); setStage("meeting"); }}>
             <span>3</span> Meeting
           </button>
-          <button type="button" className={stage === "decision" ? "active" : decision === "approved" ? "complete" : ""} disabled={!memo} onClick={() => setStage("decision")}>
+          <button type="button" className={visibleStage === "decision" ? "active" : decision === "approved" ? "complete" : ""} aria-current={visibleStage === "decision" ? "step" : undefined} disabled={!memo} onClick={() => { closeConnectionManager(); setStage("decision"); }}>
             <span>4</span> Decision
           </button>
-        </nav>
+        </nav>}
 
         <div className="header-actions">
           <button className="quiet-button meeting-history-button" type="button" onClick={() => setHistoryOpen(true)}>
@@ -2480,15 +2701,37 @@ export default function Home() {
         </div>
       </header>
 
-      <section className="workspace-frame">
-        {stage === "agenda" ? (
+      <section className={`workspace-frame${connectionOpen ? " setup-hidden" : ""}`}>
+        {stage === "agenda" && <div className="entry-switcher" aria-label="Choose an entry">
+          <button type="button" className={entryMode === "chat" ? "active" : ""} onClick={() => selectEntry("chat")}>Chat <small>One model</small></button>
+          <button type="button" className={entryMode === "council" ? "active" : ""} onClick={() => selectEntry("council")}>Ask the Room <small>Two to twelve seats</small></button>
+          <button type="button" className={entryMode === "artifact" ? "active" : ""} onClick={() => selectEntry("artifact")}>Drop an Artifact <small>Review pack</small></button>
+          <button type="button" className={entryMode === "packs" ? "active" : ""} onClick={() => selectEntry("packs")}>Browse Packs <small>Current packs</small></button>
+        </div>}
+        {stage === "agenda" && entryMode === "chat" ? (
+          <section className="solo-workspace">
+            <div className="section-kicker">Solo chat</div>
+            <h1>Start with one model.</h1>
+            <p>Use a session Connection for an ordinary conversation. Nothing is sent until you press Send. This chat is held only in this page and is not saved in meeting history.</p>
+            {soloMessages.length > 0 && <div className="solo-messages" aria-live="polite">{soloMessages.map((message, index) => <article className={`solo-message ${message.role}`} key={index}><strong>{message.role === "user" ? "You" : "Assistant"}</strong><p>{message.content}</p></article>)}</div>}
+            <form onSubmit={submitSolo} className="solo-composer">
+              <label>Connection<select value={soloConnectionId} disabled={soloRunning} onChange={(event) => { setSoloConnectionId(event.target.value); setSoloModel(""); setSoloMessages([]); setSoloUsage(null); setSoloError(""); }}><option value="">Choose a session Connection</option>{sessionConnections.filter((item) => item.apiKey).map((item) => <option key={item.id} value={item.id}>{item.name} · {providerUi[item.provider].label}</option>)}</select></label>
+              <label>Model<select value={soloModel} disabled={soloRunning} onChange={(event) => setSoloModel(event.target.value)}><option value="">Default model</option>{sessionConnections.find((item) => item.id === soloConnectionId)?.models.map((model) => <option key={model.id} value={model.id}>{model.id}</option>)}</select></label>
+              <label>Your message<textarea value={soloInput} onChange={(event) => setSoloInput(event.target.value)} maxLength={4000} rows={4} placeholder="Ask anything, from everyday questions to a project idea..." /></label>
+              <div className="solo-actions"><button type="button" className="quiet-button" onClick={() => openConnectionManager()}>Manage Connections</button><button className="primary-button" type="submit" disabled={soloRunning || !soloInput.trim() || !soloConnectionId}>{soloRunning ? "Waiting..." : "Send"}</button></div>
+              {soloError && <p role="alert">{soloError}</p>}{soloUsage && <small>Last reply: {soloUsage.inputTokens} input + {soloUsage.outputTokens} output tokens; estimated ${soloUsage.estimatedUsd.toFixed(4)}.</small>}
+            </form>
+          </section>
+        ) : stage === "agenda" && entryMode === "packs" ? (
+          <section className="solo-workspace"><div className="section-kicker">Available packs</div><h1>Choose a deeper workflow.</h1><p>These packs currently use the existing two- or three-seat room. More packs are planned, not available yet.</p><div className="pack-actions"><button type="button" className="primary-button" onClick={() => selectEntry("artifact")}>Review an artifact</button><button type="button" className="quiet-button" onClick={() => selectEntry("council")}>Decide / Plan</button></div></section>
+        ) : stage === "agenda" ? (
           <form className="agenda-workspace" onSubmit={submitMeeting}>
             <section className="objective-panel">
               <div className="task-mode-heading">
                 <span className="section-kicker">Task pack</span>
                 <div className="segmented-control task-mode-control" aria-label="Task pack">
-                  <button type="button" className={taskMode === "review" ? "active" : ""} onClick={() => setTaskMode("review")} disabled={running}>Review</button>
-                  <button type="button" className={taskMode === "decide" ? "active" : ""} onClick={() => setTaskMode("decide")} disabled={running}>Decide / Plan</button>
+                  <button type="button" className={taskMode === "review" ? "active" : ""} onClick={() => switchTaskMode("review")} disabled={running}>Review</button>
+                  <button type="button" className={taskMode === "decide" ? "active" : ""} onClick={() => switchTaskMode("decide")} disabled={running}>Decide / Plan</button>
                 </div>
               </div>
               <div className="section-kicker">{taskMode === "review" ? "Review objective" : "Meeting objective"}</div>
@@ -2502,7 +2745,7 @@ export default function Home() {
                 className={`objective-input${taskMode === "review" ? " compact" : ""}`}
                 id="objective"
                 value={objective}
-                onChange={(event) => setObjective(event.target.value)}
+                onChange={(event) => updateObjectiveDraft(event.target.value)}
                 placeholder={taskMode === "review" ? "Define the review outcome and audience..." : "Define the decision and its constraints..."}
                 maxLength={4_000}
                 rows={taskMode === "review" ? 3 : 7}
@@ -2557,7 +2800,7 @@ export default function Home() {
               <div className="objective-footer">
                 <span>{objective.length}/4,000</span>
                 <span>Discuss only</span>
-                <span>{maxRounds} round{maxRounds === 1 ? "" : "s"} maximum</span>
+                <span>Up to {maxRounds} round{maxRounds === 1 ? "" : "s"}</span>
               </div>
               {readySeatCount < 2 && !configLoading ? (
                 <button className="connection-callout" type="button" onClick={() => openConnectionManager()}>
@@ -2571,90 +2814,29 @@ export default function Home() {
               <div className="panel-heading">
                 <div>
                   <span className="section-kicker">Room composition</span>
-                  <h2>{seats.length} seats ready</h2>
+                  <h2>{readySeatCount} of {seatDrafts.length} seats ready</h2>
                 </div>
-                <button type="button" className="text-button" onClick={() => openConnectionManager()}>
-                  Manage
-                </button>
+                <button type="button" className="text-button" onClick={() => openConnectionManager()}>Edit in Setup</button>
               </div>
 
-              <div className="seat-list">
+              <div className="seat-list seat-summary-list" role="region" aria-label="Seat composition summary" tabIndex={0}>
                 {seatDrafts.map((seat, index) => {
                   const connection = connectionById.get(seat.connectionId);
                   const ui = connection ? providerUi[connection.provider] : null;
+                  const setupIssue = seatSetupIssue(seat, connection, roleIds);
+                  const ready = seats.some((item) => item.id === seat.id);
                   return (
-                    <article className={`seat-row ${ui?.color ?? ""} ${seat.enabled ? "selected" : ""}`} key={seat.id}>
+                    <article className={`seat-row seat-summary ${ui?.color ?? ""} ${ready ? "selected" : ""}`} key={seat.id}>
                       <div className="seat-selector">
                         <span className="avatar">{ui?.initial ?? index + 1}</span>
                         <span className="seat-identity">
-                          <strong>Seat {index + 1}</strong>
-                          <small>{connection ? `${connection.name} / ${seat.model || "Choose model"}` : "Choose a reusable connection"}</small>
+                          <strong>{seat.roleName.trim() || roleLabels[seat.role] || "Choose role"} <span className="seat-number">· Seat {index + 1}</span></strong>
+                          <small>{connection ? `${connection.name} / ${seat.model || "Choose model"}` : "Choose a reusable connection"} · {roleLabels[seat.role] || "Choose role"}</small>
+                          {seat.skill.trim() ? <small title={seat.skill.trim()}>{seat.skill.trim()}</small> : null}
+                          {setupIssue ? <small title={setupIssue}>{setupIssue}</small> : null}
                         </span>
-                        <button
-                          className={`seat-check ${seat.enabled ? "checked" : ""}`}
-                          type="button"
-                          onClick={() => updateSeat(seat.id, { enabled: !seat.enabled })}
-                          aria-pressed={seat.enabled}
-                          disabled={running}
-                        >
-                          {seat.enabled ? "On" : "Off"}
-                        </button>
+                        {setupIssue ? <span className="seat-check not-setup" role="status">Not set up</span> : <button type="button" className={`seat-check ${seat.enabled ? "checked" : ""}`} onClick={() => updateSeat(seat.id, { enabled: !seat.enabled })} aria-label={`Turn Seat ${index + 1} ${seat.enabled ? "off" : "on"}`} aria-pressed={seat.enabled} disabled={running}>{seat.enabled ? "On" : "Off"}</button>}
                       </div>
-                      <div className="seat-fields">
-                        <div className="seat-field">
-                          <div className="field-label-row">
-                            <label htmlFor={`${seat.id}-connection`}>Connection</label>
-                            <button
-                              type="button"
-                              onClick={() => openConnectionManager(seat.id, connection?.id)}
-                              disabled={running}
-                            >
-                              Manage
-                            </button>
-                          </div>
-                          <select
-                            id={`${seat.id}-connection`}
-                            value={seat.connectionId}
-                            onChange={(event) => chooseSeatConnection(seat.id, event.target.value)}
-                            disabled={!seat.enabled || running}
-                          >
-                            <option value="">Choose connection</option>
-                            {connections.map((item) => (
-                              <option value={item.id} key={item.id}>
-                                {item.name} · {providerUi[item.provider].label}
-                              </option>
-                            ))}
-                            <option value="__add__">Add new connection…</option>
-                          </select>
-                        </div>
-                        <label>
-                          <span>Model</span>
-                          <select
-                            value={seat.model}
-                            onChange={(event) => updateSeat(seat.id, { model: event.target.value })}
-                            disabled={!seat.enabled || !connection || running}
-                          >
-                            {!connection ? <option value="">Choose connection first</option> : null}
-                            {connection && connection.models.length > 1 ? <option value="">Choose model</option> : null}
-                            {connection?.models.map((model) => (
-                              <option value={model.id} key={model.id}>{modelOptionLabel(model)}</option>
-                            ))}
-                          </select>
-                        </label>
-                        <label>
-                          <span>Role</span>
-                        <select
-                            value={seat.role}
-                            onChange={(event) => updateSeat(seat.id, { role: event.target.value as RoleId })}
-                            disabled={!seat.enabled || running}
-                        >
-                          {roleIds.map((role) => (
-                            <option value={role} key={role}>{roleLabels[role]}</option>
-                          ))}
-                        </select>
-                        </label>
-                      </div>
-                      <p>{roleBriefs[seat.role]}</p>
                     </article>
                   );
                 })}
@@ -2670,14 +2852,37 @@ export default function Home() {
                   </div>
                 </div>
                 <div>
-                  <span className="section-kicker">Maximum rounds</span>
+                  <span className="section-kicker">Round allowance</span>
                   <div className="segmented-control round-limit-control">
                     {[1, 2, 3].map((rounds) => (
                       <button type="button" disabled={Boolean(planRequest) && rounds !== 1} className={maxRounds === rounds ? "active" : ""} onClick={() => setMaxRounds(rounds)} key={rounds}>{rounds}</button>
                     ))}
                   </div>
+                  <small className="control-help">The Chair requests each extra round; this only sets the upper limit.</small>
                 </div>
+                <label>
+                  <span className="section-kicker">Output budget</span>
+                  <select value={outputProfile} onChange={(event) => setOutputProfile(event.target.value as OutputProfile)} disabled={running || iteration > 0}>
+                    <option value="lite">Lite</option>
+                    <option value="medium">Medium</option>
+                    <option value="unlimited">Extended</option>
+                  </select>
+                  <small>Per-call ceilings, not a guaranteed visible length or billing limit.</small>
+                </label>
               </section>
+
+              {taskMode === "decide" && !planEnabled ? <section className="output-sliders" aria-label="Output ceilings">
+                <label>
+                  <span>Each Seat turn <strong>{formatTokens(selectedOutputLimits.turnTokens)} tokens</strong></span>
+                  <input type="range" min={meetingOutputRanges[outputProfile].turn.min} max={meetingOutputRanges[outputProfile].turn.max} step={100} value={selectedOutputLimits.turnTokens} disabled={running || iteration > 0} onChange={(event) => setOutputOverrides((current) => ({ ...current, [outputProfile]: { ...current[outputProfile], turnTokens: Number(event.target.value) } }))} />
+                  <small>{formatTokens(meetingOutputRanges[outputProfile].turn.min)}–{formatTokens(meetingOutputRanges[outputProfile].turn.max)} selectable · Default {formatTokens(meetingOutputRanges[outputProfile].turn.default)}</small>
+                </label>
+                <label>
+                  <span>Final Memo <strong>{formatTokens(selectedOutputLimits.synthesisTokens)} tokens</strong></span>
+                  <input type="range" min={meetingOutputRanges[outputProfile].synthesis.min} max={meetingOutputRanges[outputProfile].synthesis.max} step={100} value={selectedOutputLimits.synthesisTokens} disabled={running || iteration > 0} onChange={(event) => setOutputOverrides((current) => ({ ...current, [outputProfile]: { ...current[outputProfile], synthesisTokens: Number(event.target.value) } }))} />
+                  <small>{formatTokens(meetingOutputRanges[outputProfile].synthesis.min)}–{formatTokens(meetingOutputRanges[outputProfile].synthesis.max)} selectable · Default {formatTokens(meetingOutputRanges[outputProfile].synthesis.default)}</small>
+                </label>
+              </section> : null}
 
               <section className={`observer-setup ${observerDraft.enabled ? "enabled" : ""}`} aria-label="Observer configuration">
                 <div className="observer-setup-heading">
@@ -2733,7 +2938,7 @@ export default function Home() {
 
               <div className="launch-zone">
                 <div>
-                  <strong>{seats.length >= 2 ? (taskMode === "review" ? "Review team is composed" : "Room is composed") : "Choose two or three seats"}</strong>
+                  <strong>{seats.length >= 2 ? (taskMode === "review" ? "Review team is composed" : "Room is composed") : `Choose two to ${taskMode === "decide" && !planEnabled ? 12 : 3} seats`}</strong>
                   <span>{maximumProviderCalls > 0
                     ? `${maximumProviderCalls} calls · ${formatTokens(setupBudget.maxOutputTokens)} output · ${setupBudget.maxModelTimeMs ? `${formatDuration(setupBudget.maxModelTimeMs)} model time max` : "No cumulative time cutoff"}`
                     : "Bounded by rounds and seats"}</span>
@@ -2764,6 +2969,8 @@ export default function Home() {
                   <button type="button" className={transcriptMode === "focus" ? "active" : ""} onClick={() => setTranscriptMode("focus")}>Focus</button>
                   <button type="button" className={transcriptMode === "overview" ? "active" : ""} onClick={() => { setTranscriptMode("overview"); setFollowLive(true); }}>Overview</button>
                 </div>
+                <SourceAttemptView receipts={sourceAttempts} />
+                {currentRoomId && transcript.length > 0 ? <button type="button" onClick={() => void downloadMeetingMarkdown(currentRoomId)} title="Includes agenda, speech and memo; keep this file private">Export full .md</button> : null}
               </div>
             </header>
 
@@ -2799,7 +3006,7 @@ export default function Home() {
                         </span>
                         <div>
                           <span className="section-kicker">{activeTranscriptItem.phase}</span>
-                          <h2>{activeTranscriptItem.role === "host" ? "Human Chair" : roleLabels[activeTranscriptItem.role]}</h2>
+                          <h2>{displayRole(activeTranscriptItem.role, activeTranscriptItem.seatId)}</h2>
                           <p>{activeTranscriptItem.providerName}{activeTranscriptItem.model ? ` / ${activeTranscriptItem.model}` : ""}</p>
                         </div>
                         <span className={`speaker-state ${activeTranscriptItem.status}`}>
@@ -2813,7 +3020,7 @@ export default function Home() {
                             <span className="turn-progress-mark" aria-hidden="true" />
                             <strong>{turnProgressLabel(activeTranscriptItem.progress)}</strong>
                           </div>
-                        ) : activeTranscriptItem.text}
+                        ) : <MeetingMarkdown text={activeTranscriptItem.text} />}
                       </div>
                       {activeTranscriptItem.usage ? (
                         <footer className="speaker-metrics">
@@ -2843,7 +3050,7 @@ export default function Home() {
                       >
                         <span className={`timeline-dot ${item.status}`} />
                         <span>
-                          <strong>{item.role === "host" ? "Agenda" : roleLabels[item.role]}</strong>
+                          <strong>{item.role === "host" ? "Agenda" : displayRole(item.role, item.seatId)}</strong>
                           <small>{item.providerName} / {item.phase} · {turnStatusLabel(item)}</small>
                         </span>
                       </button>
@@ -2865,11 +3072,11 @@ export default function Home() {
                 {transcript.map((item) => (
                   <article className={`overview-message ${item.provider}`} key={item.id}>
                     <header>
-                      <span>{item.role === "host" ? "Human Chair" : roleLabels[item.role]}</span>
+                      <span>{displayRole(item.role, item.seatId)}</span>
                       <small>{item.providerName} / {item.phase}</small>
                     </header>
                     {item.target ? <p className="reviewing">Reviews {item.target}</p> : null}
-                    <div>{item.status === "streaming" ? turnProgressLabel(item.progress) : item.text}</div>
+                    <div>{item.status === "streaming" ? turnProgressLabel(item.progress) : <MeetingMarkdown text={item.text} />}</div>
                   </article>
                 ))}
               </div>
@@ -3306,6 +3513,7 @@ export default function Home() {
               ) : <pre>{memo || "The room has not produced a decision memo."}</pre>}
               <footer>
                 <button type="button" onClick={() => { setTranscriptMode("overview"); setStage("meeting"); }}>Review transcript</button>
+                {currentRoomId && transcript.length > 0 ? <button type="button" onClick={() => void downloadMeetingMarkdown(currentRoomId)} title="Includes agenda, speech and memo; keep this file private">Export full .md</button> : null}
                 {planArtifact ? <button type="button" disabled={Boolean(editingPlanDay) || planSaving} onClick={async () => { try { await navigator.clipboard.writeText(planText(displayedPlan ?? planArtifact, planEditedDays, planArtifact)); setCopied(true); } catch { setError("Clipboard unavailable."); } }}>{copied ? "Copied" : "Copy full plan"}</button> : null}
                 {!planArtifact ? <button type="button" onClick={() => void (reviewResult ? copyReviewArtifact() : copyMemo())} disabled={!memo}>{copied ? "Copied" : reviewResult ? `Copy Artifact v${displayedReviewVersion}` : "Copy memo"}</button> : null}
               </footer>
@@ -3321,7 +3529,7 @@ export default function Home() {
                   : "Approve the artifact, reject it, or add a scoped direction before spending another bounded round."}</p>
                 <div className="decision-actions">
                   <button className="approve-button" type="button" onClick={() => void recordHumanDecision("approved")} disabled={running || decision !== "pending" || Boolean(editingReviewChangeId) || Boolean(editingPlanDay) || planSaving || Boolean(planArtifact && !planDecisionReady(planArtifact))}>{decision === "approved" ? (planArtifact ? "Plan approved" : reviewResult ? `Artifact v${displayedReviewVersion} approved` : "Memo approved") : (planArtifact ? "Approve plan" : reviewResult ? `Approve Artifact v${displayedReviewVersion}` : "Approve memo")}</button>
-                  <button type="button" onClick={() => void continueMeeting()} disabled={running || decision !== "pending" || !memo || !protocolState || protocolState.phase !== "human_gate" || protocolState.round >= protocolState.maxRounds || !roomCompositionMatches}>Request another round</button>
+                  <button type="button" onClick={() => void continueMeeting()} disabled={running || decision !== "pending" || !memo || !protocolState || (protocolState.phase !== "human_gate" && protocolState.status !== "interrupted") || protocolState.round >= protocolState.maxRounds || !roomCompositionMatches}>{protocolState?.status === "interrupted" ? "Retry interrupted round" : "Request another round"}</button>
                   <button className="reject-button" type="button" onClick={() => void recordHumanDecision("rejected")} disabled={running || decision !== "pending" || Boolean(editingPlanDay) || planSaving}>{decision === "rejected" ? (planArtifact ? "Plan rejected" : reviewResult ? "Artifact rejected" : "Memo rejected") : (planArtifact ? "Reject plan" : reviewResult ? `Reject Artifact v${displayedReviewVersion}` : "Reject memo")}</button>
                 </div>
                 {decision === "pending" && protocolState && protocolState.round < protocolState.maxRounds && !roomCompositionMatches ? (
@@ -3404,6 +3612,8 @@ export default function Home() {
                       </span>
                     </button>
                     <div className="history-row-actions">
+                      <button type="button" onClick={() => void downloadMeetingMarkdown(record.id)} title="Includes agenda, speech and memo; keep this file private">Export full .md</button>
+                      {canExportOrdinaryMeeting(record) && <button type="button" onClick={() => downloadMeetingDiagnostic(record.id)}>Export diagnostics</button>}
                       {deletePending ? (
                         <>
                           <span>Delete this record?</span>
@@ -3420,7 +3630,7 @@ export default function Home() {
             </div>
             <footer className="history-footer">
               <strong>Credentials are excluded.</strong>
-              <span>API keys and session connections still clear on refresh. Account sync, export, and cloud recovery are not implemented yet.</span>
+              <span>Diagnostic JSON is available only for one saved ordinary Decide meeting. It excludes task text and credentials. Account sync and cloud recovery are not implemented.</span>
               {historyError ? <em>{historyError}</em> : null}
             </footer>
           </aside>
@@ -3428,8 +3638,8 @@ export default function Home() {
       ) : null}
 
       {connectionOpen ? (
-        <div className="modal-backdrop" role="presentation">
-          <section className="connection-dialog" role="dialog" aria-modal="true" aria-labelledby="connections-title">
+        <div className="setup-page">
+          <section className="connection-dialog" aria-labelledby="connections-title">
             <header className="dialog-header">
               <div>
                 <span className="section-kicker">Setup / Connection library</span>
@@ -3649,9 +3859,31 @@ export default function Home() {
               </section>
               ) : null}
             </div>
+            <section className="setup-seat-editor" aria-label="Configure participant Seats">
+              <header><div><span className="section-kicker">Seat composition</span><h3>Configure up to {taskMode === "decide" && !planEnabled ? 12 : 3} Seats</h3></div><button type="button" className="quiet-button" onClick={addSeat} disabled={running || seatDrafts.length >= (taskMode === "decide" && !planEnabled ? 12 : 3)}>Add Seat</button></header>
+              <div className="setup-seat-grid">{seatDrafts.map((seat, index) => {
+                const connection = connectionById.get(seat.connectionId);
+                const setupIssue = seatSetupIssue(seat, connection, roleIds);
+                return <article key={seat.id}>
+                  <div className="setup-seat-heading"><strong>Seat {index + 1}</strong><div className="seat-actions">{setupIssue ? <span className="seat-check not-setup" role="status">Not set up</span> : <button type="button" className={`seat-check ${seat.enabled ? "checked" : ""}`} onClick={() => updateSeat(seat.id, { enabled: !seat.enabled })} aria-label={`Turn Seat ${index + 1} ${seat.enabled ? "off" : "on"}`} aria-pressed={seat.enabled} disabled={running}>{seat.enabled ? "On" : "Off"}</button>}<button type="button" className="text-button" disabled={running || seatDrafts.length <= 2} onClick={() => removeSeat(seat.id)}>Remove</button></div></div>
+                  {setupIssue ? <small className="seat-setup-note">{setupIssue}</small> : null}
+                  <label>Connection<select value={seat.connectionId} disabled={running} onChange={(event) => chooseSeatConnection(seat.id, event.target.value)}><option value="">Choose connection</option>{connections.map((item) => <option value={item.id} key={item.id}>{item.name}</option>)}</select></label>
+                  <label>Model<select value={seat.model} disabled={running || !connection} onChange={(event) => updateSeat(seat.id, { model: event.target.value })}><option value="">Choose model</option>{connection?.models.map((model) => <option value={model.id} key={model.id}>{modelOptionLabel(model)}</option>)}</select></label>
+                  <label>Role<select value={seat.role} disabled={running} onChange={(event) => updateSeat(seat.id, { role: event.target.value as RoleId })}>{roleIds.map((role) => <option value={role} key={role}>{roleLabels[role]}</option>)}</select></label>
+                  <label>Seat name<input value={seat.roleName} disabled={running} maxLength={60} onChange={(event) => updateSeat(seat.id, { roleName: event.target.value })} placeholder={roleLabels[seat.role]} /></label>
+                  <label>Skill / responsibility<textarea value={seat.skill} disabled={running} maxLength={500} rows={2} onChange={(event) => updateSeat(seat.id, { skill: event.target.value })} placeholder={roleBriefs[seat.role]} /></label>
+                </article>;
+              })}</div>
+            </section>
+            {taskMode === "decide" && !planEnabled ? <section className="setup-output-editor" aria-label="Configure ordinary Meeting output ceilings">
+              <div><span className="section-kicker">Output policy</span><h3>Seat turns and final Memo</h3><p>These are per-call token ceilings, not a minimum visible length or a provider bill.</p></div>
+              <label>Depth<select value={outputProfile} disabled={running || iteration > 0} onChange={(event) => setOutputProfile(event.target.value as OutputProfile)}><option value="lite">Lite</option><option value="medium">Medium</option><option value="unlimited">Extended</option></select></label>
+              <label>Each Seat turn · {formatTokens(selectedOutputLimits.turnTokens)} tokens<input type="range" min={meetingOutputRanges[outputProfile].turn.min} max={meetingOutputRanges[outputProfile].turn.max} step={100} value={selectedOutputLimits.turnTokens} disabled={running || iteration > 0} onChange={(event) => setOutputOverrides((current) => ({ ...current, [outputProfile]: { ...current[outputProfile], turnTokens: Number(event.target.value) } }))} /><small>{formatTokens(meetingOutputRanges[outputProfile].turn.min)}–{formatTokens(meetingOutputRanges[outputProfile].turn.max)} · default {formatTokens(meetingOutputRanges[outputProfile].turn.default)}</small></label>
+              <label>Final Memo · {formatTokens(selectedOutputLimits.synthesisTokens)} tokens<input type="range" min={meetingOutputRanges[outputProfile].synthesis.min} max={meetingOutputRanges[outputProfile].synthesis.max} step={100} value={selectedOutputLimits.synthesisTokens} disabled={running || iteration > 0} onChange={(event) => setOutputOverrides((current) => ({ ...current, [outputProfile]: { ...current[outputProfile], synthesisTokens: Number(event.target.value) } }))} /><small>{formatTokens(meetingOutputRanges[outputProfile].synthesis.min)}–{formatTokens(meetingOutputRanges[outputProfile].synthesis.max)} · default {formatTokens(meetingOutputRanges[outputProfile].synthesis.default)}</small></label>
+            </section> : null}
             {connectionError ? <p className="inline-error">{connectionError}</p> : null}
             <footer className="dialog-footer">
-              <span>{readySeatCount}/3 seats ready · keys clear on refresh</span>
+              <span>{readySeatCount}/{taskMode === "decide" && !planEnabled ? 12 : 3} seats ready · keys clear on refresh</span>
               <button className="primary-button" type="button" onClick={closeConnectionManager}>Done</button>
             </footer>
           </section>
@@ -3849,10 +4081,10 @@ function protocolContinueLabel(state: MeetingProtocolState) {
 function participantsMatchSeats(participants: ParticipantSnapshot[], seats: SeatRequest[]) {
   if (participants.length < 2 || participants.length !== seats.length) return false;
   const participantKeys = participants
-    .map((item) => `${item.provider}\u0000${item.model}\u0000${item.role}`)
+    .map((item) => `${item.provider}\u0000${item.model}\u0000${item.role}\u0000${item.roleName ?? ""}\u0000${item.skill ?? ""}`)
     .sort();
   const seatKeys = seats
-    .map((item) => `${item.provider}\u0000${item.model}\u0000${item.role}`)
+    .map((item) => `${item.provider}\u0000${item.model}\u0000${item.role}\u0000${item.roleName ?? ""}\u0000${item.skill ?? ""}`)
     .sort();
   return participantKeys.every((key, index) => key === seatKeys[index]);
 }
@@ -3979,27 +4211,55 @@ function reviewFindingSourceLabel(kind: ReviewFindingSourceKind) {
 function createReviewArtifactBudget(
   base: ReturnType<typeof createDefaultMeetingBudget>,
   maxRounds: number,
+  outputProfile: OutputProfile = "medium",
+  seatCount = 2,
+  observerEnabled = false,
 ) {
+  const limits = outputProfileLimits(outputProfile);
+  const rounds = Math.max(1, maxRounds);
+  const participants = Math.max(2, Math.min(3, seatCount));
+  const participantTurns = participants * 2 * rounds;
+  const observerTurns = observerEnabled ? rounds : 0;
   return {
     maxAgentTurns: base.maxAgentTurns + maxRounds * 2,
     maxInputTokens: base.maxInputTokens + maxRounds * 18_000,
-    maxOutputTokens: base.maxOutputTokens + maxRounds * 6_000,
-    maxModelTimeMs: base.maxModelTimeMs + maxRounds * 180_000,
+    maxOutputTokens: participantTurns * limits.turnTokens +
+      rounds * (reviewArtifactLimits.maxEditorOutputTokens + reviewArtifactLimits.maxVerifierOutputTokens) +
+      observerTurns * limits.observerTokens,
+    maxModelTimeMs: base.maxModelTimeMs + (participantTurns + rounds) * (limits.providerTimeoutMs - 90_000) + maxRounds * 180_000,
   };
 }
 
 function createDecisionPackageBudget(
   base: ReturnType<typeof createDefaultMeetingBudget>,
   maxRounds: number,
+  outputProfile: OutputProfile,
+  seatCount: number,
+  observerEnabled: boolean,
+  customLimits?: MeetingOutputLimits,
 ) {
+  const limits = { ...outputProfileLimits(outputProfile), ...(customLimits ?? {}) };
+  const rounds = Math.max(1, maxRounds);
+  const participants = Math.max(2, Math.min(12, seatCount));
+  const participantTurns = participants * 2 * rounds;
+  const observerTurns = observerEnabled ? rounds : 0;
   return {
     maxAgentTurns: base.maxAgentTurns + maxRounds,
     maxInputTokens: base.maxInputTokens + maxRounds * 6_000,
-    // The initial synthesis uses 4,800 tokens instead of the base 1,200,
-    // and one explicit synthesis recovery receives the same bounded cap.
-    maxOutputTokens: base.maxOutputTokens + maxRounds * 8_400,
-    maxModelTimeMs: base.maxModelTimeMs + maxRounds * 90_000,
+    maxOutputTokens: participantTurns * limits.turnTokens +
+      rounds * limits.synthesisTokens + observerTurns * limits.observerTokens,
+    maxModelTimeMs: base.maxModelTimeMs + (participantTurns + rounds) * (limits.providerTimeoutMs - 90_000) + maxRounds * 90_000,
   };
+}
+
+function outputProfileLimits(outputProfile: OutputProfile) {
+  if (outputProfile === "lite") {
+    return { turnTokens: 600, synthesisTokens: 2_400, observerTokens: 300, providerTimeoutMs: 180_000 };
+  }
+  if (outputProfile === "unlimited") {
+    return { turnTokens: 12_000, synthesisTokens: 16_000, observerTokens: 600, providerTimeoutMs: 300_000 };
+  }
+  return { turnTokens: 1_200, synthesisTokens: 4_800, observerTokens: 300, providerTimeoutMs: 240_000 };
 }
 
 function createPlanBudget() {
@@ -4011,10 +4271,13 @@ function createPlanBudget() {
   };
 }
 
-function ensureReviewArtifactBudget(state: MeetingProtocolState, seatCount: number) {
+function ensureReviewArtifactBudget(state: MeetingProtocolState, seatCount: number, outputProfile: OutputProfile) {
   const required = createReviewArtifactBudget(
     createDefaultMeetingBudget(seatCount, state.maxRounds, state.observerEnabled),
     state.maxRounds,
+    outputProfile,
+    seatCount,
+    state.observerEnabled,
   );
   return {
     ...state,
@@ -4031,10 +4294,16 @@ function ensureDecisionPackageBudget(
   state: MeetingProtocolState,
   seatCount: number,
   transcript: TranscriptItem[] = [],
+  outputProfile: OutputProfile = "medium",
+  customLimits?: MeetingOutputLimits,
 ) {
   const required = createDecisionPackageBudget(
     createDefaultMeetingBudget(seatCount, state.maxRounds, state.observerEnabled),
     state.maxRounds,
+    outputProfile,
+    seatCount,
+    state.observerEnabled,
+    customLimits,
   );
   const latestTransition = state.transitions.at(-1);
   const failedBeforeProviderStart = Boolean(

@@ -168,10 +168,10 @@ export type ClaimDecisionResult =
   | { ok: false; state: MeetingState; error: string };
 
 export const meetingStateCaps = {
-  claims: 12,
-  disputes: 8,
-  assumptions: 12,
-  openQuestions: 8,
+  claims: 48,
+  disputes: 48,
+  assumptions: 48,
+  openQuestions: 24,
   humanChoices: 12,
   chairDirectives: 8,
   renderedContextCharacters: 6_000,
@@ -210,26 +210,57 @@ export function createInitialMeetingState(
   };
 }
 
+// Diagnostics contain only application-owned paths and structural facts. Never
+// include rejected values, unknown property names or JSON parser exceptions.
+function turnFormatFailure(message: string, code: string, path: string, expected: string, value: unknown) {
+  const actual = value === undefined ? "missing"
+    : value === null ? "null"
+    : Array.isArray(value) ? `array(length=${value.length})`
+    : typeof value === "string" ? `string(length=${value.length},trimmed=${value.trim().length})`
+    : typeof value;
+  return { ok: false as const, error: `${message} [turn-envelope/v1 ${code} at ${path}; expected ${expected}; got ${actual}]`, diagnostic: { code, path } };
+}
+
+function turnStringFailure(message: string, path: string, value: unknown, maximum: number) {
+  const code = value === undefined ? "missing_field"
+    : typeof value !== "string" ? "invalid_type"
+    : value.trim().length === 0 ? "empty_string" : "string_too_long";
+  return turnFormatFailure(message, code, path, `nonblank string, max ${maximum} characters`, value);
+}
+
+function turnCollectionFailure<T>(
+  message: string, path: string, value: unknown, maximum: number, parser: (item: unknown) => T | null,
+) {
+  if (!Array.isArray(value)) return turnFormatFailure(message, "invalid_type", path, "array", value);
+  if (value.length > maximum) return turnFormatFailure(message, "too_many_items", path, `at most ${maximum} items`, value);
+  const index = value.findIndex((item) => !parser(item));
+  return turnFormatFailure(message, "invalid_record", `${path}[${index}]`, "valid record for this collection", value[index]);
+}
+
 export function parseTurnEnvelope(
   value: unknown,
   phase: TurnPhase,
-): { ok: true; value: TurnEnvelope } | { ok: false; error: string } {
+): { ok: true; value: TurnEnvelope } | { ok: false; error: string; diagnostic: { code: string; path: string } } {
   let candidate = value;
   if (typeof value === "string") {
-    if (value.length > 50_000) return { ok: false, error: "The turn output exceeds the format limit." };
+    if (value.length > 100_000) return turnFormatFailure("The turn output exceeds the format limit.", "output_too_long", "$", "at most 100000 characters", value);
     const serialized = unwrapWholeJsonFence(value);
     try {
       candidate = JSON.parse(serialized);
     } catch {
-      return { ok: false, error: "The turn output is not valid JSON." };
+      return turnFormatFailure("The turn output is not valid JSON.", "invalid_json", "$", "JSON object or a single JSON fence", value);
     }
   }
   if (!isRecord(candidate) || !hasOnlyKeys(candidate, ["statement", "card"])) {
-    return { ok: false, error: "The turn envelope must contain only statement and card." };
+    return turnFormatFailure("The turn envelope must contain only statement and card.", isRecord(candidate) ? "unsupported_fields" : "invalid_type", "$", "object with only statement and card", candidate);
   }
-  const statementLimit = phase === "synthesis" ? 24_000 : 4_000;
+  const statementLimit = phase === "synthesis" ? 64_000 : 16_000;
   if (!isBoundedString(candidate.statement, 1, statementLimit) || !isRecord(candidate.card)) {
-    return { ok: false, error: "The turn statement or card is invalid." };
+    const message = "The turn statement or card is invalid.";
+    if (!isBoundedString(candidate.statement, 1, statementLimit)) {
+      return turnStringFailure(message, "statement", candidate.statement, statementLimit);
+    }
+    return turnFormatFailure(message, candidate.card === undefined ? "missing_field" : "invalid_type", "card", "object", candidate.card);
   }
   const card = candidate.card;
   if (!hasOnlyKeys(card, [
@@ -242,10 +273,12 @@ export function parseTurnEnvelope(
     "recommendedAction",
     "confidence",
   ])) {
-    return { ok: false, error: "The turn card contains unsupported fields." };
+    return turnFormatFailure("The turn card contains unsupported fields.", "unsupported_fields", "card", "only the allowed card fields", card);
   }
   if (!isStance(card.stance) || !isBoundedString(card.thesis, 1, 600)) {
-    return { ok: false, error: "The turn stance or thesis is invalid." };
+    const message = "The turn stance or thesis is invalid.";
+    if (!isStance(card.stance)) return turnFormatFailure(message, card.stance === undefined ? "missing_field" : "invalid_enum", "card.stance", "propose/support/oppose/revise/no_new_information", card.stance);
+    return turnStringFailure(message, "card.thesis", card.thesis, 600);
   }
 
   const phaseLimits = phase === "proposal"
@@ -266,25 +299,32 @@ export function parseTurnEnvelope(
     : parseArray(card.objections ?? [], phaseLimits.objections, parseObjection);
   const confidence = parseConfidence(card.confidence);
   if (!newClaims || !claimUpdates || !objections || !confidence) {
-    return { ok: false, error: "The turn card exceeds its limits or contains invalid records." };
+    const message = "The turn card exceeds its limits or contains invalid records.";
+    if (!newClaims) return turnCollectionFailure(message, "card.newClaims", card.newClaims ?? [], phaseLimits.newClaims, parseNewClaim);
+    if (!claimUpdates) return turnCollectionFailure(message, "card.claimUpdates", card.claimUpdates ?? [], phaseLimits.claimUpdates, parseClaimUpdate);
+    if (!objections) return turnCollectionFailure(message, "card.objections", card.objections ?? [], phaseLimits.objections, parseObjection);
+    if (!isRecord(card.confidence)) return turnFormatFailure(message, card.confidence === undefined ? "missing_field" : "invalid_type", "card.confidence", "object", card.confidence);
+    if (!hasOnlyKeys(card.confidence, ["level", "reason"])) return turnFormatFailure(message, "unsupported_fields", "card.confidence", "only level and reason", card.confidence);
+    if (!isConfidenceLevel(card.confidence.level)) return turnFormatFailure(message, card.confidence.level === undefined ? "missing_field" : "invalid_enum", "card.confidence.level", "low/medium/high", card.confidence.level);
+    return turnStringFailure(message, "card.confidence.reason", card.confidence.reason, 400);
   }
   if (
     card.questionForChair !== undefined &&
     !isBoundedString(card.questionForChair, 1, 500)
   ) {
-    return { ok: false, error: "The Chair question is invalid." };
+    return turnStringFailure("The Chair question is invalid.", "card.questionForChair", card.questionForChair, 500);
   }
   if (
     card.recommendedAction !== undefined &&
     !isBoundedString(card.recommendedAction, 1, 600)
   ) {
-    return { ok: false, error: "The recommended action is invalid." };
+    return turnStringFailure("The recommended action is invalid.", "card.recommendedAction", card.recommendedAction, 600);
   }
   if (
     card.stance === "no_new_information" &&
     (newClaims.length > 0 || claimUpdates.length > 0 || objections.length > 0)
   ) {
-    return { ok: false, error: "A no-new-information turn cannot submit state changes." };
+    return turnFormatFailure("A no-new-information turn cannot submit state changes.", "state_changes_forbidden", "card", "empty state-change collections for no_new_information", card);
   }
 
   return {
@@ -710,6 +750,39 @@ export function renderMeetingStateContext(
     sources: item.sourceMessageIds,
   })), limit);
   return JSON.stringify(context);
+}
+
+export function compactMeetingStateForNextRound(
+  state: MeetingState,
+  summary: string,
+  sourceMessageId: string,
+): MeetingState {
+  const archivedRecordIds = [
+    ...state.archivedRecordIds,
+    ...state.claims.map((claim) => claim.id),
+    ...state.disputes.map((dispute) => dispute.id),
+    ...state.assumptions.map((assumption) => assumption.id),
+    ...state.openQuestions.map((question) => question.id),
+  ].slice(-200);
+  const compactedSummary = boundedText(summary.trim(), 480);
+  const summaryClaim: Claim = {
+    id: `round-summary-${state.round}-${state.version + 1}`,
+    text: compactedSummary || `Round ${state.round} completed; continue from the prior decision context.`,
+    status: "provisionally_supported",
+    assumptionLevel: "medium",
+    sourceMessageIds: [sourceMessageId],
+    supportingSeatIds: ["human-chair"],
+    opposingSeatIds: [],
+  };
+  return {
+    ...state,
+    version: state.version + 1,
+    claims: [summaryClaim],
+    disputes: [],
+    assumptions: [],
+    openQuestions: [],
+    archivedRecordIds,
+  };
 }
 
 export function parseMeetingState(value: unknown): MeetingState | null {

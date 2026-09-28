@@ -457,3 +457,116 @@ Durable product and architecture choices live here. New entries are append-only.
 - **Decision:** the product destination is one human-chaired Multi-AI workspace spanning ordinary conversation, Review, Explore, Create, Research, rule-bound Play, read-only Project Rooms, and later controlled Execute. The narrow recurring entry is **Ask the Room**: promote an existing answer, idea, choice, or artifact to one or two independently prompted Challengers, preserve consequential differences, and let the Human Chair stop, follow up, or enter a Task Pack. Review remains the first trust Pack, not the product boundary. Development alternates Habit and Trust evidence through one bounded build queue. Astrology, games, and coding-context ideas begin as time-boxed Labs; Codex and VS Code integration begins read-only before any execution authority.
 - **Sequencing:** [Detailed Development Milestones](DEVELOPMENT_MILESTONES.md) is canonical for forward priority: DP-0 product truth, DP-1 Quick Council, DP-2 Review evidence, DP-3 Pack contract, DP-4 Explore/Create, DP-5 Research, DP-6 Play proof, DP-7 read-only Project Room, DP-8 controlled Execute, and DP-9 selective productization. Historical `M0` through `M5` entries remain evidence and implementation status, not the forward build order when they conflict.
 - **Reason:** narrowing the audience to professional document review would discard the original value of independent model challenge in everyday, creative, entertaining, and project work. Attempting every scenario at once would create an unbounded platform. A narrow user action plus progressive interaction depth preserves the broad ambition while keeping each development slice testable, reversible, and evidence-gated.
+
+## D-065 - Repository Identity Uses Development Truth, Not Invented Release Claims
+
+- **Status:** Accepted
+- **Date:** 2026-09-19
+- **Decision:** the repository and private package are named `multi-ai-meeting-room`. Until the owner deliberately creates a tagged release, `package.json` uses `0.0.0-development`; current source is identified by Git commit, dirty state when present, and the active DP milestone. Historical v0.x labels remain development-snapshot names, not releases. pnpm 11.19.0 with `pnpm-lock.yaml` is the sole supported package-management path; the locked `esbuild`, `sharp`, `unrs-resolver`, and `workerd` install scripts are explicitly allowed. The repository is `UNLICENSED` with all rights reserved until the owner grants a separate license.
+- **Security boundary:** user BYOK remains current-page memory only. Workspace-managed provider credentials are local/private-evaluation inputs and must not be exposed by a public deployment before DP-0.6 implements and verifies authentication, request/call limits, rate limiting, and abuse controls.
+- **Reason:** starter metadata, dual lockfiles, placeholder build permissions, and stale working-tree/version prose made reproducibility and legal/security expectations ambiguous. A deliberately non-release version and restrictive license state are truthful without guessing owner intent; one pinned package path makes later portability failures attributable.
+
+## D-066 - One Pinned Check Contract Owns Local and CI Portability
+
+- **Status:** Accepted; local and Windows/Ubuntu CI verified
+- **Date:** 2026-09-19
+- **Decision:** `pnpm check` is the single ordered engineering contract: regenerate worker types from pinned Wrangler and `wrangler.jsonc`, build through a repository-owned cross-platform vinext launcher, run the complete offline test suite, lint handwritten source, and type-check without emission. GitHub Actions uses `pnpm/action-setup@v6` to install pinned pnpm 11.19.0, then runs frozen install and the same check on Node 22.13.0 across Windows and Ubuntu. The deterministic generated declaration is ignored; the inactive D1 binding remains an explicit optional augmentation rather than entering runtime configuration.
+- **Boundary:** generated declarations are not hand-edited, committed, or linted as handwritten code. They are recreated before every full check and immediately validated by TypeScript. No new package, dependency upgrade, provider call, deployment, D1 binding, or first-run interface work belongs to this decision.
+- **Reason:** separate platform commands allowed Windows shell syntax, CRLF assumptions, missing runtime declarations, and stale success claims to diverge. The first remote run exposed a bundled Corepack signature-key mismatch before installation on both OSes; the official pnpm installer repaired that runner-specific failure. Both jobs then passed on `97b865a` in [CI run 36076954748](https://github.com/Schromeo/multi-ai-meeting-room/actions/runs/36076954748).
+
+## D-067 - Next Rounds Compact Working State Without Rewriting History
+
+- **Status:** Accepted locally; broader round-quality evidence pending
+- **Date:** 2026-09-25
+- **Decision:** when the Chair requests another round after a Human Gate, preserve the full transcript and append-only history, but compact the prior Canonical State working set into one bounded round-summary Claim and archive the old Claim, Dispute, Assumption, and open-question IDs. The next round receives the prior memo and the compact summary rather than an exhausted working set. This is a working-context reduction, not deletion, approval, or factual verification of the summary.
+- **Reason:** a confirmed first-round direction should support a second task such as outline expansion without reusing every exploratory Claim. The fixed 12-Claim cap otherwise rejects legitimate next-round content even when the user has already chosen a direction.
+
+## D-068 - Unlimited Output Is A Detailed Delivery Profile, Not An Unbounded Provider Promise
+
+- **Status:** Accepted locally; live provider quality evidence pending
+- **Date:** 2026-09-25
+- **Decision:** the `unlimited` profile raises application output caps, aligns total room budgets, and adds task-shaped synthesis instructions for creative/planning work. It must preserve the user's language and produce an actionable expanded deliverable rather than only short options. Provider, transport, reasoning, content-filter, cost, and host limits remain authoritative; incomplete work preserves the prior memo and exposes explicit recovery.
+- **Reason:** larger token ceilings alone did not turn concise structured meeting turns into a usable novel outline, and an incomplete second-round provider stream left the user without a visible prior result or recovery path. Prompt responsibility and failure presentation must change with the user-facing depth.
+
+## D-069 - Safe Turn Validation Reasons In The Existing Error String
+
+- **Status:** Accepted locally; repository-wide check is not green.
+- **Date:** 2026-09-27
+- **Decision:** preserve parser acceptance and the old message prefix; append
+  versioned reason codes, application-owned paths and type/length facts. Reuse
+  the current format-error event and saved-record string instead of adding a
+  public schema. Never include rejected content, unknown keys or parser exceptions.
+- **Boundary:** first error only; collection diagnosis stops at item index.
+  No automatic repair, prompt change, native SledTrace capture or live call.
+- **Evidence:** [P1 validation](evaluations/2026-09-27-p1-turn-validation-diagnostics.md).
+  Diagnostic suffixes are explanatory text, not a structured API to parse.
+
+## D-070 - Approved Ordinary-Turn Source Evidence Is Additive And Local
+
+- **Status:** User approved; locally validated, not committed/deployed.
+- **Date:** 2026-09-27
+- **Decision:** add strict versioned started/terminal metadata at ordinary
+  runAgent calls, source.attempt transport events and optional local record
+  receipts. Preserve existing stores/version, old records, prompts, validation
+  decisions and usage totals. Separate application call outcome, provider finish
+  and Turn Envelope validation; never conflate them with task quality.
+- **Boundary:** nullable reported usage, fixed safe codes, monotonic duration,
+  append/dedup/conflict semantics and room deletion. Started is not a bill.
+  Browser loss can leave unknown terminal evidence. No Plan/Observer/Solo/Review
+  work coverage, SledTrace import, automatic repair or live calls.
+- **Reason:** failed calls and posthoc timestamps cannot support honest failure
+  localization. Explicit source receipts retain bounded facts without collecting
+  raw text or reconstructing historical failures.
+- **Evidence:** [P2 brief](correction-briefs/2026-09-27-p2-source-attempts.md).
+  D-069's explanatory suffix remains non-API; source capture uses its internal
+  diagnostic object, not string parsing.
+
+## D-071 - One-Room Diagnostic Export Uses A Fresh Allowlist
+
+- **Status:** Accepted locally; browser download and remote CI unverified.
+- **Date:** 2026-09-27
+- **Decision:** export one saved ordinary Decide meeting as deterministic versioned JSON through a fresh explicit field projection. Preserve P2 receipt lifecycle, original timestamps, reported/unknown usage, and missing evidence without reconstructing receipts. Keep Turn Envelope rejection, workflow interruption, human decision and unevaluated quality as separate signals.
+- **Boundary:** omit objective, prompts, response/transcript/memo bodies, credentials, configured model strings and arbitrary error text. Do not reuse raw MeetingRecord serialization or add Plan, Review, Observer, Solo, import, SDK or remote sync. P1/P1B/P2 are separately committed at `4d16c9c`.
+- **Reason:** a reusable diagnostic must be inspectable without turning a local meeting archive into a sensitive transcript export or a fictional billing/quality ledger. [P3 evidence](correction-briefs/2026-09-27-p3-one-room-diagnostic-export.md).
+
+## D-072 - Ordinary Meeting Speech Depth Follows The Selected Output Profile
+
+- **Status:** Accepted locally; live model quality unverified.
+- **Date:** 2026-09-27
+- **Decision:** Lite, Medium, and Uncapped direct the visible Proposal, cross-review, and named-Dispute statement depth in both ordinary Meeting execution paths. Medium keeps the prior concise targets; Uncapped permits developed but bounded working contributions. The separate Final Memo, Plan artifacts, Turn Envelope and Card validation, source policy, provider/room budgets, call count and retry boundary do not change.
+- **Reason:** varying only transport token caps left all participant speech under the same short prompt, making the user's depth selection ineffective at the point they were reading. This refines D-045's concise-working-turn policy without treating more prose as proof of better decisions. [Local gate](correction-briefs/2026-09-27-meeting-speech-output-profiles.md).
+
+## D-073 - Ordinary Meeting Deadlines Follow Output Profile
+
+- **Status:** Accepted locally; one owner-supplied live Anthropic synthesis completed after 103,659 ms, while the earlier `gpt-5-pro` case, broader host/provider behavior and billing remain unverified.
+- **Date:** 2026-09-27
+- **Decision:** ordinary Meeting participant and synthesis calls have finite application deadlines of 180 s for Lite, 240 s for Medium and 300 s for Uncapped, with matching room-time allowances. This supersedes D-056's ordinary-discussion 90 s clause only. Other call families remain at 90 s; Plan keeps no application deadline. Explicit Stop, output and turn limits, source validation and no automatic retry remain.
+- **Reason:** the owner's Proposal receipt ended at 90,002 ms with application `timeout` after the speech-depth change. A matching room allowance avoids admitting a slower call only to block its next phase. The receipt does not prove provider completion or billing. [Correction brief](correction-briefs/2026-09-27-ordinary-meeting-provider-timeout.md).
+
+## D-074 - Rich Meeting Markdown Is An Explicit, Separate Export
+
+- **Status:** Accepted locally; browser download and real-room replay unverified.
+- **Date:** 2026-09-27
+- **Decision:** render completed Meeting speech with safe GFM, and offer an explicitly requested one-room Markdown record containing the saved agenda, configured provider/model/role, transcript, recorded Chair actions, usage and result. This content-rich file is distinct from D-071's privacy-safe diagnostic JSON. Never export API credentials or arbitrary failed-call exception text; never invent old per-turn timestamps or absent human events.
+- **Reason:** the owner needs a readable, portable account of an actual meeting without flattening headings/tables or manually reconstructing intervention history, while the diagnostic export must remain safe to share for debugging. [Correction brief](correction-briefs/2026-09-27-readable-meeting-record.md).
+
+## D-075 - Ordinary Setup Has Composable Seats And Adjustable Per-Call Ceilings
+
+- **Status:** Accepted locally; live model calibration and saved-room browser replay unverified.
+- **Date:** 2026-09-27
+- **Decision:** make Setup a page; allow 2–12 ordinary Decide Seats with bounded custom display names and skill mandates. Lite, Medium and Extended each expose independent adjustable participant-turn and final-Memo token ceilings. Derive the room output allowance from Seat count, rounds and selected ceilings. Save the choice for new rooms; never infer it for old rooms. Review and Plan remain at their existing three-Seat and artifact-contract limits. Extend ordinary Turn Envelope and Canonical State bounds explicitly to support the larger room, without relaxing the JSON/human gates.
+- **Reason:** fixed three-Seat composition and fixed profile numbers prevent user-shaped rooms; an isolated per-Seat ceiling gives the owner control without prescribing a false Lite:Medium ratio. Ceilings do not promise visible prose, quality or billing. [Correction brief](correction-briefs/2026-09-27-configurable-ordinary-room-setup.md).
+
+## D-076 - Setup Owns Seat Editing; Agenda Uses A Bounded Summary
+
+- **Status:** Accepted locally; credentialed ready-state browser check remains open.
+- **Date:** 2026-09-27
+- **Decision:** keep Connection, Model, Role, name, Skill, Add and Remove edits in Setup. Agenda displays an internally scrollable summary capped at 360px/45dvh; On/Off participation is the sole Seat edit available in both Agenda and Setup, backed by the same `enabled` field. Moving from Setup to another stage closes it; the Setup step is green-complete only when at least two Seats are runnable, not merely because the page was visited.
+- **Reason:** twelve expanded Seat forms overwhelm the Agenda and duplicate Skill editing, but changing whether an already configured Seat participates is a useful in-room control. Stage navigation must distinguish a selected page from a valid completed configuration. [Correction brief](correction-briefs/2026-09-27-setup-seat-summary-and-completion.md).
+
+## D-077 - Seat Participation Requires Complete Setup
+
+- **Status:** Accepted locally; credentialed browser verification remains open.
+- **Date:** 2026-09-28
+- **Decision:** before exposing On/Off in either Agenda or Setup, require a configured Connection and (for session credentials) API key, a model offered by that Connection, a valid Role, and the required bounded Custom name and Skill. Show `Not set up` with a Setup hint while incomplete; preserve the draft and derive the runnable Seat set and launch eligibility from the same verdict. New Seats begin Off until configured.
+- **Reason:** On/Off implies a usable Seat. A misleading On state must not send a partial Seat into a paid meeting or mark Setup complete. This qualifies D-076 without moving Seat editing out of Setup. [Correction brief](correction-briefs/2026-09-27-setup-seat-summary-and-completion.md).

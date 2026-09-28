@@ -3,7 +3,7 @@
 Status: Approved
 Approved: 2026-09-18
 Current stage: DP-0 - Product Truth and First-Minute Experience
-Current milestone: DP-0.1 - Product and Repository Truth Baseline
+Current milestone: DP-0.3 - First-run Information Architecture
 
 This document is the canonical forward development sequence for the approved [Product Development Plan](PRODUCT_DEVELOPMENT_PLAN.md). The historical `M0` through `M5` roadmap remains evidence of implemented and incomplete work; it no longer determines the next build order where it conflicts with this document.
 
@@ -119,9 +119,9 @@ Labs may run between stages only when they have a fixed fixture, a small budget,
 | Milestone | Status / size | Deliverable | Exit evidence |
 | --- | --- | --- | --- |
 | DP-0.0 Direction and milestone ratification | Complete / S | approved Product Direction, D-064, detailed bilingual milestones, and historical-to-new roadmap mapping | owner approval is recorded; docs agree on DP-0 as current |
-| DP-0.1 Product and repository truth baseline | Current / S | truthful app/package name and version policy, one package-manager policy, explicit license state, current README/status language, and a recorded build/test/type baseline | no starter identity or contradictory “uncommitted/current” claim remains; commands and known failures are reproducible |
-| DP-0.2 Engineering portability baseline | Planned / S | CI checks, Cloudflare ambient type declarations, CRLF-safe source tests, deterministic test command, and clean build/lint/type/test reporting | supported Windows and CI paths produce the same pass/fail classification |
-| DP-0.3 First-run information architecture | Planned / M | entry surface for Chat, Ask the Room, Drop an Artifact, and Browse Packs; one Connection is enough for Solo; mode-specific objective defaults | a fresh user reaches the intended input without the Connection Library obscuring the product; switching modes never leaks another mode's objective |
+| DP-0.1 Product and repository truth baseline | Complete / S | truthful app/package name and version policy, one package-manager policy, explicit license state, current README/status language, and a recorded build/test/type baseline | starter identity and stale uncommitted claims removed; exact Windows install/build/test/lint/type results recorded, including DP-0.2 failures |
+| DP-0.2 Engineering portability baseline | Complete / S | CI checks, Cloudflare ambient type declarations, CRLF-safe source tests, deterministic test command, and clean build/lint/type/test reporting | Windows local check and both Windows/Ubuntu CI jobs passed on `97b865a`; first Corepack setup failure was repaired without changing the test contract |
+| DP-0.3 First-run information architecture | Current / M - brief and baseline next | entry surface for Chat, Ask the Room, Drop an Artifact, and Browse Packs; one Connection is enough for Solo; mode-specific objective defaults | a fresh user reaches the intended input without the Connection Library obscuring the product; switching modes never leaks another mode's objective |
 | DP-0.4 Credential-free demo and replay | Planned / S | one bundled, read-only room replay showing independent views, meaningful disagreement, Human Chair choice, final result, and cost provenance | a user can understand the differentiated loop without a key or provider call; demo is visibly non-live |
 | DP-0.5 Artifact and room export | Planned / S | versioned Markdown plus JSON export for room summary, artifacts, lineage, decisions, usage, and schema version, excluding credentials | exported fixtures round-trip through validation; secret scanners find no key or authorization field |
 | DP-0.6 Public API safety boundary | Planned / S | explicit BYOK-only or authenticated workspace-funded policy, request size/call limits, rate limiting, abuse-safe errors, and deployment checklist | an unauthenticated caller cannot silently spend workspace-funded credentials; policy is tested and documented |
@@ -319,11 +319,9 @@ Labs never pre-empt the Current milestone. Each has one fixture, one user-visibl
 
 ## 16. Immediate Ordered Queue
 
-1. **DP-0.1 Product and repository truth baseline** - create the Correction Brief, inventory stale identity/status/security claims, choose the smallest truthful patch, and record the complete command baseline.
-2. **DP-0.2 Engineering portability baseline** - close reproducibility failures before changing interaction architecture.
-3. **DP-0.3 First-run information architecture** - create the required named backup, then implement one-Connection Solo entry and mode-correct objectives.
-4. **DP-0.4 Demo/replay** - reuse saved evidence; make zero provider calls.
-5. **DP-0.5 Export** and **DP-0.6 API safety** - complete before inviting broader public use.
-6. **DP-0.7 acceptance** - decide Continue or Repair. DP-1 cannot start on documentation confidence alone.
+1. **DP-0.3 First-run information architecture** - write its Correction Brief and capture the current first-run baseline, create the required named backup, then implement one-Connection Solo entry and mode-correct objectives.
+2. **DP-0.4 Demo/replay** - reuse saved evidence; make zero provider calls.
+3. **DP-0.5 Export** and **DP-0.6 API safety** - complete before inviting broader public use.
+4. **DP-0.7 acceptance** - decide Continue or Repair. DP-1 cannot start on documentation confidence alone.
 
-The exact next action is DP-0.1 documentation and baseline work. It does not authorize code until its Correction Brief identifies the observed failures, acceptance checks, cost boundary, and stop condition.
+The exact next action is the DP-0.3 Correction Brief and first-run baseline. Do not change the interface before the named backup and acceptance checks exist.

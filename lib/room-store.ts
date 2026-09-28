@@ -21,6 +21,9 @@ import {
   ReviewHumanRevision,
 } from "./review-artifact";
 
+import { sourceAttemptKey, type SourceAttempt } from "./source-attempt";
+import type { RecordedHumanEvent } from "./meeting-markdown-export";
+
 const databaseName = "multi-ai-meeting-room";
 type PlanRequest = NonNullable<MeetingRecord["planRequest"]>;
 type PlanArtifact = NonNullable<MeetingRecord["planArtifact"]>;
@@ -61,6 +64,7 @@ type EventRow = {
   roomId: string;
   sequence: number;
   type:
+    | "source.attempt"
     | "agenda.published"
     | "turn.completed"
     | "turn.failed"
@@ -72,7 +76,7 @@ type EventRow = {
     | "chair.directive"
     | "human.choice";
   createdAt: string;
-  payload: TranscriptItem | ProtocolTransition | ProcessReport | RoundBrief | ChairDirective | HumanChoice;
+  payload: TranscriptItem | ProtocolTransition | ProcessReport | RoundBrief | ChairDirective | HumanChoice | SourceAttempt;
 };
 
 type SnapshotRow = {
@@ -139,6 +143,7 @@ export type RoomStoreInitialization = {
 export interface RoomStore {
   initialize(): Promise<RoomStoreInitialization>;
   listRooms(): Promise<MeetingRecord[]>;
+  listHumanEvents(roomId: string): Promise<RecordedHumanEvent[]>;
   putRoom(record: MeetingRecord): Promise<void>;
   deleteRoom(roomId: string): Promise<void>;
 }
@@ -159,6 +164,19 @@ class IndexedDbRoomStore implements RoomStore {
 
   async listRooms() {
     return listRoomRecords(await this.database);
+  }
+
+  async listHumanEvents(roomId: string): Promise<RecordedHumanEvent[]> {
+    await this.writeQueue;
+    const db = await this.database;
+    const transaction = db.transaction(stores.events, "readonly");
+    const done = transactionDone(transaction);
+    const rows = await requestResult<EventRow[]>(transaction.objectStore(stores.events).index("roomId").getAll(roomId));
+    await done;
+    return rows
+      .filter((row) => row.type === "chair.directive" || row.type === "human.choice")
+      .sort((a, b) => a.createdAt.localeCompare(b.createdAt) || a.id.localeCompare(b.id))
+      .map((row) => ({ type: row.type, createdAt: row.createdAt, payload: row.payload }) as RecordedHumanEvent);
   }
 
   putRoom(record: MeetingRecord) {
@@ -301,6 +319,18 @@ async function writeRoomRecord(database: Promise<IDBDatabase>, record: MeetingRe
   });
 
   const eventStore = transaction.objectStore(stores.events);
+  record.sourceAttempts?.forEach((receipt, sequence) => {
+    const row: EventRow = {
+      id: `${record.id}:source-attempt:${sourceAttemptKey(receipt)}`, roomId: record.id,
+      sequence, type: "source.attempt", createdAt: receipt.endedAt ?? receipt.startedAt, payload: receipt,
+    };
+    const existing = eventStore.get(row.id);
+    existing.onsuccess = () => {
+      if (existing.result) {
+        if (JSON.stringify(existing.result.payload) !== JSON.stringify(receipt)) transaction.abort();
+      } else eventStore.add(row);
+    };
+  });
   record.transcript.forEach((item, sequence) => {
     if (item.status === "streaming") return;
     const request = eventStore.add({
@@ -561,6 +591,8 @@ async function listRoomRecords(db: IDBDatabase): Promise<MeetingRecord[]> {
       )
       .sort((a, b) => a.sequence - b.sequence)
       .map((item) => item.payload as TranscriptItem);
+    const sourceAttempts = eventRows.filter(item => item.roomId === room.id && item.type === "source.attempt")
+      .sort((a, b) => a.sequence - b.sequence).map(item => item.payload as SourceAttempt);
     const artifact = artifactRows
       .filter((item) => item.roomId === room.id && item.type === "decision.memo")
       .sort((a, b) => b.version - a.version)[0];
@@ -576,6 +608,7 @@ async function listRoomRecords(db: IDBDatabase): Promise<MeetingRecord[]> {
       ...(room.planRequest ? { planRequest: room.planRequest } : {}),
       stage: snapshot.stage,
       transcript,
+      ...(sourceAttempts.length ? { sourceAttempts } : {}),
       memo: artifact?.content ?? "",
       decision: snapshot.decision,
       usage: usage

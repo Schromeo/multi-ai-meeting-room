@@ -1,5 +1,154 @@
 # 开发日志
 
+## 2026-09-28 — DP-0.3 席位参与前的配置门槛（本地）
+
+- 缺少已配置的连接／API 密钥、兼容模型、有效角色，或自定义席位必需的名称／Skill 时，Agenda 和 Setup 都显示 `Not set up` 与 Setup 提示，不显示 On／Off 开关。新席位默认 Off；配置完整后才可切换。清空必需字段会再次隐藏开关，但保留草稿。
+- 同一配置判定会排除未完成席位的可运行请求；若已启用席位后来变得不完整，也会阻止启动。`pnpm.cmd check` 通过构建、87/87 项离线测试、lint 和类型检查。无密钥浏览器检查确认两个界面的未配置状态和禁用的 Start；未用真实凭据验收配置完成后的行为。没有供应商调用、提交、推送或部署。[补充简报](correction-briefs/2026-09-27-setup-seat-summary-and-completion.md)。
+
+## 2026-09-28 — DP-0.3 恢复席位参与开关（本地）
+
+- 在有界的 Agenda 席位摘要恢复 On／Off，并为 Setup 每张席位卡加入同一开关。两处共用现有 `SeatDraft.enabled`；Off 保留配置，但不计入可运行席位数、调用和派生预算。连接、模型、角色、名称及 Skill 仍只在 Setup 编辑。会议运行时开关禁用。
+- `pnpm.cmd check` 通过构建、86/86 项离线测试、lint 和类型检查。无密钥浏览器检查中，在 Agenda 把第三席切成 On 后，Setup 同步为 On；在 Setup 切回 Off 后，Agenda 同步为 Off。带已配置连接的就绪数变化尚未做真实浏览器验收。没有供应商调用、提交、推送或部署。[补充简报](correction-briefs/2026-09-27-setup-seat-summary-and-completion.md)。
+
+## 2026-09-27 — DP-0.3 有界 Agenda 席位摘要与 Setup 完成态（本地）
+
+- Agenda 的 Room Composition 改为只读席位摘要，高度上限 360px（或 45dvh）；十二席在区域内滚动。席位增删和连接、模型、角色、名称、Skill 的编辑留在 Setup。窄窗口仍能到达摘要下方的会议控制。
+- 从 Setup 选择 Agenda、Meeting 或 Decision 时先关闭 Setup。至少两席可运行时，已完成的 Setup 序号使用实心绿色背景；未就绪的 Setup 不标为完成。
+- `pnpm.cmd check` 通过构建、86/86 项离线测试、lint 和类型检查。本地浏览器检查确认辅助功能树包含全部十二席、列表内部滚动，且 390×700 下 Start 按钮可达。绿色就绪态做了源码／CSS 测试，未用真实凭据在浏览器触发。没有供应商调用、提交、推送或部署。[纠错简报](correction-briefs/2026-09-27-setup-seat-summary-and-completion.md)。DP-0.3 状态不变。
+
+## 2026-09-27 — DP-0.3 普通会议可配置 Setup（本地）
+
+- 将连接管理移入可滚动的 Setup 页面，加入席位与输出设置。普通 Decide 支持 2–12 席、有界的自定义席位名称／职责，以及 Lite／Medium／Extended 对每席每次发言和最终 Memo 分别调节的滑块；Review／Plan 仍为 2–3 席并保留各自合同。所选上限参与房间输出总额度计算，并随新普通会议保存；旧房间不补造设置。
+- 滑块是有限的单次调用 token 上限，不保证可见篇幅、质量或供应商账单。12 席会明显增加调用次数和潜在成本；本次没有供应商调用。为容纳更大的普通会议，显式扩展了本地 Turn Envelope／Canonical State 的有界容量，但没有移除 JSON 校验或人工权限。
+- `pnpm.cmd check` 通过构建、85/85 项离线测试、lint 和类型检查，包括模拟 12 席提案→交叉审阅→Memo 全流程及拒绝第 13 席。本地 390×700 浏览器检查通过滚动到达 Setup 输出控制和 Done，Setup／Agenda 切换时高亮正确。真实模型篇幅、已保存会议浏览器回放、远程 CI、提交、推送和部署尚未验证。[纠错简报](correction-briefs/2026-09-27-configurable-ordinary-room-setup.md)。DP-0.3 尚未关闭。
+
+## 2026-09-27 — DP-0.3 编号步骤栏高亮纠错
+
+- 修正桌面顶部／移动底部共用的 1–4 步骤栏：只有连接设置弹窗打开时 Setup 才是当前项；否则仅可见的 Agenda、Meeting 或 Decision 页面高亮。席位就绪仍单独显示完成态。
+- 增加定向源码回归检查，并为当前项设置 `aria-current="step"`。`pnpm.cmd check` 通过构建、82/82 离线测试、lint 与生成类型检查。无供应商调用、真实浏览器点击／布局验收、提交、推送或部署。[修正简报](correction-briefs/2026-09-27-stage-navigation-active-state.md)。DP-0.3 状态不变。
+
+## 2026-09-27 — DP-0.3 可读会议与完整 Markdown 记录（本地）
+
+- Focus 与 Overview 以安全 GFM 渲染已完成发言，包括标题、列表和表格；禁用原始 HTML 与内嵌图片。流式进行中仍显示状态。
+- Meeting、Decision 和历史列表每间房间增加独立的 `Export full .md` 主动下载入口。文件包含已保存议程、席位供应商／配置模型／角色、按序发言及单轮用量、持久化人工指令／选择、Memo，以及已保存的 Review／Plan 完整产物。失败轮异常原文和凭据不导出；原脱敏诊断 JSON 不变。
+- 有前一条发言 ID 的人工指令插在该轮之后；旧记录无法匹配的指令及人工选择单列说明；只有对应 P2 回执存在才列出调用起止／耗时，不补造旧轮次时间。费用是估算而非账单；文件含私人会议正文，应谨慎分享。
+- `pnpm.cmd check` 通过构建、81/81 离线测试、lint 与生成类型检查。无付费供应商调用、实际浏览器下载／布局验收、远程 CI、提交、推送或部署。[修正简报](correction-briefs/2026-09-27-readable-meeting-record.md)。DP-0.3 状态不变。
+
+## 2026-09-27 — DP-0.3 用户批准的普通创作会议案例已归档
+
+- 将用户真实的中文小说构思 Decide 案例记为 [Live 001](evaluations/2026-09-27-ordinary-creative-meeting-live-001.md)，归档原始白名单诊断导出、用户提供的完整 Memo、十二张非重复截图，以及[按会议顺序整理的全部截图可见发言](../evaluations/artifacts/ordinary-creative-live-001/visible-meeting-record.zh-CN.md)。用户明确批准将其纳入项目私有仓库。本次证据记录未新增供应商调用或修改代码。
+- 导出显示房间达到 `complete`、人工 `approved`；共九次供应商调用：一次 Proposal `invalid_json` 和一次独立的 Review Canonical State 拒绝，各自通过明确的新尝试恢复。最终 Anthropic 总结用时 103,659 ms，为 D-073 提供一条真实超过 90 秒仍完成的观察。终态回执合计上报输入 27,728、输出 17,596 tokens；界面的 `$0.215` 是应用估算，不是账单。
+- 用户称结果“非常完美”，但导出 `qualityEvaluation` 仍为 `not_evaluated`。平台断言与数字建议未外部核实，也没有同题强单模型基线。案例证据已提交为 `37cc250`，并获用户授权推送至项目私有仓库。DP-0.3 状态与 ROADMAP 不变。本证据不是受控基准测试，也不能证明多模型增益。
+
+## 2026-09-27 — DP-0.3 普通会议有限超时纠错
+
+- 用户的 P2 提案回执在应用固定 90 秒计时器下于 90,002 ms 停止。普通参与者及总结调用现按 Lite／Medium／Uncapped 使用 180／240／300 秒有限截止时间；房间累计时间额度同步对齐，以免过早阻断后续阶段。其他调用族保持 90 秒，Plan 仍无应用计时器。明确 Stop、既有限额和不自动重试保留。
+- `pnpm.cmd check` 通过构建、79/79 离线测试、lint 与生成类型检查。假时钟和预算 fixture 已验证边界；无真实供应商或实时会议浏览器检查、付费调用、远程 CI、推送或部署。截图不能证明延长后供应商一定完成，也不能推断费用。[纠错简报](correction-briefs/2026-09-27-ordinary-meeting-provider-timeout.md)。
+
+## 2026-09-27 — DP-0.3 会议发言深度跟随 Output Budget
+
+- 提案、交叉审阅、具名分歧发言的 statement 指令现跟随 Lite／Medium／Uncapped（三阶段分别为 70／140／350、60／120／280、50／80／160 词）。Medium 保留旧目标；Uncapped 允许更充分但仍有界的工作发言。最终 Memo 和结构化 Plan 合同不变。
+- 一次性和可恢复的普通会议调用均收到所选档位。Turn Envelope 校验、工作发言 4,000 字符上限、供应商／房间预算、来源约束、调用次数与重试规则不变。这是 prompt 引导，不是确定性词数规则或已验证的模型质量。
+- `pnpm.cmd check` 通过构建、78/78 离线测试、lint 与生成类型检查。无付费调用、实时浏览器检查、远程 CI、推送或部署。旧房间没有已知档位，未回填。[纠错 Brief](correction-briefs/2026-09-27-meeting-speech-output-profiles.md)。
+
+## 2026-09-27 — DP-0.3 Agenda 语言与 call trace 视觉焦点纠错
+
+- 普通会议的 Seat prompt 现要求发言和最终正文跟随 Agenda 的主要语言与文字，包括定向辩论。明确中文的 Decide/Review 目标使用中文最终章节标题，同时仍接纳旧英文标题；其他语言的结构性标题暂沿用原格式。Prompt 指引不保证模型实际遵从。
+- P2 call trace 从会议网格移到默认收起的工具栏入口，展开为有边界的覆盖层，让发言／转录区域重新成为默认主体。回执数据和持久化不变。
+- `pnpm.cmd check` 通过构建、77/77 离线测试、lint 和生成类型检查。模拟供应商流和组件检查通过；没有真实供应商调用、实时会议浏览器检查、推送或部署。[纠错 Brief 与限制](correction-briefs/2026-09-27-agenda-language-and-call-trace-focus.md)。
+
+## 2026-09-27 — DP-0.3 窗口化布局可达性纠错
+
+- 修复入口／Agenda 页面无法滚到的溢出：普通窗口内通过统一工作区滚动可到达全部设置控件和启动操作。Chat、Packs 也使用这条滚动路径；现有底部阶段导航提前在 1180px 启用，避免页眉拥挤。过高的 Decision 侧栏可内部滚动；实时 Meeting 布局未改。
+- 本地浏览器在 1280×720、1024×600、900×650 和 390×700 下确认 Agenda 底部操作可达、页面无横向溢出；另检查 Chat／Packs 和 1024×600 的 Connection 弹窗。`pnpm.cmd check` 的构建、75/75 测试、lint 与类型检查通过。没有配置 Connection 或已存房间，因此实时 Meeting／恢复的 Decision 未作浏览器实测。无付费调用、远程 CI 或部署。[纠错简报](correction-briefs/2026-09-27-windowed-layout-access.md)。
+
+## 2026-09-27 — DP-0.3 狭窄会议控制区布局纠错
+
+- 让 Chair Control、Round Allowance 和 Output Budget 按侧栏自身宽度换列，不改会议策略行为。
+- 本地浏览器检查：369px 桌面编排栏中各占完整一行；390px 视口下无横向溢出。`pnpm.cmd check` 构建、75/75 测试、lint 和类型检查通过。未调用供应商、未部署。[纠错简报](correction-briefs/2026-09-27-protocol-controls-layout.md)。
+
+## 2026-09-27 — P1/P1B/P2 收口与单间会议诊断导出
+
+- 保留现有 P1/P1B/P2 改动，在 `pnpm.cmd check` 71/71 通过后单独提交为 `4d16c9c`。未推送或部署。
+- 为每间合格的已保存普通 Decide 会议增加版本化、白名单 JSON 诊断导出。只投影已有 ID、来源回执、流程与任务结果信号，不含目标、prompt、回答、memo、凭据或任意错误正文。三份脱敏离线样例覆盖完成、合同拒绝并中断、只有开始回执。
+- 本地 75/75 测试、构建、lint、类型检查通过；确定性、隐私和旧房间缺 P2 测试通过。尚未单独实测浏览器下载。零付费调用、零导入／SDK、无远程 CI 或部署。[P3 范围与证据](correction-briefs/2026-09-27-p3-one-room-diagnostic-export.md)。
+
+## 2026-09-27 — P2 已批准源头尝试采集
+
+- 用户批准新增事件／本地记录边界。新增严格元数据模块、源头生命周期事件、
+  provider 诊断观察、可选回执集合、本地追加事件和真实证据组件。
+  直接复用 P1 原因码，不解析解释字符串后缀。
+- 保留旧校验／prompt／预算、旧用量总计、历史记录及 P1/P1B 改动；
+  无新依赖、数据库 store 或版本升级。
+- 最终 `pnpm.cmd check`：退出 0，71/71；build、lint、类型检查通过。
+  覆盖成功／拒绝／不完整／错误／取消、部分／零／未知用量、安全元数据、
+  字段顺序无关去重、冲突及缺失终态。
+- 实际隔离浏览器 IndexedDB：旧记录、未决开始、读回／去重、冲突原子回滚、
+  删除后复用 ID 不复活均通过。真实组件展示读回的合成数据，不是真实会议。
+  运行 `node scripts/preview-source-attempt.mjs`，在 4398 点击 Run storage
+  acceptance 可复核；无模型／网络调用，结束清理夹具房间。
+- 自检：有界范围内未发现剩余阻塞项。定时超时、完整真实会议页面／刷新、
+  远程 CI、真实 provider 行为未新增验证。断连可丢终态，不证明账单、任务质量、
+  任意工作流覆盖或历史根因还原。
+- 方向决定：仅建议后续单独选择 P3，本轮停止。未提交／推送／发布／部署，
+  无付费调用。[分项 Gate](correction-briefs/2026-09-27-p2-source-attempts.md)。
+
+## 2026-09-27 — P1B 本地验收基线恢复
+
+已解决 P1 继承的检查阻塞，未改变运行时预算、prompt 或校验规则。
+`pnpm.cmd check` 退出 0：构建、68/68 测试、lint、类型检查全过。
+无真实调用、远程 CI、提交／推送或部署。
+[原因、改动与准确证据](correction-briefs/2026-09-27-p1b-validation-baseline.md)。
+P2 未实现；该修正不代表 DP-0.3 产品验收完成。下文 P1 的失败描述是此前树的历史。
+
+## 2026-09-27 — P1 安全校验诊断（仅本地）
+
+- 在既有错误字符串中细分 Turn Envelope 原因码、路径和结构摘要；
+  没有 schema、prompt、接受条件、重试或模型变化。
+- 三个新增离线测试通过，1,107 组基线对照保持判定／归一化；build/lint 通过。
+  全检查失败：67/68，已有 Solo 502；类型检查失败：41 条，与 HEAD 校验器源码完全相同。
+- 无付费调用、历史 trace 改写、提交／推送或部署。这是 DP-0.3 旁的有界修正，
+  不代表该产品阶段完成。
+- [验收、实际样例与边界](evaluations/2026-09-27-p1-turn-validation-diagnostics.md)。
+  P2 采集／导入未实现；宣称全绿集成前，应另片处理基线检查失败。
+
+
+## 2026-09-25 - DP-0.3 Meeting 输出与下一轮恢复纠错
+
+- 将 `lite`、`medium`、`unlimited` 档位接入 Solo 与 Meeting Room 的供应商上限、房间总预算和 synthesis 行为。`unlimited` 现在给普通 Meeting turn 12,000 output tokens、synthesis 16,000；供应商自身限制仍然权威。
+- 为 unlimited 创作／规划 synthesis 增加详细交付指令：保持用户语言，选择一个方向，并展开定位、核心卖点、设定、长线主线、阶段和至少十章开篇细纲，而不是只返回几个短选项。
+- Chair 从 Human Gate 请求下一轮时，transcript 完整保留，但 Canonical State 会把上一轮的 claims、disputes、assumptions、questions 压缩为一个 round-summary Claim，并归档旧 ID，避免 12 Claim 工作状态上限阻塞合法的下一轮。
+- 供应商中断时保留上一轮 memo，回到 Decision 界面，并显示可恢复的 interrupted round 操作。OpenAI incomplete 响应在可用时区分 output／reasoning token 上限、content filter 或普通中断。
+- 前端设置将轮数改称 `Round allowance`，说明额外轮次由 Chair 主动请求，并统一三个策略控件。`pnpm lint` 与 `pnpm build` 通过；离线测试 64/65，剩余失败是既有 Solo session-key 测试返回 502。未调用真实供应商、未部署。
+
+## 2026-09-24 - DP-0.3 本地入口／Solo 切片（未完成）
+
+- 实现四个意图入口、Chat 优先的 Solo 界面、按模式隔离的 Objective 草稿及有界 session-BYOK Solo API；不改存档 schema，不调用真实供应商。切换 Connection 清空 Solo 上下文，API 拒绝 workspace 出资 key 路径。
+- 本地 `pnpm check` 的构建、65 项测试、lint 与类型检查通过。`pnpm dev` 浏览器检查覆盖空 session 入口、草稿隔离和 390px 首屏。详见[本地评估](evaluations/2026-09-24-dp-0-3-local-entry-slice.md)。
+- DP-0.3 仍为 Current。旧存档浏览器回放和完整验收仍待完成。本地 `pnpm start` 可返回 HTML，但生成的 CSS 请求为 404，生产视觉有效性未解决。零真实供应商调用、零部署。
+
+## 2026-09-24 - DP-0.2 远程 CI 收尾
+
+- 推送已审阅的 DP-0.1／DP-0.2 分支并创建[草稿 PR #1](https://github.com/Schromeo/multi-ai-meeting-room/pull/1)。[首次 CI](https://github.com/Schromeo/multi-ai-meeting-room/actions/runs/36076814165)在两个 OS 的`corepack prepare`步骤失败：Node 22.13.0 自带 Corepack 不识别 pnpm registry 签名 key。两项 job 均未进入依赖安装或项目检查。
+- 只把 CI 安装器改为官方`pnpm/action-setup@v6`，保留 pnpm 11.19.0、Node 22.13.0、frozen install 与完全相同的`pnpm check`契约。Workflow YAML 在本地解析成功。`97b865a`上的[第二次运行](https://github.com/Schromeo/multi-ai-meeting-room/actions/runs/36076954748)通过 Ubuntu 与 Windows 两项完整检查。DP-0.2 已完成；PR 仍为草稿，未合并。
+- Correction Gate：机械可移植性已在本地 Windows 与两个远程 runner 验证；这不证明首次使用体验、供应商质量或部署安全。零供应商调用、零部署。DP-0.3 为当前里程碑；[纠错简报](correction-briefs/2026-09-24-dp-0-3-first-run-entry.md)和[源码基线](evaluations/2026-09-24-dp-0-3-first-run-baseline.md)已明确入口失败与验收。本地备份分支`backup/dp-0-3-pre-ui-2026-09-24`保留原 UI 提交`97b865a`。
+
+## 2026-09-19 - DP-0.2 本地工程可移植性通过
+
+- 完成双语[纠错简报](correction-briefs/2026-09-19-dp-0-2-engineering-portability.md)、本地[验证报告](evaluations/2026-09-19-dp-0-2-local-portability.md)与 D-066。小型 Node launcher 现解析固定 ESM vinext CLI，并在不使用 shell-specific 语法的情况下提供`WRANGLER_LOG_PATH`；`dev`、`build`与`start`共用它，不新增依赖。
+- 只统一受影响源码检查测试读取的 page source，保留所有断言和 63 项案例。固定 Wrangler 会在每次 canonical check 开始时重新生成被忽略的 Cloudflare runtime／module 声明；inactive D1 binding 保持 optional。准确的`Response.json(): unknown`类型暴露并关闭一处 Plan amendment 响应边界，没有改变运行时解析。
+- 新增可在 clean clone 独立运行的`typecheck`、确定性 worker 类型生成和唯一 canonical `pnpm check`；把 test 与 build 分离，让失败可归因。新增 Node 22.13.0／pnpm 11.19.0 的 Windows 加 Ubuntu GitHub Actions 矩阵。既有锁定`js-yaml`成功解析 workflow，并确认两项 job 均使用 frozen install 加同一 check 命令。
+- Windows 本地证据：frozen install 通过；生成类型被重新创建并由 TypeScript 消费；vinext 五个 build 环境通过；63/63 测试通过；lint 零错误／警告；type check 零错误；完整`pnpm check`通过。Wrangler 4.92.0 提示有更新，但未升级依赖。
+- Correction Gate：零供应商调用、零支出、不改浏览器记录、不新增／升级依赖、不部署；不作产品质量或浏览器可用性声明。DP-0.2 继续为当前——本地通过、CI 待运行——因为 workflow 尚未远程运行。Windows 与 Ubuntu runner 证据通过或命名一个有界修复前，不开始 DP-0.3。
+
+## 2026-09-19 - DP-0.1 产品与仓库真实性基线
+
+- 完成双语[纠错简报](correction-briefs/2026-09-19-dp-0-1-repository-truth.md)、只读盘点、[命令基线](evaluations/2026-09-19-dp-0-1-repository-baseline.md)与 D-065。私有 package 现为`multi-ai-meeting-room@0.0.0-development`；当前源码以 commit／dirty state 加 active DP 里程碑标识，不捏造 release。历史 v0.x 标签继续代表开发快照。
+- 统一使用 pnpm 11.19.0 与`pnpm-lock.yaml`，移除`package-lock.json`，把嵌套 test 命令从 npm 改为 pnpm，并把四项 starter build 许可占位符改为已锁定`esbuild`、`sharp`、`unrs-resolver`、`workerd`家族的显式 allowlist。Frozen install 通过，未升级依赖。
+- Package 声明为`UNLICENSED`并保留所有权利；更新 README、app metadata、Roadmap、Handoff、文档索引、里程碑、Decisions 与中文镜像。Session BYOK 继续为临时凭证；DP-0.6 加入并验证认证与滥用防护前，公共部署不得暴露工作区付费凭证。
+- Node 24.19.0、pnpm 11.19.0 的 Windows 基线：frozen install 通过；lint 通过；标准 build 在 vinext 前因 POSIX-only `WRANGLER_LOG_PATH=...`语法失败；标准 test 在该 build 处停止；直接测试 62/63，一项源码正则对 CRLF 敏感；type check 只报告三项已知 Cloudflare ambient 声明错误。`git diff --check`与当前身份／状态扫描通过。
+- Correction Gate：运行时行为与历史 Review／Plan 证据不变；零供应商调用、零支出、不改浏览器记录、不升级依赖、不部署、不改外部服务。DP-0.1 已完成；DP-0.2“工程可移植性基线”为当前里程碑并负责上述四类失败。可移植性关闭前，首次使用 UI 继续不在范围内。
+
 ## 2026-09-18 - 产品开发计划与详细里程碑已批准
 
 - 项目所有者批准 D-064：一个由人主持的 Multi-AI 工作空间，以 **Ask the Room** 为反复出现的窄入口；Review 是第一个信任 Pack 而不是产品边界；通过一条有限队列交替验证“习惯”和“信任”；占星／游戏／编码上下文先走有时间上限的 Lab；Codex／VS Code 在 Execute 前保持只读。
