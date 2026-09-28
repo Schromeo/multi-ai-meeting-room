@@ -569,7 +569,7 @@ export function createDefaultMeetingBudget(
   maxRounds: number,
   observerEnabled = false,
 ): MeetingBudget {
-  const participants = Math.max(2, Math.min(3, Number.isInteger(seatCount) ? seatCount : 2));
+  const participants = Math.max(2, Math.min(12, Number.isInteger(seatCount) ? seatCount : 2));
   const turns = (participants * 2 + 1 + (observerEnabled ? 1 : 0)) * boundedRounds(maxRounds);
   return {
     maxAgentTurns: turns,
@@ -977,7 +977,7 @@ function inferSeatCount(value: Record<string, unknown>, transitions: ProtocolTra
     if (Array.isArray(candidate)) candidate.filter(isIdentifier).forEach((id) => ids.add(id));
   }
   transitions.flatMap((transition) => transition.seatIds).forEach((id) => ids.add(id));
-  return Math.max(2, Math.min(3, ids.size || 2));
+  return Math.max(2, Math.min(12, ids.size || 2));
 }
 
 function normalizeThesis(value: string) {
@@ -1068,7 +1068,7 @@ function parseTransition(value: unknown): ProtocolTransition | null {
 }
 
 function uniqueSeatIds(values: string[]) {
-  return [...new Set(values.filter(isIdentifier))].slice(0, 3);
+  return [...new Set(values.filter(isIdentifier))].slice(0, 12);
 }
 
 function boundedRounds(value: number) {
@@ -1076,7 +1076,7 @@ function boundedRounds(value: number) {
 }
 
 function isSeatIdArray(value: unknown): value is string[] {
-  return Array.isArray(value) && value.length <= 3 && value.every(isIdentifier) && new Set(value).size === value.length;
+  return Array.isArray(value) && value.length <= 12 && value.every(isIdentifier) && new Set(value).size === value.length;
 }
 
 function isIdentifier(value: unknown): value is string {

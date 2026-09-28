@@ -168,10 +168,10 @@ export type ClaimDecisionResult =
   | { ok: false; state: MeetingState; error: string };
 
 export const meetingStateCaps = {
-  claims: 12,
-  disputes: 8,
-  assumptions: 12,
-  openQuestions: 8,
+  claims: 48,
+  disputes: 48,
+  assumptions: 48,
+  openQuestions: 24,
   humanChoices: 12,
   chairDirectives: 8,
   renderedContextCharacters: 6_000,
@@ -243,7 +243,7 @@ export function parseTurnEnvelope(
 ): { ok: true; value: TurnEnvelope } | { ok: false; error: string; diagnostic: { code: string; path: string } } {
   let candidate = value;
   if (typeof value === "string") {
-    if (value.length > 50_000) return turnFormatFailure("The turn output exceeds the format limit.", "output_too_long", "$", "at most 50000 characters", value);
+    if (value.length > 100_000) return turnFormatFailure("The turn output exceeds the format limit.", "output_too_long", "$", "at most 100000 characters", value);
     const serialized = unwrapWholeJsonFence(value);
     try {
       candidate = JSON.parse(serialized);
@@ -254,7 +254,7 @@ export function parseTurnEnvelope(
   if (!isRecord(candidate) || !hasOnlyKeys(candidate, ["statement", "card"])) {
     return turnFormatFailure("The turn envelope must contain only statement and card.", isRecord(candidate) ? "unsupported_fields" : "invalid_type", "$", "object with only statement and card", candidate);
   }
-  const statementLimit = phase === "synthesis" ? 24_000 : 4_000;
+  const statementLimit = phase === "synthesis" ? 64_000 : 16_000;
   if (!isBoundedString(candidate.statement, 1, statementLimit) || !isRecord(candidate.card)) {
     const message = "The turn statement or card is invalid.";
     if (!isBoundedString(candidate.statement, 1, statementLimit)) {

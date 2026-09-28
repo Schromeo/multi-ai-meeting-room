@@ -181,8 +181,8 @@ p {
 
 .stage-nav button.complete span {
   border-color: var(--mint);
-  background: var(--mint-soft);
-  color: #0c7257;
+  background: var(--mint);
+  color: white;
 }
 
 .header-actions {
@@ -254,6 +254,7 @@ p {
 .workspace-frame:has(.entry-switcher) {
   display: flex;
   flex-direction: column;
+  overflow-y: auto;
 }
 
 .entry-switcher {
@@ -281,7 +282,22 @@ p {
 }
 
 .entry-switcher small { display: block; margin-top: 3px; color: var(--ink-soft); font-weight: 400; }
-.workspace-frame:has(.entry-switcher) .agenda-workspace { height: auto; flex: 1; min-height: 0; }
+.workspace-frame:has(.entry-switcher) .agenda-workspace {
+  height: auto;
+  flex: none;
+  min-height: 0;
+  overflow: visible;
+}
+
+.workspace-frame:has(.entry-switcher) .solo-workspace {
+  flex: none;
+  overflow: visible;
+}
+
+.workspace-frame:has(.entry-switcher) .objective-panel,
+.workspace-frame:has(.entry-switcher) .seat-list {
+  overflow: visible;
+}
 
 .solo-workspace {
   width: min(800px, 100%);
@@ -481,6 +497,17 @@ p {
   border-top: 1px solid var(--line);
 }
 
+.workspace-frame:has(.entry-switcher) .seat-summary-list {
+  max-height: min(360px, 45dvh);
+  overflow-y: auto;
+  overscroll-behavior: contain;
+}
+
+.seat-summary { padding-top: 12px; padding-bottom: 12px; }
+.seat-summary .seat-identity strong { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.seat-summary .seat-number { color: var(--ink-soft); font-size: 0.7rem; font-weight: 500; }
+.seat-summary .seat-check { flex: none; }
+
 .seat-row {
   --accent: var(--mint);
   border-bottom: 1px solid var(--line);
@@ -568,6 +595,15 @@ p {
   color: var(--accent);
 }
 
+.seat-check.not-setup {
+  border-color: #d7b56f;
+  background: var(--gold-soft);
+  color: #684807;
+  white-space: nowrap;
+}
+
+.seat-setup-note { color: #684807; font-size: 0.72rem; }
+
 .seat-fields {
   display: grid;
   grid-template-columns: 1.1fr 1.1fr 0.9fr;
@@ -636,7 +672,7 @@ p {
 
 .protocol-setup {
   display: grid;
-  grid-template-columns: repeat(3, minmax(0, 1fr));
+  grid-template-columns: repeat(auto-fit, minmax(min(100%, 220px), 1fr));
   gap: 12px;
   border-top: 1px solid var(--line);
   padding-top: 14px;
@@ -1358,6 +1394,55 @@ p {
   gap: 8px;
 }
 
+.meeting-status { min-width: 0; flex-wrap: wrap; justify-content: flex-end; }
+
+.source-attempts {
+  flex: 0 0 auto;
+}
+
+.source-attempts summary {
+  display: flex;
+  min-height: 34px;
+  align-items: center;
+  gap: 5px;
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  padding: 6px 9px;
+  background: var(--surface);
+  color: var(--ink-soft);
+  cursor: pointer;
+  font-size: 0.68rem;
+  font-weight: 750;
+  list-style: none;
+}
+
+.source-attempts summary::-webkit-details-marker { display: none; }
+.source-attempts summary::before { content: "▸"; }
+.source-attempts[open] summary::before { content: "▾"; }
+.source-attempts summary:focus-visible { outline: 3px solid rgba(63, 114, 200, 0.3); outline-offset: 2px; }
+
+.source-attempts-panel {
+  position: fixed;
+  z-index: 20;
+  top: 138px;
+  right: 12px;
+  width: min(440px, calc(100vw - 24px));
+  max-height: calc(100dvh - 160px);
+  overflow: auto;
+  border: 1px solid var(--line-strong);
+  border-radius: 8px;
+  padding: 16px;
+  background: var(--surface);
+  box-shadow: 0 16px 42px rgba(21, 26, 25, 0.2);
+  overflow-wrap: anywhere;
+}
+
+.source-attempts-panel h3 { margin: 0 0 8px; font-size: 0.9rem; }
+.source-attempts-panel h4 { margin: 0 0 6px; font-size: 0.76rem; }
+.source-attempts-panel p { margin: 0 0 8px; color: var(--ink-soft); font-size: 0.68rem; line-height: 1.45; }
+.source-attempts-panel article { border-top: 1px solid var(--line); padding: 12px 0 4px; }
+.source-attempts-panel small { color: var(--ink-soft); font-size: 0.61rem; }
+
 .live-indicator {
   display: flex;
   align-items: center;
@@ -1512,8 +1597,25 @@ p {
   padding: 26px 4px 26px 0;
   font-size: 1.04rem;
   line-height: 1.7;
-  white-space: pre-wrap;
+  overflow-wrap: anywhere;
 }
+
+.meeting-markdown { min-width: 0; white-space: normal; }
+.meeting-markdown > :first-child { margin-top: 0; }
+.meeting-markdown > :last-child { margin-bottom: 0; }
+.meeting-markdown p, .meeting-markdown ul, .meeting-markdown ol, .meeting-markdown blockquote, .meeting-markdown pre, .meeting-markdown table { margin: 0 0 1em; }
+.meeting-markdown p, .meeting-markdown li { white-space: pre-wrap; }
+.meeting-markdown h1, .meeting-markdown h2, .meeting-markdown h3, .meeting-markdown h4 { margin: 1.15em 0 0.5em; line-height: 1.3; }
+.meeting-markdown h1 { font-size: 1.55em; }
+.meeting-markdown h2 { font-size: 1.3em; }
+.meeting-markdown h3 { font-size: 1.12em; }
+.meeting-markdown ul, .meeting-markdown ol { padding-left: 1.6em; }
+.meeting-markdown blockquote { border-left: 3px solid var(--line); padding-left: 0.9em; color: var(--ink-soft); }
+.meeting-markdown pre { overflow: auto; padding: 0.8em; background: var(--surface-muted, #f4f6f5); }
+.meeting-markdown code { overflow-wrap: anywhere; }
+.meeting-markdown table { display: block; max-width: 100%; overflow-x: auto; border-collapse: collapse; }
+.meeting-markdown th, .meeting-markdown td { border: 1px solid var(--line); padding: 0.35em 0.65em; text-align: left; }
+.meeting-markdown a { overflow-wrap: anywhere; }
 
 .turn-progress {
   display: flex;
@@ -1701,7 +1803,7 @@ p {
   color: #2b3331;
   font-size: 0.76rem;
   line-height: 1.52;
-  white-space: pre-wrap;
+  overflow-wrap: anywhere;
 }
 
 .meeting-controls {
@@ -2095,6 +2197,7 @@ p {
 .memo-surface footer {
   display: flex;
   justify-content: flex-end;
+  flex-wrap: wrap;
   gap: 8px;
   border-top: 1px solid var(--line);
   padding: 13px 18px;
@@ -2104,6 +2207,7 @@ p {
   display: flex;
   min-height: 0;
   flex-direction: column;
+  overflow-y: auto;
   gap: 0;
   border: 1px solid var(--line);
   border-left: 0;
@@ -2667,6 +2771,7 @@ p {
   min-height: 34px;
   align-items: center;
   justify-content: flex-end;
+  flex-wrap: wrap;
   gap: 5px;
   padding: 0 14px 10px;
 }
@@ -2800,7 +2905,7 @@ p {
   to { transform: rotate(360deg); }
 }
 
-@media (max-width: 980px) {
+@media (max-width: 1180px) {
   .app-header {
     grid-template-columns: 1fr auto;
   }
@@ -2845,7 +2950,52 @@ p {
   .workspace-frame {
     height: calc(100dvh - 130px);
   }
+}
 
+.workspace-frame.setup-hidden { display: none; }
+
+.setup-page {
+  width: min(1180px, calc(100% - 32px));
+  margin: 24px auto;
+  min-height: 0;
+}
+
+.setup-page .connection-dialog {
+  width: 100%;
+  max-height: none;
+  overflow: visible;
+  box-shadow: none;
+}
+
+.setup-page .connection-list { overflow: visible; }
+.meeting-app:has(.setup-page) { overflow-y: auto; }
+
+.setup-seat-editor { padding: 22px; border-top: 1px solid var(--line); }
+.setup-seat-editor header, .setup-seat-heading { display: flex; justify-content: space-between; align-items: center; gap: 12px; }
+.setup-seat-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 250px), 1fr)); gap: 12px; margin-top: 14px; }
+.setup-seat-grid article { display: grid; gap: 10px; border: 1px solid var(--line); border-radius: 8px; padding: 14px; }
+.setup-seat-grid label { display: grid; gap: 5px; min-width: 0; font-size: 0.72rem; }
+.setup-seat-grid input, .setup-seat-grid select, .setup-seat-grid textarea { width: 100%; min-width: 0; }
+.setup-output-editor { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 220px), 1fr)); gap: 14px; padding: 22px; border-top: 1px solid var(--line); }
+.setup-output-editor label { display: grid; gap: 6px; min-width: 0; font-size: 0.72rem; }
+.setup-output-editor input, .setup-output-editor select { width: 100%; }
+.setup-output-editor small { color: var(--ink-soft); }
+
+.seat-actions { display: flex; flex-wrap: wrap; gap: 8px; }
+
+.custom-seat-fields, .output-sliders {
+  display: grid;
+  gap: 12px;
+}
+
+.custom-seat-fields label, .output-sliders label { display: grid; gap: 6px; min-width: 0; }
+.custom-seat-fields input, .custom-seat-fields textarea { width: 100%; min-width: 0; }
+.output-sliders { margin: 16px 0; padding: 14px; border: 1px solid var(--line); border-radius: 8px; }
+.output-sliders label > span { display: flex; justify-content: space-between; gap: 8px; }
+.output-sliders input { width: 100%; }
+.output-sliders small { color: var(--ink-soft); }
+
+@media (max-width: 980px) {
   .agenda-workspace,
   .decision-workspace {
     grid-template-columns: 1fr;
@@ -3041,6 +3191,11 @@ p {
   .meeting-status {
     width: 100%;
     justify-content: space-between;
+  }
+
+  .source-attempts-panel {
+    top: 146px;
+    max-height: calc(100dvh - 218px);
   }
 
   .focus-layout {

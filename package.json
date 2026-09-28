@@ -12,7 +12,7 @@
     "launch": "node scripts/start-meeting-room.mjs",
     "build": "node scripts/run-vinext.mjs build",
     "start": "node scripts/run-vinext.mjs start",
-    "test": "node --test tests/rendered-html.test.mjs tests/review-evaluation.test.mjs tests/meeting-diagnostic-export.test.mjs",
+    "test": "node --test tests/rendered-html.test.mjs tests/review-evaluation.test.mjs tests/meeting-diagnostic-export.test.mjs tests/meeting-markdown-export.test.mjs",
     "test:review-eval": "node --test tests/review-evaluation.test.mjs",
     "review:case": "node scripts/review-evaluation.mjs",
     "lint": "eslint . --ignore-pattern dist --ignore-pattern .next --ignore-pattern worker-configuration.d.ts",
@@ -26,7 +26,9 @@
     "drizzle-orm": "0.45.2",
     "next": "16.2.6",
     "react": "19.2.6",
-    "react-dom": "19.2.6"
+    "react-dom": "19.2.6",
+    "react-markdown": "10.1.0",
+    "remark-gfm": "4.0.1"
   },
   "devDependencies": {
     "@cloudflare/vite-plugin": "1.37.1",

@@ -30,6 +30,7 @@ import {
 import { parsePlanRequest, parsePlanArtifact, parsePlanApproval, parsePlanHumanRevision, planReady, type PlanRequest, type PlanArtifact, type PlanApproval, type PlanHumanRevision } from "./plan-artifact";
 
 import { parseSourceAttempts, type SourceAttempt } from "./source-attempt";
+import { parseMeetingOutputLimits, type MeetingOutputLimits, type OutputProfile } from "./meeting-output-profile";
 
 export type TranscriptItem = {
   id: string;
@@ -67,10 +68,13 @@ export const reviewTaskLimits = {
 } as const;
 
 export type ParticipantSnapshot = {
+  id?: string;
   provider: ProviderId;
   providerName: string;
   model: string;
   role: RoleId;
+  roleName?: string;
+  skill?: string;
 };
 
 export type ObserverSnapshot = {
@@ -84,6 +88,8 @@ export type MeetingRecord = {
   id: string;
   objective: string;
   taskMode: TaskMode;
+  outputProfile?: OutputProfile;
+  outputLimits?: MeetingOutputLimits;
   reviewInput?: ReviewTaskInput;
   planRequest?: PlanRequest;
   planArtifact?: PlanArtifact;
@@ -133,6 +139,10 @@ export function parseMeetingRecord(value: unknown): MeetingRecord | null {
   const planHumanRevision = record.planHumanRevision === undefined ? undefined : planArtifact ? parsePlanHumanRevision(record.planHumanRevision, planArtifact) : null;
   const planApproval = record.planApproval === undefined ? undefined : planArtifact ? parsePlanApproval(record.planApproval, planArtifact, planHumanRevision) : null;
   const participants = parseParticipants(record.participants);
+  const outputProfile = record.outputProfile === undefined ? undefined
+    : record.outputProfile === "lite" || record.outputProfile === "medium" || record.outputProfile === "unlimited" ? record.outputProfile : null;
+  const outputLimits = record.outputLimits === undefined ? undefined
+    : outputProfile ? parseMeetingOutputLimits(record.outputLimits, outputProfile) : null;
   const observer = record.observer === undefined ? undefined : parseObserver(record.observer);
   const usage = parseUsage(record.usage);
   const meetingState =
@@ -176,6 +186,9 @@ export function parseMeetingRecord(value: unknown): MeetingRecord | null {
     !isBoundedString(record.id, 1, 200) ||
     !isBoundedString(record.objective, 1, 4_000) ||
     !taskMode ||
+    outputProfile === null ||
+    outputLimits === null ||
+    (outputLimits !== undefined && (taskMode !== "decide" || record.planRequest !== undefined)) ||
     (record.planRequest !== undefined && (!planRequest || taskMode !== "decide")) ||
     (record.planArtifact !== undefined && (!planArtifact || !meetingState || planArtifact.sourceStateVersion !== meetingState.version || record.iteration !== 1)) ||
     (record.planApproval !== undefined && (!planApproval || record.decision !== "approved")) ||
@@ -218,6 +231,8 @@ export function parseMeetingRecord(value: unknown): MeetingRecord | null {
     id: record.id,
     objective: record.objective,
     taskMode,
+    ...(outputProfile ? { outputProfile } : {}),
+    ...(outputLimits ? { outputLimits } : {}),
     ...(planRequest ? { planRequest } : {}),
     ...(planArtifact ? { planArtifact } : {}),
     ...(planApproval ? { planApproval } : {}),
@@ -350,14 +365,21 @@ function parseParticipants(value: unknown): ParticipantSnapshot[] | null {
       !isBoundedString(participant.providerName, 1, 160) ||
       !isBoundedString(participant.model, 1, 200) ||
       !roleIds.includes(participant.role as RoleId)
+      || (participant.id !== undefined && !isBoundedString(participant.id, 1, 80))
+      || (participant.roleName !== undefined && !isBoundedString(participant.roleName, 2, 60))
+      || (participant.skill !== undefined && !isBoundedString(participant.skill, 8, 500))
+      || (participant.role === "custom" && (participant.roleName === undefined || participant.skill === undefined))
     ) {
       return null;
     }
     participants.push({
+      ...(typeof participant.id === "string" ? { id: participant.id } : {}),
       provider: participant.provider as ProviderId,
       providerName: participant.providerName,
       model: participant.model,
       role: participant.role as RoleId,
+      ...(typeof participant.roleName === "string" ? { roleName: participant.roleName } : {}),
+      ...(typeof participant.skill === "string" ? { skill: participant.skill } : {}),
     });
   }
   return participants;

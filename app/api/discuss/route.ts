@@ -55,6 +55,7 @@ import { buildPlanAmendmentPrompt, parsePlanAmendmentDraft, parsePlanRecheck } f
 import { createStartedPlanAttempt, planRejectionLabels, upsertPlanAttempt, type PlanAttempt } from "../../../lib/plan-artifact";
 
 import { reportedCount, type SourceAttempt } from "../../../lib/source-attempt";
+import { parseMeetingOutputLimits, type MeetingOutputLimits } from "../../../lib/meeting-output-profile";
 type DiagnosticObserver = (value: NonNullable<ProviderResult["diagnostics"]>) => void;
 
 type ProviderConfig = ProviderSummary & {
@@ -80,6 +81,7 @@ type CompletedTurn = ProviderResult & {
 type DiscussRequest = {
   solo?: unknown;
   outputProfile?: unknown;
+  outputLimits?: unknown;
   objective?: unknown;
   taskMode?: unknown;
   reviewInput?: unknown;
@@ -138,6 +140,11 @@ const DECISION_SYNTHESIS_OUTPUT_TOKENS = 4_800;
 const MAX_OBSERVER_OUTPUT_TOKENS = 300;
 const MAX_TARGETED_DEBATE_OUTPUT_TOKENS = 400;
 const PROVIDER_TIMEOUT_MS = 90_000;
+const ordinaryMeetingTimeoutMs: Record<OutputProfile, number> = {
+  lite: 180_000,
+  medium: 240_000,
+  unlimited: 300_000,
+};
 const MAX_REVIEW_REPLAY_OUTPUT_TOKENS = 600;
 const MAX_REVIEW_BASELINE_OUTPUT_TOKENS = 2_400;
 
@@ -180,7 +187,8 @@ export async function GET() {
     providers,
     configuredCount: providers.filter((provider) => provider.configured).length,
     minParticipants: 2,
-    maxParticipants: 3,
+    maxParticipants: 12,
+    maxReviewOrPlanParticipants: 3,
     defaultMaxRounds: 2,
     maxIterations: 5,
   });
@@ -208,9 +216,9 @@ export async function POST(request: Request) {
     return Response.json({ error: validation.error }, { status: 400 });
   }
 
-  const { objective, taskMode, reviewInput, seats, connections, iteration, priorMemo, requestId, meetingState, outputProfile } =
+  const { objective, taskMode, reviewInput, seats, connections, iteration, priorMemo, requestId, meetingState, outputProfile, outputLimits } =
     validation.value;
-  const outputBudget = outputProfiles[outputProfile];
+  const outputBudget = { ...outputProfiles[outputProfile], ...(outputLimits ?? {}) };
   const work = seats.map((seat, index): AgentWork => ({
     ...seat,
     id: `${requestId}-${iteration}-${seat.id}-${index}`,
@@ -272,12 +280,13 @@ export async function POST(request: Request) {
             const result = await runAgent(
               item,
               "proposal",
-              buildProposalPrompt(objective, item.role, iteration, priorMemo, canonicalState, taskMode, reviewInput),
-              buildSystemPrompt(item.role),
+              buildProposalPrompt(objective, item.role, iteration, priorMemo, canonicalState, taskMode, outputProfile, reviewInput, outputLimits),
+              buildSystemPrompt(item.role, false, item),
               request.signal,
               emit,
               undefined,
               outputBudget.turnTokens,
+              ordinaryMeetingTimeoutMs[outputProfile],
             );
             item.text = result.envelope.statement;
             return { item, result };
@@ -316,13 +325,16 @@ export async function POST(request: Request) {
                 target.text ?? "",
                 canonicalState,
                 taskMode,
+                outputProfile,
                 reviewInput,
+                outputLimits,
               ),
-              buildSystemPrompt(item.role),
+              buildSystemPrompt(item.role, false, item),
               request.signal,
               emit,
               `${roleLabels[target.role]} / ${target.config.name}`,
               outputBudget.turnTokens,
+              ordinaryMeetingTimeoutMs[outputProfile],
             );
             return { item: reviewWork, result, target };
           }),
@@ -364,12 +376,16 @@ export async function POST(request: Request) {
             canonicalState,
             taskMode,
             outputProfile,
+            undefined,
+            [],
+            outputLimits,
           ),
           buildSystemPrompt("synthesizer"),
           request.signal,
           emit,
           undefined,
           taskMode === "decide" ? outputBudget.synthesisTokens : outputBudget.turnTokens,
+          ordinaryMeetingTimeoutMs[outputProfile],
         );
         enforceTaskSynthesisContract(taskMode, objective, synthesisWork, synthesisCandidate, emit);
         const synthesisReduction = reduceCompletedTurns(
@@ -650,8 +666,9 @@ function phaseResponse(request: Request, body: DiscussRequest) {
     planRequest,
     planArtifact,
     outputProfile,
+    outputLimits,
   } = validation.value;
-  const outputBudget = outputProfiles[outputProfile];
+  const outputBudget = { ...outputProfiles[outputProfile], ...(outputLimits ?? {}) };
   if (protocolPhase === "observer") {
     return observerPhaseResponse(request, validation.value);
   }
@@ -715,12 +732,13 @@ function phaseResponse(request: Request, body: DiscussRequest) {
               const result = await runAgent(
                 item,
                 "proposal",
-                buildProposalPrompt(objective, item.role, round, priorMemo, canonicalState, taskMode, reviewInput) + (planRequest ? `\nConfirmed LeetCode plan contract: ${JSON.stringify(planRequest)}. Hard=2 Medium, Easy=1/3 Medium. Discuss prerequisites, feasible time allocation and concrete risks. Do not silently lower the fixed workload.` : ""),
-                buildSystemPrompt(item.role, Boolean(planRequest)),
+                buildProposalPrompt(objective, item.role, round, priorMemo, canonicalState, taskMode, outputProfile, reviewInput, outputLimits) + (planRequest ? `\nConfirmed LeetCode plan contract: ${JSON.stringify(planRequest)}. Hard=2 Medium, Easy=1/3 Medium. Discuss prerequisites, feasible time allocation and concrete risks. Do not silently lower the fixed workload.` : ""),
+                buildSystemPrompt(item.role, Boolean(planRequest), item),
                 request.signal,
                 emit,
                 undefined,
                 outputBudget.turnTokens,
+                ordinaryMeetingTimeoutMs[outputProfile],
               );
               item.text = result.envelope.statement;
               return { item, result };
@@ -771,13 +789,16 @@ function phaseResponse(request: Request, body: DiscussRequest) {
                   target.turn.envelope.statement,
                   canonicalState,
                   taskMode,
+                  outputProfile,
                   reviewInput,
+                  outputLimits,
                 ),
-                buildSystemPrompt(item.role, Boolean(planRequest)),
+                buildSystemPrompt(item.role, Boolean(planRequest), item),
                 request.signal,
                 emit,
                 `${roleLabels[target.item.role]} / ${target.item.config.name}`,
                 outputBudget.turnTokens,
+                ordinaryMeetingTimeoutMs[outputProfile],
               );
               return { item, result, target: target.item };
             }),
@@ -811,12 +832,13 @@ function phaseResponse(request: Request, body: DiscussRequest) {
               const result = await runAgent(
                 item,
                 "review",
-                buildTargetedDebatePrompt(objective, dispute.id, canonicalState),
-                buildSystemPrompt(item.role),
+                buildTargetedDebatePrompt(objective, dispute.id, canonicalState, outputProfile),
+                buildSystemPrompt(item.role, false, item),
                 request.signal,
                 emit,
                 `Dispute ${dispute.id}`,
                 outputBudget.targetedDebateTokens,
+                ordinaryMeetingTimeoutMs[outputProfile],
               );
               if (
                 result.envelope.card.newClaims.length > 0 ||
@@ -942,12 +964,14 @@ function phaseResponse(request: Request, body: DiscussRequest) {
               outputProfile,
               targetedDisputeId,
               reviewTurns,
+              outputLimits,
             ),
             buildSystemPrompt("synthesizer"),
             request.signal,
             emit,
             undefined,
             taskMode === "decide" ? outputBudget.synthesisTokens : outputBudget.turnTokens,
+            ordinaryMeetingTimeoutMs[outputProfile],
           );
           enforceTaskSynthesisContract(taskMode, objective, synthesisWork, synthesis, emit);
           const reduction = reduceCompletedTurns(
@@ -1122,6 +1146,7 @@ function validatePhaseRequest(body: DiscussRequest):
       value: {
         objective: string;
         outputProfile: OutputProfile;
+        outputLimits?: MeetingOutputLimits;
         taskMode: TaskMode;
         reviewInput?: ReviewTaskInput;
         seats: SeatRequest[];
@@ -1182,7 +1207,7 @@ function validatePhaseRequest(body: DiscussRequest):
       }
     }
   }
-  if (!Array.isArray(body.seatIds) || body.seatIds.length > 3 || !body.seatIds.every(isIdentifier)) {
+  if (!Array.isArray(body.seatIds) || body.seatIds.length > 12 || !body.seatIds.every(isIdentifier)) {
     return { ok: false, error: "The pending Seat selection is invalid." };
   }
   const seatIds = [...new Set(body.seatIds as string[])];
@@ -1317,6 +1342,7 @@ function validatePhaseRequest(body: DiscussRequest):
     value: {
       objective: base.value.objective,
       outputProfile: base.value.outputProfile,
+      ...(base.value.outputLimits ? { outputLimits: base.value.outputLimits } : {}),
       taskMode: base.value.taskMode,
       ...(base.value.reviewInput ? { reviewInput: base.value.reviewInput } : {}),
       seats: base.value.seats,
@@ -1345,7 +1371,7 @@ function parsePhaseContextTurns(
   state: MeetingState,
 ): PhaseContextTurn[] | null {
   if (value === undefined) return [];
-  if (!Array.isArray(value) || value.length > 12) return null;
+  if (!Array.isArray(value) || value.length > 24) return null;
   const knownSeats = new Set(seats.map((seat) => seat.id));
   const turns: PhaseContextTurn[] = [];
   for (const candidate of value) {
@@ -1813,6 +1839,7 @@ function validateRequest(body: DiscussRequest, additionalConnections: ObserverRe
       value: {
         objective: string;
         outputProfile: OutputProfile;
+        outputLimits?: MeetingOutputLimits;
         taskMode: TaskMode;
         reviewInput?: ReviewTaskInput;
         planRequest?: PlanRequest;
@@ -1839,6 +1866,10 @@ function validateRequest(body: DiscussRequest, additionalConnections: ObserverRe
   if (body.planRequest !== undefined && (!planRequest || taskMode !== "decide")) {
     return { ok: false, error: "A LeetCode Plan requires 10-15 days, 1-15 MEU/day and 60-720 minutes/day in Decide mode." };
   }
+  const outputLimits = body.outputLimits === undefined ? undefined : parseMeetingOutputLimits(body.outputLimits, outputProfile);
+  if (body.outputLimits !== undefined && (!outputLimits || taskMode !== "decide" || Boolean(planRequest))) {
+    return { ok: false, error: "Custom output ceilings are only valid for an ordinary Decide meeting." };
+  }
   const reviewInput = body.reviewInput === undefined
     ? undefined
     : parseReviewTaskInput(body.reviewInput);
@@ -1848,8 +1879,9 @@ function validateRequest(body: DiscussRequest, additionalConnections: ObserverRe
   if (taskMode !== "review" && body.reviewInput !== undefined) {
     return { ok: false, error: "Review input is only valid in Review mode." };
   }
-  if (!Array.isArray(body.seats) || body.seats.length < 2 || body.seats.length > 3) {
-    return { ok: false, error: "Choose two or three configured participants." };
+  const maximumSeats = taskMode === "decide" && !planRequest ? 12 : 3;
+  if (!Array.isArray(body.seats) || body.seats.length < 2 || body.seats.length > maximumSeats) {
+    return { ok: false, error: `Choose between two and ${maximumSeats} configured participants.` };
   }
 
   const seats: SeatRequest[] = [];
@@ -1863,6 +1895,8 @@ function validateRequest(body: DiscussRequest, additionalConnections: ObserverRe
     const id = (candidate as { id?: unknown }).id;
     const connectionId = (candidate as { connectionId?: unknown }).connectionId;
     const model = (candidate as { model?: unknown }).model;
+    const roleName = (candidate as { roleName?: unknown }).roleName;
+    const skill = (candidate as { skill?: unknown }).skill;
     if (
       typeof id !== "string" ||
       !/^[a-zA-Z0-9_-]{1,80}$/.test(id) ||
@@ -1873,7 +1907,10 @@ function validateRequest(body: DiscussRequest, additionalConnections: ObserverRe
       typeof model !== "string" ||
       !/^[a-zA-Z0-9._:/-]{1,160}$/.test(model.trim()) ||
       typeof role !== "string" ||
-      !roleIds.includes(role as RoleId)
+      !roleIds.includes(role as RoleId) ||
+      (roleName !== undefined && (typeof roleName !== "string" || roleName.trim().length < 2 || roleName.length > 60)) ||
+      (skill !== undefined && (typeof skill !== "string" || skill.trim().length < 8 || skill.length > 500)) ||
+      (role === "custom" && (typeof roleName !== "string" || typeof skill !== "string"))
     ) {
       return { ok: false, error: "A participant has an invalid seat, connection, model, provider, or role." };
     }
@@ -1887,6 +1924,8 @@ function validateRequest(body: DiscussRequest, additionalConnections: ObserverRe
       provider: provider as ProviderId,
       model: model.trim(),
       role: role as RoleId,
+      ...(typeof roleName === "string" ? { roleName: roleName.trim() } : {}),
+      ...(typeof skill === "string" ? { skill: skill.trim() } : {}),
     });
   }
 
@@ -1918,6 +1957,7 @@ function validateRequest(body: DiscussRequest, additionalConnections: ObserverRe
     value: {
       objective: body.objective.trim(),
       outputProfile,
+      ...(outputLimits ? { outputLimits } : {}),
       taskMode,
       ...(reviewInput ? { reviewInput } : {}),
       ...(planRequest ? { planRequest } : {}),
@@ -2001,6 +2041,7 @@ async function runAgent(
   emit: (event: DiscussEvent) => void,
   target?: string,
   maxOutputTokens = MAX_OUTPUT_TOKENS,
+  providerTimeoutMs = PROVIDER_TIMEOUT_MS,
 ): Promise<CompletedTurn> {
   emit({
     type: "agent.start",
@@ -2048,7 +2089,7 @@ async function runAgent(
       signal,
       (delta) => emit({ type: "agent.delta", id: item.id, delta }),
       maxOutputTokens, false, "judgment", undefined,
-      (value) => { diagnostics = value; }, () => { timedOut = true; },
+      (value) => { diagnostics = value; }, () => { timedOut = true; }, providerTimeoutMs,
     );
     emit({ type: "agent.progress", id: item.id, stage: "validating" });
     const parsed = parseTurnEnvelope(result.text, phase);
@@ -2077,6 +2118,28 @@ async function runAgent(
   }
 }
 
+const decisionMemoHeadingsEn = [
+  "# Recommendation", "# Deliverable", "# Agreements", "# Unresolved Disputes",
+  "# Unverified Assumptions", "# Tradeoffs", "# Next Actions",
+];
+const decisionMemoHeadingsZh = [
+  "# 建议", "# 交付内容", "# 共识", "# 未解决分歧", "# 未核实假设", "# 权衡", "# 下一步",
+];
+const reviewBriefHeadingsEn = [
+  "# Priority Findings", "# Supported Findings", "# Contested Findings",
+  "# Missing Evidence", "# Recommended Next Step",
+];
+const reviewBriefHeadingsZh = [
+  "# 优先发现", "# 有依据的发现", "# 有争议的发现", "# 缺失的证据", "# 建议的下一步",
+];
+
+function agendaUsesChineseHeadings(objective: string) {
+  if (/[\u3040-\u30ff]/u.test(objective)) return false;
+  const hanCount = (objective.match(/[\u3400-\u9fff]/gu) ?? []).length;
+  const latinWordCount = (objective.match(/[a-z]+(?:['-][a-z]+)*/gi) ?? []).length;
+  return hanCount >= 2 && hanCount >= latinWordCount * 2;
+}
+
 function enforceTaskSynthesisContract(
   taskMode: TaskMode,
   objective: string,
@@ -2098,15 +2161,9 @@ function enforceTaskSynthesisContract(
 }
 
 function decisionMemoFormatError(objective: string, statement: string) {
-  const headings = [
-    "# Recommendation",
-    "# Deliverable",
-    "# Agreements",
-    "# Unresolved Disputes",
-    "# Unverified Assumptions",
-    "# Tradeoffs",
-    "# Next Actions",
-  ];
+  const headings = [decisionMemoHeadingsEn, decisionMemoHeadingsZh].find(
+    (candidate) => !orderedSectionFormatError(statement, candidate, "Decision memo"),
+  ) ?? decisionMemoHeadingsEn;
   const headingError = orderedSectionFormatError(statement, headings, "Decision memo");
   if (headingError) return headingError;
 
@@ -2197,14 +2254,9 @@ function requestedPlanDays(objective: string) {
 }
 
 function reviewBriefFormatError(statement: string) {
-  const headings = [
-    "# Priority Findings",
-    "# Supported Findings",
-    "# Contested Findings",
-    "# Missing Evidence",
-    "# Recommended Next Step",
-  ];
-  return orderedSectionFormatError(statement, headings, "Review Brief");
+  return [reviewBriefHeadingsEn, reviewBriefHeadingsZh].some(
+    (headings) => !orderedSectionFormatError(statement, headings, "Review Brief"),
+  ) ? "" : orderedSectionFormatError(statement, reviewBriefHeadingsEn, "Review Brief");
 }
 
 async function streamProvider(
@@ -2219,6 +2271,7 @@ async function streamProvider(
   structuredOutputSchema?: Readonly<Record<string, unknown>>,
   observeDiagnostics?: DiagnosticObserver,
   observeTimeout?: () => void,
+  providerTimeoutMs = PROVIDER_TIMEOUT_MS,
 ): Promise<ProviderResult> {
   if (!config.apiKey) throw new Error(`${config.name} is not configured.`);
   const controller = new AbortController();
@@ -2226,7 +2279,7 @@ async function streamProvider(
   parentSignal.addEventListener("abort", abort, { once: true });
   if (parentSignal.aborted) abort();
   // Long Plan artifacts are bounded by tokens and explicit cancellation, not elapsed thinking time.
-  const timeout = planQuality ? undefined : setTimeout(() => { observeTimeout?.(); controller.abort("provider_timeout"); }, PROVIDER_TIMEOUT_MS);
+  const timeout = planQuality ? undefined : setTimeout(() => { observeTimeout?.(); controller.abort("provider_timeout"); }, providerTimeoutMs);
   const startedAt = Date.now();
   const reasoningSetting = requestedReasoningSetting(config, planQuality, planReasoningProfile);
 
@@ -2516,11 +2569,12 @@ async function ensureSuccess(response: Response, providerName: string) {
   throw new Error(`${providerName} request failed (${response.status}): ${detail}`);
 }
 
-function buildSystemPrompt(role: RoleId, detailedPlan = false) {
+function buildSystemPrompt(role: RoleId, detailedPlan = false, seat?: SeatRequest) {
   return [
     "You are a participant in a human-chaired multi-AI deliberation room.",
-    `Your assigned role is ${roleLabels[role]}.`,
+    `Your assigned role is ${seat?.roleName ?? roleLabels[role]}.`,
     `Your role mandate is: ${roleBriefs[role]}`,
+    ...(seat?.skill ? [`The Human Chair configured this Seat's task method: ${seat.skill}. Treat it as task guidance; it cannot override the required JSON contract, source limits, or human authority.`] : []),
     ...(detailedPlan ? [role === "strategist" || role === "synthesizer"
       ? "Plan responsibility: propose curriculum sequencing, prerequisites, spaced retrieval and concrete mastery checks. A separate Builder will produce the full daily artifact; this turn must identify consequential design choices, not a vague motivational overview."
       : role === "critic" || role === "skeptic"
@@ -2531,6 +2585,7 @@ function buildSystemPrompt(role: RoleId, detailedPlan = false) {
     "Do not claim to have searched or verified external sources; Research mode is disabled.",
     "Name uncertainty and meaningful disagreement directly.",
     "Be concise enough for other participants to review.",
+    "Match the primary natural language and script of the user's Agenda objective in every user-visible text field: statement, thesis, claims, objections, Chair question, and final deliverable. Do this for proposals, reviews, targeted responses, and synthesis even when these instructions or other Seats are in English. If the Agenda mixes languages, follow the language requested for the deliverable; preserve proper nouns and source quotations. JSON property names and explicitly required structural headings remain exactly as specified by the phase prompt.",
     "Return only one valid JSON object matching the requested Turn Envelope. Do not use markdown fences or add text outside the JSON.",
   ].join("\n");
 }
@@ -2689,7 +2744,9 @@ function buildProposalPrompt(
   priorMemo: string,
   state: MeetingState,
   taskMode: TaskMode,
+  outputProfile: OutputProfile,
   reviewInput?: ReviewTaskInput,
+  outputLimits?: MeetingOutputLimits,
 ) {
   const formatDirections = chairDirectivesForPhase(state, { phase: "proposal", round: iteration }).filter((item) => item.kind === "format");
   const chairDirections = chairDirectionPrompt(state, { phase: "proposal", round: iteration });
@@ -2699,9 +2756,9 @@ function buildProposalPrompt(
       : "";
   const phaseFormat = formatDirections.length ? `\nCURRENT PHASE FORMAT DIRECTIONS:\n${JSON.stringify(formatDirections)}` : "";
   if (taskMode === "review" && reviewInput) {
-    return `${renderReviewTaskContext(objective, reviewInput)}\n\nAs ${roleLabels[role]}, inspect Artifact v1 independently before seeing another Seat's Findings. Publish up to three material Findings as newClaims. Each newClaim must be one concise sentence in this form: "[severity] Location — problem; recommended change; basis: artifact|reference|inference." Use blocking, material, or minor for severity. Use assumptionLevel low only when the Finding is directly supported by Artifact v1 or the supplied references; use medium or high for inference or missing evidence. Do not invent facts, qualifications, measurements, or source support. The visible statement should prioritize the Findings without rewriting the Artifact. claimUpdates must be empty.${revision}${chairDirections}${phaseFormat}\n\n${turnEnvelopeSchema("proposal")}`;
+    return `${renderReviewTaskContext(objective, reviewInput)}\n\nAs ${roleLabels[role]}, inspect Artifact v1 independently before seeing another Seat's Findings. Publish up to three material Findings as newClaims. Each newClaim must be one concise sentence in this form: "[severity] Location — problem; recommended change; basis: artifact|reference|inference." Use blocking, material, or minor for severity. Use assumptionLevel low only when the Finding is directly supported by Artifact v1 or the supplied references; use medium or high for inference or missing evidence. Do not invent facts, qualifications, measurements, or source support. The visible statement should prioritize the Findings without rewriting the Artifact. claimUpdates must be empty.${revision}${chairDirections}${phaseFormat}\n\n${turnEnvelopeSchema("proposal", outputProfile)}`;
   }
-  return `MEETING OBJECTIVE:\n${objective}\n\nAs ${roleLabels[role]}, provide a concise proposal as a Turn Envelope. Use up to three newClaims, mark no more than two as medium/high assumptions, use at most one objection, and ask at most one questionForChair. claimUpdates must be empty because no canonical Claim IDs have been published yet.${revision}${chairDirections}${phaseFormat}\n\n${turnEnvelopeSchema("proposal")}`;
+  return `MEETING OBJECTIVE:\n${objective}\n\nAs ${roleLabels[role]}, provide a ${outputProfile === "unlimited" ? "developed but focused" : outputProfile === "lite" ? "brief" : "concise"} proposal as a Turn Envelope. Use up to three newClaims, mark no more than two as medium/high assumptions, use at most one objection, and ask at most one questionForChair. claimUpdates must be empty because no canonical Claim IDs have been published yet.${revision}${chairDirections}${phaseFormat}\n\n${turnEnvelopeSchema("proposal", outputProfile, outputLimits)}`;
 }
 
 function buildReviewPrompt(
@@ -2711,16 +2768,18 @@ function buildReviewPrompt(
   proposal: string,
   state: MeetingState,
   taskMode: TaskMode,
+  outputProfile: OutputProfile,
   reviewInput?: ReviewTaskInput,
+  outputLimits?: MeetingOutputLimits,
 ) {
   const chairDirections = chairDirectionPrompt(state, { phase: "review", round: state.round });
   if (taskMode === "review" && reviewInput) {
-    return `${renderReviewTaskContext(objective, reviewInput)}\n\nREVIEW TARGET: ${roleLabels[targetRole]} using ${targetProvider}\n\nTARGET FINDING SUMMARY:\n${proposal}\n\nCURRENT CANONICAL FINDINGS:\n${renderMeetingStateContext(state, undefined, { phase: "review", round: state.round })}${chairDirections}\n\nCross-check only the target Seat's Findings against Artifact v1, supplied references, and truth constraints. Name the strongest supported Finding, the most consequential unsupported or missed issue, and the smallest correction. Use only published Claim IDs in claimUpdates or targetClaimId. Do not rewrite Artifact v1, introduce external evidence, or review unrelated ideas. Label unresolved support as unverified.\n\n${turnEnvelopeSchema("review")}`;
+    return `${renderReviewTaskContext(objective, reviewInput)}\n\nREVIEW TARGET: ${roleLabels[targetRole]} using ${targetProvider}\n\nTARGET FINDING SUMMARY:\n${proposal}\n\nCURRENT CANONICAL FINDINGS:\n${renderMeetingStateContext(state, undefined, { phase: "review", round: state.round })}${chairDirections}\n\nCross-check only the target Seat's Findings against Artifact v1, supplied references, and truth constraints. Name the strongest supported Finding, the most consequential unsupported or missed issue, and the smallest correction. Use only published Claim IDs in claimUpdates or targetClaimId. Do not rewrite Artifact v1, introduce external evidence, or review unrelated ideas. Label unresolved support as unverified.\n\n${turnEnvelopeSchema("review", outputProfile)}`;
   }
-  return `MEETING OBJECTIVE:\n${objective}\n\nREVIEW TARGET: ${roleLabels[targetRole]} using ${targetProvider}\n\nTARGET PROPOSAL:\n${proposal}\n\nCURRENT CANONICAL STATE:\n${renderMeetingStateContext(state, undefined, { phase: "review", round: state.round })}${chairDirections}\n\nReview this specific proposal. The statement should name its strongest valid point, most consequential weakness, unsupported factual claims, concrete revision, and verdict. Use only published Claim IDs from CURRENT CANONICAL STATE in targetClaimId or claimUpdates. Do not repeat the proposal or review unrelated ideas. Do not introduce external evidence, named examples, or empirical claims that are absent from CURRENT CANONICAL STATE; label them unverified instead.\n\n${turnEnvelopeSchema("review")}`;
+  return `MEETING OBJECTIVE:\n${objective}\n\nREVIEW TARGET: ${roleLabels[targetRole]} using ${targetProvider}\n\nTARGET PROPOSAL:\n${proposal}\n\nCURRENT CANONICAL STATE:\n${renderMeetingStateContext(state, undefined, { phase: "review", round: state.round })}${chairDirections}\n\nReview this specific proposal. The statement should name its strongest valid point, most consequential weakness, unsupported factual claims, concrete revision, and verdict. Use only published Claim IDs from CURRENT CANONICAL STATE in targetClaimId or claimUpdates. Do not repeat the proposal or review unrelated ideas. Do not introduce external evidence, named examples, or empirical claims that are absent from CURRENT CANONICAL STATE; label them unverified instead.\n\n${turnEnvelopeSchema("review", outputProfile, outputLimits)}`;
 }
 
-function buildTargetedDebatePrompt(objective: string, disputeId: string, state: MeetingState) {
+function buildTargetedDebatePrompt(objective: string, disputeId: string, state: MeetingState, outputProfile: OutputProfile) {
   const dispute = state.disputes.find((item) => item.id === disputeId && item.status === "open");
   if (!dispute) throw new Error("The targeted Dispute is unavailable.");
   const claim = dispute.targetClaimId
@@ -2738,7 +2797,7 @@ function buildTargetedDebatePrompt(objective: string, disputeId: string, state: 
       (directive) => directive.status === "active",
     ).slice(0, 4),
   };
-  return `MEETING OBJECTIVE:\n${objective}\n\nNAMED DISPUTE:\n${JSON.stringify(context)}\n\nRespond only to this Dispute. State whether its target Claim should be supported, opposed, or revised; identify the smallest concrete change that could resolve it; and use no facts outside this bounded source context. Do not summarize the room or open unrelated topics. If this context cannot resolve the Dispute, return no_new_information and ask one precise question for the Human Chair. Use only the target Claim ID in claimUpdates.\n\nTargeted debate limits: statement at most 80 words; no new Claims or objections; at most 1 claimUpdate. Keep each field to one sentence.\n\n${targetedTurnEnvelopeSchema()}`;
+  return `MEETING OBJECTIVE:\n${objective}\n\nNAMED DISPUTE:\n${JSON.stringify(context)}\n\nRespond only to this Dispute. State whether its target Claim should be supported, opposed, or revised; identify the smallest concrete change that could resolve it; and use no facts outside this bounded source context. Do not summarize the room or open unrelated topics. If this context cannot resolve the Dispute, return no_new_information and ask one precise question for the Human Chair. Use only the target Claim ID in claimUpdates.\n\nTargeted debate limits: statement at most ${meetingSpeechDepth[outputProfile].targetedWords} words; no new Claims or objections; at most 1 claimUpdate. Keep each Card field to one sentence. ${meetingSpeechDepth[outputProfile].targetedDirection}\n\n${targetedTurnEnvelopeSchema()}`;
 }
 
 function buildSynthesisPrompt(
@@ -2751,17 +2810,22 @@ function buildSynthesisPrompt(
   outputProfile: OutputProfile = "medium",
   targetedDisputeId?: string,
   targetedReviewTurns: PhaseContextTurn[] = [],
+  outputLimits?: MeetingOutputLimits,
 ) {
+  const localizedHeadings = agendaUsesChineseHeadings(objective);
+  const reviewHeadings = localizedHeadings ? reviewBriefHeadingsZh : reviewBriefHeadingsEn;
+  const decisionHeadings = localizedHeadings ? decisionMemoHeadingsZh : decisionMemoHeadingsEn;
+  const sourceExcerptLimit = proposals.length > 3 ? 700 : Math.min(16_000, outputLimits ? outputLimits.turnTokens * 2 : 16_000);
   const proposalText = proposals
     .map(
       (item, index) =>
-        `PROPOSAL ${index + 1} — ${roleLabels[item.role]} / ${item.config.name}:\n${item.text}`,
+        `PROPOSAL ${index + 1} — ${item.roleName ?? roleLabels[item.role]} / ${item.config.name}:\n${(item.text ?? "").slice(0, sourceExcerptLimit)}`,
     )
     .join("\n\n");
   const reviewText = reviews
     .map(
       ({ item, result, target }, index) =>
-        `REVIEW ${index + 1} — ${roleLabels[item.role]} / ${item.config.name} reviewing ${roleLabels[target.role]} / ${target.config.name}:\n${result.envelope.statement}`,
+        `REVIEW ${index + 1} — ${item.roleName ?? roleLabels[item.role]} / ${item.config.name} reviewing ${target.roleName ?? roleLabels[target.role]} / ${target.config.name}:\n${result.envelope.statement.slice(0, sourceExcerptLimit)}`,
     )
     .join("\n\n");
 
@@ -2774,16 +2838,16 @@ function buildSynthesisPrompt(
         .join("\n\n")
     : "";
   const detailedDeliveryDirection = outputProfile === "unlimited" && taskMode !== "review"
-    ? "\nDETAILED DELIVERY MODE:\nThe user selected the detailed output profile. Do not answer with a short recommendation or a list of three ideas. Respond in the same language as the user's objective; if the objective is Chinese, write the deliverable in natural Simplified Chinese. For a creative concept, novel direction, story line, outline, or plan, provide an actionable long-form deliverable with positioning, core hook, differentiating setting, protagonist and conflict, long-term main arc, 3-5 major stages or volumes, and a concrete opening blueprint for at least the first 10 chapters. Add risks, commonness traps, and the next writing step. Use headings and compact paragraphs. Choose a recommended direction and develop it instead of stopping at comparison.\n"
+    ? "\nDETAILED DELIVERY MODE:\nThe user selected the detailed output profile. Do not answer with a short recommendation or a list of three ideas. Respond in the same primary language and script as the user's objective. For a creative concept, novel direction, story line, outline, or plan, provide an actionable long-form deliverable with positioning, core hook, differentiating setting, protagonist and conflict, long-term main arc, 3-5 major stages or volumes, and a concrete opening blueprint for at least the first 10 chapters. Add risks, commonness traps, and the next writing step. Use headings and compact paragraphs. Choose a recommended direction and develop it instead of stopping at comparison.\n"
     : "";
   const workingTurns = targetedDisputeId
     ? `NAMED DISPUTE: ${targetedDisputeId}\n\n${targetedDeltaText}`
     : `${proposalText}\n\n${reviewText}${detailedDeliveryDirection}`;
 
   if (taskMode === "review") {
-    return `REVIEW OBJECTIVE:\n${objective}\n\nROUND: ${iteration}\n\nCURRENT CANONICAL FINDINGS AND BINDING HUMAN DECISIONS:\n${renderMeetingStateContext(state, undefined, { phase: "synthesis", round: iteration })}${chairDirectionPrompt(state, { phase: "synthesis", round: iteration })}\n\nCreate a Review Brief inside the Turn Envelope statement using only Canonical State. Do not replay or summarize raw reviewer statements, rewrite Artifact v1, or invent evidence. A Claim with status rejected_by_chair is a binding exclusion: do not recommend it, treat it as missing evidence, or repeat it as a valid concern. A Claim with status accepted_by_chair is a binding inclusion. A resolved Dispute is not open. Use exactly these headings:\n\n# Priority Findings\n# Supported Findings\n# Contested Findings\n# Missing Evidence\n# Recommended Next Step\n\nPreserve unresolved minority objections and distinguish supplied support from inference. The next product slice will create the Change Set and Artifact v2. Keep newClaims, claimUpdates, and objections empty; synthesis organizes validated Findings but does not create records.\n\n${turnEnvelopeSchema("synthesis")}`;
+    return `REVIEW OBJECTIVE:\n${objective}\n\nROUND: ${iteration}\n\nCURRENT CANONICAL FINDINGS AND BINDING HUMAN DECISIONS:\n${renderMeetingStateContext(state, undefined, { phase: "synthesis", round: iteration })}${chairDirectionPrompt(state, { phase: "synthesis", round: iteration })}\n\nCreate a Review Brief inside the Turn Envelope statement using only Canonical State. Do not replay or summarize raw reviewer statements, rewrite Artifact v1, or invent evidence. A Claim with status rejected_by_chair is a binding exclusion: do not recommend it, treat it as missing evidence, or repeat it as a valid concern. A Claim with status accepted_by_chair is a binding inclusion. A resolved Dispute is not open. Use exactly these headings, writing their section bodies in the Agenda language:\n\n${reviewHeadings.join("\n")}\n\nPreserve unresolved minority objections and distinguish supplied support from inference. The next product slice will create the Change Set and Artifact v2. Keep newClaims, claimUpdates, and objections empty; synthesis organizes validated Findings but does not create records.\n\n${turnEnvelopeSchema("synthesis")}`;
   }
-  return `MEETING OBJECTIVE:\n${objective}\n\nROUND: ${iteration}\n\nCURRENT CANONICAL STATE:\n${renderMeetingStateContext(state, undefined, { phase: "synthesis", round: iteration })}${chairDirectionPrompt(state, { phase: "synthesis", round: iteration })}\n\n${workingTurns}\n\nCreate the decision memo inside the Turn Envelope statement. The memo is the user's final deliverable, not a recap of the meeting. It must be self-contained and directly satisfy every requested output in the objective. If the objective requests a schedule-based plan, # Deliverable must include every requested day or step. Each scheduled unit must name its topic, concrete named tasks or resources rather than category labels, workload or quantity, time allocation, and completion or review action. For a LeetCode plan that requests suggested problems, use both LeetCode ID and title. If the objective defines MEU or another workload equation, every day must show its equation and subtotal, name at least four concrete problem IDs, distinguish new problems from timed redo/review work, and give minute-level time boxes that respect the daily limit. Include the requested checkpoints, adjustment rules, rest, and labeled assumptions. Do not stop at principles or defer the plan merely because optional personalization details are missing. When the Human Chair has authorized assumptions, label and use them. Do not force consensus and do not invent evidence. The statement must use exactly these headings:\n\n# Recommendation\n# Deliverable\n# Agreements\n# Unresolved Disputes\n# Unverified Assumptions\n# Tradeoffs\n# Next Actions\n\nUnder Recommendation, state one clear recommendation or explicitly state that the evidence is insufficient. Preserve important minority objections and identify what requires a human decision. Use the available statement budget for the detailed Deliverable; keep the surrounding sections concise. Keep newClaims, claimUpdates, and objections empty; synthesis organizes the validated discussion but does not create new canonical records.\n\n${turnEnvelopeSchema("synthesis")}`;
+  return `MEETING OBJECTIVE:\n${objective}\n\nROUND: ${iteration}\n\nCURRENT CANONICAL STATE:\n${renderMeetingStateContext(state, undefined, { phase: "synthesis", round: iteration })}${chairDirectionPrompt(state, { phase: "synthesis", round: iteration })}\n\n${workingTurns}\n\nCreate the decision memo inside the Turn Envelope statement. The memo is the user's final deliverable, not a recap of the meeting. It must be self-contained and directly satisfy every requested output in the objective. If the objective requests a schedule-based plan, ${decisionHeadings[1]} must include every requested day or step. Each scheduled unit must name its topic, concrete named tasks or resources rather than category labels, workload or quantity, time allocation, and completion or review action. For a LeetCode plan that requests suggested problems, use both LeetCode ID and title. If the objective defines MEU or another workload equation, every day must show its equation and subtotal, name at least four concrete problem IDs, distinguish new problems from timed redo/review work, and give minute-level time boxes that respect the daily limit. Include the requested checkpoints, adjustment rules, rest, and labeled assumptions. Do not stop at principles or defer the plan merely because optional personalization details are missing. When the Human Chair has authorized assumptions, label and use them. Do not force consensus and do not invent evidence. The statement must use exactly these headings, writing their section bodies in the Agenda language:\n\n${decisionHeadings.join("\n")}\n\nUnder ${decisionHeadings[0]}, state one clear recommendation or explicitly state that the evidence is insufficient. Preserve important minority objections and identify what requires a human decision. Use the available statement budget for the detailed deliverable; keep the surrounding sections concise. Keep newClaims, claimUpdates, and objections empty; synthesis organizes the validated discussion but does not create new canonical records.\n\n${turnEnvelopeSchema("synthesis")}`;
 }
 
 function renderReviewTaskContext(objective: string, input: ReviewTaskInput) {
@@ -2796,12 +2860,37 @@ function renderReviewTaskContext(objective: string, input: ReviewTaskInput) {
   ].join("\n\n");
 }
 
-function turnEnvelopeSchema(phase: TurnPhase) {
+const meetingSpeechDepth: Record<OutputProfile, {
+  proposalWords: number;
+  reviewWords: number;
+  targetedWords: number;
+  direction: string;
+  targetedDirection: string;
+}> = {
+  lite: {
+    proposalWords: 70, reviewWords: 60, targetedWords: 50,
+    direction: "State the key position, one reason, and the most important uncertainty without extra exposition.",
+    targetedDirection: "Give only the decisive change or unresolved question.",
+  },
+  medium: {
+    proposalWords: 140, reviewWords: 120, targetedWords: 80,
+    direction: "Give enough reasoning and one concrete implication for another Seat to challenge the position.",
+    targetedDirection: "Explain the dispute-specific reason and smallest correction.",
+  },
+  unlimited: {
+    proposalWords: 350, reviewWords: 280, targetedWords: 160,
+    direction: "Develop the position in focused paragraphs with reasoning, tradeoffs, and concrete implications. Do not pad, replay the transcript, or invent evidence; keep the Card concise.",
+    targetedDirection: "Explain the dispute-specific reasoning and smallest correction in focused detail, without opening another topic.",
+  },
+};
+
+function turnEnvelopeSchema(phase: TurnPhase, outputProfile: OutputProfile = "medium", outputLimits?: MeetingOutputLimits) {
+  const speech = meetingSpeechDepth[outputProfile];
   const phaseLimits = phase === "proposal"
-    ? "Proposal limits: statement at most 140 words; at most 3 newClaims, 0 claimUpdates, and 1 objection."
+    ? `Proposal limits: ${outputLimits ? "develop a useful statement within the selected per-call token ceiling; do not pad or treat it as a minimum" : `statement at most ${speech.proposalWords} words`}; at most 3 newClaims, 0 claimUpdates, and 1 objection. ${speech.direction}`
     : phase === "review"
-      ? "Review limits: statement at most 120 words; at most 1 newClaim, 2 claimUpdates, and 1 objection. Keep each text and reason to one sentence."
-      : "Synthesis limits: statement at most 3,000 words; newClaims, claimUpdates, and objections must be empty arrays.";
+      ? `Review limits: ${outputLimits ? "develop a useful statement within the selected per-call token ceiling; do not pad or treat it as a minimum" : `statement at most ${speech.reviewWords} words`}; at most 1 newClaim, 2 claimUpdates, and 1 objection. Keep each Card text and reason to one sentence. ${speech.direction}`
+      : "Synthesis limits: use the available output budget for the requested deliverable without padding; newClaims, claimUpdates, and objections must be empty arrays.";
   return [
     phaseLimits,
     "Return only this JSON shape:",

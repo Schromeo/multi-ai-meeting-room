@@ -22,6 +22,7 @@ import {
 } from "./review-artifact";
 
 import { sourceAttemptKey, type SourceAttempt } from "./source-attempt";
+import type { RecordedHumanEvent } from "./meeting-markdown-export";
 
 const databaseName = "multi-ai-meeting-room";
 type PlanRequest = NonNullable<MeetingRecord["planRequest"]>;
@@ -142,6 +143,7 @@ export type RoomStoreInitialization = {
 export interface RoomStore {
   initialize(): Promise<RoomStoreInitialization>;
   listRooms(): Promise<MeetingRecord[]>;
+  listHumanEvents(roomId: string): Promise<RecordedHumanEvent[]>;
   putRoom(record: MeetingRecord): Promise<void>;
   deleteRoom(roomId: string): Promise<void>;
 }
@@ -162,6 +164,19 @@ class IndexedDbRoomStore implements RoomStore {
 
   async listRooms() {
     return listRoomRecords(await this.database);
+  }
+
+  async listHumanEvents(roomId: string): Promise<RecordedHumanEvent[]> {
+    await this.writeQueue;
+    const db = await this.database;
+    const transaction = db.transaction(stores.events, "readonly");
+    const done = transactionDone(transaction);
+    const rows = await requestResult<EventRow[]>(transaction.objectStore(stores.events).index("roomId").getAll(roomId));
+    await done;
+    return rows
+      .filter((row) => row.type === "chair.directive" || row.type === "human.choice")
+      .sort((a, b) => a.createdAt.localeCompare(b.createdAt) || a.id.localeCompare(b.id))
+      .map((row) => ({ type: row.type, createdAt: row.createdAt, payload: row.payload }) as RecordedHumanEvent);
   }
 
   putRoom(record: MeetingRecord) {
