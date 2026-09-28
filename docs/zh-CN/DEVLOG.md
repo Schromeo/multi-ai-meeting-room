@@ -1,5 +1,72 @@
 # 开发日志
 
+## 2026-09-28 — DP-0.3 席位参与前的配置门槛（本地）
+
+- 缺少已配置的连接／API 密钥、兼容模型、有效角色，或自定义席位必需的名称／Skill 时，Agenda 和 Setup 都显示 `Not set up` 与 Setup 提示，不显示 On／Off 开关。新席位默认 Off；配置完整后才可切换。清空必需字段会再次隐藏开关，但保留草稿。
+- 同一配置判定会排除未完成席位的可运行请求；若已启用席位后来变得不完整，也会阻止启动。`pnpm.cmd check` 通过构建、87/87 项离线测试、lint 和类型检查。无密钥浏览器检查确认两个界面的未配置状态和禁用的 Start；未用真实凭据验收配置完成后的行为。没有供应商调用、提交、推送或部署。[补充简报](correction-briefs/2026-09-27-setup-seat-summary-and-completion.md)。
+
+## 2026-09-28 — DP-0.3 恢复席位参与开关（本地）
+
+- 在有界的 Agenda 席位摘要恢复 On／Off，并为 Setup 每张席位卡加入同一开关。两处共用现有 `SeatDraft.enabled`；Off 保留配置，但不计入可运行席位数、调用和派生预算。连接、模型、角色、名称及 Skill 仍只在 Setup 编辑。会议运行时开关禁用。
+- `pnpm.cmd check` 通过构建、86/86 项离线测试、lint 和类型检查。无密钥浏览器检查中，在 Agenda 把第三席切成 On 后，Setup 同步为 On；在 Setup 切回 Off 后，Agenda 同步为 Off。带已配置连接的就绪数变化尚未做真实浏览器验收。没有供应商调用、提交、推送或部署。[补充简报](correction-briefs/2026-09-27-setup-seat-summary-and-completion.md)。
+
+## 2026-09-27 — DP-0.3 有界 Agenda 席位摘要与 Setup 完成态（本地）
+
+- Agenda 的 Room Composition 改为只读席位摘要，高度上限 360px（或 45dvh）；十二席在区域内滚动。席位增删和连接、模型、角色、名称、Skill 的编辑留在 Setup。窄窗口仍能到达摘要下方的会议控制。
+- 从 Setup 选择 Agenda、Meeting 或 Decision 时先关闭 Setup。至少两席可运行时，已完成的 Setup 序号使用实心绿色背景；未就绪的 Setup 不标为完成。
+- `pnpm.cmd check` 通过构建、86/86 项离线测试、lint 和类型检查。本地浏览器检查确认辅助功能树包含全部十二席、列表内部滚动，且 390×700 下 Start 按钮可达。绿色就绪态做了源码／CSS 测试，未用真实凭据在浏览器触发。没有供应商调用、提交、推送或部署。[纠错简报](correction-briefs/2026-09-27-setup-seat-summary-and-completion.md)。DP-0.3 状态不变。
+
+## 2026-09-27 — DP-0.3 普通会议可配置 Setup（本地）
+
+- 将连接管理移入可滚动的 Setup 页面，加入席位与输出设置。普通 Decide 支持 2–12 席、有界的自定义席位名称／职责，以及 Lite／Medium／Extended 对每席每次发言和最终 Memo 分别调节的滑块；Review／Plan 仍为 2–3 席并保留各自合同。所选上限参与房间输出总额度计算，并随新普通会议保存；旧房间不补造设置。
+- 滑块是有限的单次调用 token 上限，不保证可见篇幅、质量或供应商账单。12 席会明显增加调用次数和潜在成本；本次没有供应商调用。为容纳更大的普通会议，显式扩展了本地 Turn Envelope／Canonical State 的有界容量，但没有移除 JSON 校验或人工权限。
+- `pnpm.cmd check` 通过构建、85/85 项离线测试、lint 和类型检查，包括模拟 12 席提案→交叉审阅→Memo 全流程及拒绝第 13 席。本地 390×700 浏览器检查通过滚动到达 Setup 输出控制和 Done，Setup／Agenda 切换时高亮正确。真实模型篇幅、已保存会议浏览器回放、远程 CI、提交、推送和部署尚未验证。[纠错简报](correction-briefs/2026-09-27-configurable-ordinary-room-setup.md)。DP-0.3 尚未关闭。
+
+## 2026-09-27 — DP-0.3 编号步骤栏高亮纠错
+
+- 修正桌面顶部／移动底部共用的 1–4 步骤栏：只有连接设置弹窗打开时 Setup 才是当前项；否则仅可见的 Agenda、Meeting 或 Decision 页面高亮。席位就绪仍单独显示完成态。
+- 增加定向源码回归检查，并为当前项设置 `aria-current="step"`。`pnpm.cmd check` 通过构建、82/82 离线测试、lint 与生成类型检查。无供应商调用、真实浏览器点击／布局验收、提交、推送或部署。[修正简报](correction-briefs/2026-09-27-stage-navigation-active-state.md)。DP-0.3 状态不变。
+
+## 2026-09-27 — DP-0.3 可读会议与完整 Markdown 记录（本地）
+
+- Focus 与 Overview 以安全 GFM 渲染已完成发言，包括标题、列表和表格；禁用原始 HTML 与内嵌图片。流式进行中仍显示状态。
+- Meeting、Decision 和历史列表每间房间增加独立的 `Export full .md` 主动下载入口。文件包含已保存议程、席位供应商／配置模型／角色、按序发言及单轮用量、持久化人工指令／选择、Memo，以及已保存的 Review／Plan 完整产物。失败轮异常原文和凭据不导出；原脱敏诊断 JSON 不变。
+- 有前一条发言 ID 的人工指令插在该轮之后；旧记录无法匹配的指令及人工选择单列说明；只有对应 P2 回执存在才列出调用起止／耗时，不补造旧轮次时间。费用是估算而非账单；文件含私人会议正文，应谨慎分享。
+- `pnpm.cmd check` 通过构建、81/81 离线测试、lint 与生成类型检查。无付费供应商调用、实际浏览器下载／布局验收、远程 CI、提交、推送或部署。[修正简报](correction-briefs/2026-09-27-readable-meeting-record.md)。DP-0.3 状态不变。
+
+## 2026-09-27 — DP-0.3 用户批准的普通创作会议案例已归档
+
+- 将用户真实的中文小说构思 Decide 案例记为 [Live 001](evaluations/2026-09-27-ordinary-creative-meeting-live-001.md)，归档原始白名单诊断导出、用户提供的完整 Memo、十二张非重复截图，以及[按会议顺序整理的全部截图可见发言](../evaluations/artifacts/ordinary-creative-live-001/visible-meeting-record.zh-CN.md)。用户明确批准将其纳入项目私有仓库。本次证据记录未新增供应商调用或修改代码。
+- 导出显示房间达到 `complete`、人工 `approved`；共九次供应商调用：一次 Proposal `invalid_json` 和一次独立的 Review Canonical State 拒绝，各自通过明确的新尝试恢复。最终 Anthropic 总结用时 103,659 ms，为 D-073 提供一条真实超过 90 秒仍完成的观察。终态回执合计上报输入 27,728、输出 17,596 tokens；界面的 `$0.215` 是应用估算，不是账单。
+- 用户称结果“非常完美”，但导出 `qualityEvaluation` 仍为 `not_evaluated`。平台断言与数字建议未外部核实，也没有同题强单模型基线。案例证据已提交为 `37cc250`，并获用户授权推送至项目私有仓库。DP-0.3 状态与 ROADMAP 不变。本证据不是受控基准测试，也不能证明多模型增益。
+
+## 2026-09-27 — DP-0.3 普通会议有限超时纠错
+
+- 用户的 P2 提案回执在应用固定 90 秒计时器下于 90,002 ms 停止。普通参与者及总结调用现按 Lite／Medium／Uncapped 使用 180／240／300 秒有限截止时间；房间累计时间额度同步对齐，以免过早阻断后续阶段。其他调用族保持 90 秒，Plan 仍无应用计时器。明确 Stop、既有限额和不自动重试保留。
+- `pnpm.cmd check` 通过构建、79/79 离线测试、lint 与生成类型检查。假时钟和预算 fixture 已验证边界；无真实供应商或实时会议浏览器检查、付费调用、远程 CI、推送或部署。截图不能证明延长后供应商一定完成，也不能推断费用。[纠错简报](correction-briefs/2026-09-27-ordinary-meeting-provider-timeout.md)。
+
+## 2026-09-27 — DP-0.3 会议发言深度跟随 Output Budget
+
+- 提案、交叉审阅、具名分歧发言的 statement 指令现跟随 Lite／Medium／Uncapped（三阶段分别为 70／140／350、60／120／280、50／80／160 词）。Medium 保留旧目标；Uncapped 允许更充分但仍有界的工作发言。最终 Memo 和结构化 Plan 合同不变。
+- 一次性和可恢复的普通会议调用均收到所选档位。Turn Envelope 校验、工作发言 4,000 字符上限、供应商／房间预算、来源约束、调用次数与重试规则不变。这是 prompt 引导，不是确定性词数规则或已验证的模型质量。
+- `pnpm.cmd check` 通过构建、78/78 离线测试、lint 与生成类型检查。无付费调用、实时浏览器检查、远程 CI、推送或部署。旧房间没有已知档位，未回填。[纠错 Brief](correction-briefs/2026-09-27-meeting-speech-output-profiles.md)。
+
+## 2026-09-27 — DP-0.3 Agenda 语言与 call trace 视觉焦点纠错
+
+- 普通会议的 Seat prompt 现要求发言和最终正文跟随 Agenda 的主要语言与文字，包括定向辩论。明确中文的 Decide/Review 目标使用中文最终章节标题，同时仍接纳旧英文标题；其他语言的结构性标题暂沿用原格式。Prompt 指引不保证模型实际遵从。
+- P2 call trace 从会议网格移到默认收起的工具栏入口，展开为有边界的覆盖层，让发言／转录区域重新成为默认主体。回执数据和持久化不变。
+- `pnpm.cmd check` 通过构建、77/77 离线测试、lint 和生成类型检查。模拟供应商流和组件检查通过；没有真实供应商调用、实时会议浏览器检查、推送或部署。[纠错 Brief 与限制](correction-briefs/2026-09-27-agenda-language-and-call-trace-focus.md)。
+
+## 2026-09-27 — DP-0.3 窗口化布局可达性纠错
+
+- 修复入口／Agenda 页面无法滚到的溢出：普通窗口内通过统一工作区滚动可到达全部设置控件和启动操作。Chat、Packs 也使用这条滚动路径；现有底部阶段导航提前在 1180px 启用，避免页眉拥挤。过高的 Decision 侧栏可内部滚动；实时 Meeting 布局未改。
+- 本地浏览器在 1280×720、1024×600、900×650 和 390×700 下确认 Agenda 底部操作可达、页面无横向溢出；另检查 Chat／Packs 和 1024×600 的 Connection 弹窗。`pnpm.cmd check` 的构建、75/75 测试、lint 与类型检查通过。没有配置 Connection 或已存房间，因此实时 Meeting／恢复的 Decision 未作浏览器实测。无付费调用、远程 CI 或部署。[纠错简报](correction-briefs/2026-09-27-windowed-layout-access.md)。
+
+## 2026-09-27 — DP-0.3 狭窄会议控制区布局纠错
+
+- 让 Chair Control、Round Allowance 和 Output Budget 按侧栏自身宽度换列，不改会议策略行为。
+- 本地浏览器检查：369px 桌面编排栏中各占完整一行；390px 视口下无横向溢出。`pnpm.cmd check` 构建、75/75 测试、lint 和类型检查通过。未调用供应商、未部署。[纠错简报](correction-briefs/2026-09-27-protocol-controls-layout.md)。
+
 ## 2026-09-27 — P1/P1B/P2 收口与单间会议诊断导出
 
 - 保留现有 P1/P1B/P2 改动，在 `pnpm.cmd check` 71/71 通过后单独提交为 `4d16c9c`。未推送或部署。

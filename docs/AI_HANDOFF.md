@@ -1,5 +1,43 @@
 # AI Handoff
 
+## 2026-09-28 — Incomplete Seats cannot toggle participation (local)
+
+One `seatSetupIssue` verdict gates both Agenda/Setup switches, runnable Seat projection and launch. Missing Connection/session key, compatible Model, Role, or Custom name/Skill displays `Not set up` and a Setup hint; new Seats start Off until configured. `pnpm.cmd check` passes 87/87 offline tests, build, lint and types. No-key browser QA saw the incomplete state on both surfaces and disabled Start. No credentialed live toggle, provider call or deployment. [Brief](correction-briefs/2026-09-27-setup-seat-summary-and-completion.md).
+
+## 2026-09-28 — Seat On/Off belongs in both Agenda and Setup (local)
+
+The owner's screenshot corrected D-076's too-strict read-only summary. Agenda and Setup now expose the same `SeatDraft.enabled` switch; all other Seat editing remains Setup-only. Off preserves the Seat draft and excludes it from runnable Seats, so no persistence or API contract changed. `pnpm.cmd check` passes 86/86 offline tests, build, lint and types. A no-key browser pass verified Agenda→Setup→Agenda toggle synchronization, not a credentialed ready-count change. No provider call or deployment. [Follow-up brief](correction-briefs/2026-09-27-setup-seat-summary-and-completion.md).
+
+## 2026-09-27 — Setup owns Seat edits; Agenda summarizes them (local)
+
+The twelve-Seat feedback correction keeps all Seat editing in Setup and makes Agenda Room Composition a keyboard-focusable, read-only list with a 360px/45dvh height cap and internal scrolling. Navigating from Setup to another stage now closes Setup, so a runnable two-plus-Seat configuration receives the green completed `1` instead of remaining the active step. `pnpm.cmd check` passes 86/86 offline tests, build, lint and types. Local 390×700 browser inspection confirmed twelve summaries and internal scroll; green readiness was source/CSS-tested without credentials. No provider call or deployment. [Brief](correction-briefs/2026-09-27-setup-seat-summary-and-completion.md).
+
+## 2026-09-27 — Configurable ordinary-room Setup (local)
+
+The owner-approved ordinary Decide correction is implemented in the dirty checkout: Setup is a page, not a Connection modal; 2–12 Seats can carry bounded custom names and skills; and Lite/Medium/Extended have independent per-Seat and final-Memo token sliders. The selected finite limits travel through request validation, provider caps, room output allowance, saved records and the rich Markdown export. Review/Plan remain capped at three Seats and do not accept these custom output limits. Old saved rooms are read without invented settings or P2 evidence. The speech parser and Canonical State have larger but explicit bounds to accommodate 12 Seats.
+
+`pnpm.cmd check` passes build, 85/85 offline tests, lint and types. A local 390×700 browser pass confirmed scroll reachability of Setup controls and stage navigation; no real provider call, saved-room browser replay, remote CI, commit, push or deployment. Token ceilings are not promised prose length or billing ceilings. Follow the [Correction Brief](correction-briefs/2026-09-27-configurable-ordinary-room-setup.md) before any live calibration. DP-0.3 remains open.
+
+## 2026-09-27 — Numbered stage navigation selected state (local)
+
+Setup had been highlighted whenever fewer than two Seats were ready, even while another page was selected. The shared desktop/mobile navigation now derives one current item from the open Connection dialog or the visible workspace stage; completed indicators remain separate. `pnpm.cmd check` passes 82/82 tests, build, lint and types. Browser click/layout behavior is not yet manually verified; no provider call, commit, push or deployment. [Brief](correction-briefs/2026-09-27-stage-navigation-active-state.md).
+
+## 2026-09-27 — Readable Meeting and rich export (local)
+
+Focus/Overview now use safe GFM rather than plain-text speech. A distinct opt-in `Export full .md` action projects one saved room plus stored Chair events into a content-rich record; it must not be confused with P3's privacy-safe diagnostic JSON. Provider/model labels are configuration only, never API credentials. Human directives anchor after their recorded preceding message where possible; missing per-turn times and unanchored events remain explicit. Saved Plan/Review result artifacts are included. `pnpm.cmd check` passes 81/81 tests, build, lint and types. No browser download/layout test, paid call, remote CI, commit, push or deployment. [Brief](correction-briefs/2026-09-27-readable-meeting-record.md).
+
+## 2026-09-27 — Ordinary creative Live 001 is captured, not benchmarked
+
+The owner's one-round Chinese Decide room is [archived in the private project repository](evaluations/2026-09-27-ordinary-creative-meeting-live-001.md) with exact allowlisted diagnostic, full owner-supplied Memo, 12 screenshots and a [meeting-order transcription of screenshot-visible turns](evaluations/artifacts/ordinary-creative-live-001/visible-meeting-record.zh-CN.md). The owner explicitly approved this archive; do not publish or reuse its novel concept or full Memo outside this repository without a separate decision. The evidence package is committed as `37cc250` for the owner-authorized private-repository push. Nine real provider calls reached an approved Memo after explicit recovery of one JSON-format failure and one separate Canonical State reduction failure. One Anthropic synthesis completed at 103,659 ms, superseding the older “no live >90 s verification” snapshot below for this one call only. Owner acceptance is recorded, while export quality remains `not_evaluated`; platform facts, billing, served model identity and single-model lift remain unverified. No new provider call or code change was required for this evidence capture.
+
+## 2026-09-27 — DP-0.3 ordinary Meeting timeout correction
+
+The owner's P2 Proposal receipt hit the local 90 s timer. Ordinary participant/synthesis calls now have finite Lite/Medium/Uncapped 180/240/300 s deadlines and aligned room-time allowances. Other call families remain 90 s; Plan remains without an application timer. Stop and no-retry policy are unchanged. `pnpm.cmd check` passes 79/79 offline tests, build, lint and generated types. No live provider/browser verification, paid call, push or deployment; provider completion and billing remain unknown. [Brief](correction-briefs/2026-09-27-ordinary-meeting-provider-timeout.md).
+
+## 2026-09-27 — DP-0.3 ordinary Meeting speech profile correction
+
+The selected Lite/Medium/Uncapped profile now directs ordinary Proposal, cross-review and targeted-Dispute statement depth as well as the existing transport caps, in one-shot and resumable paths. Medium keeps its prior targets; strict Turn Envelope/Card/source contracts, final Memo and structured Plan remain separate. `pnpm.cmd check` passes 78/78 offline tests, build, lint and generated types. Prompt adherence, real-provider quality, browser Meeting layout and historical profile choice remain unverified; old rooms are not backfilled. No paid call, push or deployment. [Brief](correction-briefs/2026-09-27-meeting-speech-output-profiles.md).
+
 ## 2026-09-27 — P3 one-room diagnostic export local gate
 
 P1/P1B/P2 were committed separately at `4d16c9c`. `lib/meeting-diagnostic-export.ts` is the only v1 export contract: a pure allowlisted projection of one saved ordinary Decide record. History exposes one-row download; three sanitized fixtures and 75/75 tests validate deterministic JSON, privacy and no backfilled P2 receipts. No Plan/Review/Observer/Solo export or import/SDK. Browser click/download and remote CI remain unverified; no push or deployment. [P3 brief](correction-briefs/2026-09-27-p3-one-room-diagnostic-export.md).

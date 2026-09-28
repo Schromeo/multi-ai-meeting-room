@@ -1,5 +1,72 @@
 # Development Log
 
+## 2026-09-28 — DP-0.3 Seat configuration gate before participation (local)
+
+- A Seat without a configured Connection/API key, compatible Model, valid Role, or required Custom name/Skill now appears as `Not set up` in Agenda and Setup, with a Setup hint instead of an On/Off switch. A new Seat starts Off; once complete, the shared On/Off control becomes available. Clearing a required field removes the switch again without discarding the draft.
+- The same configuration verdict excludes incomplete Seats from runnable requests and blocks launch if any enabled Seat becomes incomplete. `pnpm.cmd check` passes build, 87/87 offline tests, lint and types. A no-key browser pass confirmed the incomplete state on both surfaces and disabled Start; configured-credential behavior was not live-tested. No provider call, commit, push or deployment. [Follow-up brief](correction-briefs/2026-09-27-setup-seat-summary-and-completion.md).
+
+## 2026-09-28 — DP-0.3 Seat participation controls restored (local)
+
+- Restored On/Off in the bounded Agenda Seat summary and added the same control to each Setup Seat card. Both update the existing `SeatDraft.enabled`; Off keeps the configuration but excludes that Seat from runnable count, calls, and derived budgets. Connection, Model, Role, name and Skill remain Setup-only edits. Switches are disabled during a running meeting.
+- `pnpm.cmd check` passes build, 86/86 offline tests, lint and types. In a no-key browser session, turning Seat 3 On in Agenda appeared On in Setup; turning it Off there appeared Off back in Agenda. Ready-count changes with configured Connections were not live-tested. No provider call, commit, push or deployment. [Follow-up brief](correction-briefs/2026-09-27-setup-seat-summary-and-completion.md).
+
+## 2026-09-27 — DP-0.3 bounded Agenda Seat summary and Setup completion (local)
+
+- Agenda Room Composition is now a read-only Seat summary capped at 360px (or 45dvh); twelve Seats scroll inside it. Adding/removing Seats and editing Connection, Model, Role, name, and Skill stay in Setup. The Meeting controls beneath the summary remain reachable in a narrow window.
+- Selecting Agenda, Meeting, or Decision from Setup now closes Setup first. When at least two Seats are runnable, the completed Setup number uses a solid green background; an unready Setup is not marked complete.
+- `pnpm.cmd check` passes build, 86/86 offline tests, lint and types. Local browser inspection showed all twelve summary rows in the accessibility tree, internal scrolling and the Start control at 390×700. The green ready state was checked in source/CSS tests, not a live credentialed browser. No provider calls, commit, push or deployment. [Correction brief](correction-briefs/2026-09-27-setup-seat-summary-and-completion.md). DP-0.3 status is unchanged.
+
+## 2026-09-27 — DP-0.3 configurable ordinary-room Setup (local)
+
+- Moved Connection management into a scrollable Setup page, with editable participant Seats and output controls. Ordinary Decide supports 2–12 Seats, bounded custom Seat names/skills, and separate Lite/Medium/Extended sliders for each Seat turn and the final Memo; Review/Plan remain at 2–3 Seats with their own contracts. The selected limits scale the derived room output allowance and are saved with new ordinary meetings. Old rooms are not backfilled.
+- The sliders are finite per-call token ceilings, not promised visible length, quality, or provider billing. A 12-Seat room has substantially more calls and potential cost; no provider call was made here. The larger ordinary-room ceiling required an explicit local Turn Envelope/Canonical State bound expansion; it does not remove JSON validation or human authority.
+- `pnpm.cmd check` passes build, 85/85 offline tests, lint and types, including a mocked 12-Seat Proposal → cross-review → Memo path and a 13-Seat rejection. A local 390×700 browser check reached the Setup output controls and Done action by scrolling, and switching Setup/Agenda updated the active stage. Real-provider output length, saved-room browser replay, remote CI, commit, push and deployment remain unverified. [Correction brief](correction-briefs/2026-09-27-configurable-ordinary-room-setup.md). DP-0.3 is not closed.
+
+## 2026-09-27 — DP-0.3 numbered stage navigation highlight correction
+
+- Fixed the shared desktop/bottom 1–4 navigation: Setup is active only while its Connection dialog is open. Otherwise only the visible Agenda, Meeting or Decision page is active; Seat readiness remains a separate completed indicator.
+- Added a focused source regression check and `aria-current="step"` for the current item. `pnpm.cmd check` passes build, 82/82 offline tests, lint and generated types. No provider call, live browser click/layout check, commit, push or deployment. [Correction brief](correction-briefs/2026-09-27-stage-navigation-active-state.md). DP-0.3 status is unchanged.
+
+## 2026-09-27 — DP-0.3 readable Meeting and full Markdown record (local)
+
+- Focus and Overview now render completed Meeting turns as safe GFM Markdown (including headings, lists and tables); raw HTML and embedded images are disabled. Streaming progress remains a status indicator.
+- A separate, explicit `Export full .md` action is available in Meeting, Decision and each saved History row. It exports the saved agenda, seat provider/configured model/role, ordered turns with per-turn usage, persisted Chair directions/choices, Memo, and saved Review/Plan result artifact where present. Failed-turn exception text and credentials are excluded. The existing allowlisted diagnostic JSON is unchanged.
+- Human directions with a recorded preceding message ID are placed after that turn. Old/unmatched directions and choices are labeled separately; call timestamps/elapsed time are included only when a matching P2 receipt exists, never invented for old records. Costs remain estimates, not bills. The file contains private meeting content and requires careful sharing.
+- `pnpm.cmd check` passes build, 81/81 offline tests, lint and generated types. No paid provider call, actual browser download/layout check, remote CI, commit, push or deployment. [Correction brief](correction-briefs/2026-09-27-readable-meeting-record.md). DP-0.3 status is unchanged.
+
+## 2026-09-27 — DP-0.3 owner-approved ordinary creative Meeting case archived
+
+- Archived the owner's real Chinese novel-concept Decide case as [Live 001](evaluations/2026-09-27-ordinary-creative-meeting-live-001.md), with the original allowlisted diagnostic, supplied full Memo, 12 nonduplicate screenshots and a [meeting-order transcription of every screenshot-visible turn](evaluations/artifacts/ordinary-creative-live-001/visible-meeting-record.zh-CN.md). The owner explicitly approved inclusion in the private project repository. No new provider call or code change was made for this evidence capture.
+- The exported room reached `complete` and human `approved` after nine provider calls: a Proposal `invalid_json` and a separate Review Canonical State rejection each required a new explicit attempt. The final Anthropic synthesis completed in 103,659 ms, providing one live >90 s observation for D-073. Terminal receipts sum to 27,728 reported input and 17,596 reported output tokens; the UI's `$0.215` is an application estimate, not billing.
+- The owner called the result “非常完美”, but the exported `qualityEvaluation` remains `not_evaluated`. Platform claims and numeric advice were not externally checked; no strong single-model baseline exists. The evidence package is committed as `37cc250` for the owner-authorized private-repository push. DP-0.3 status and ROADMAP are unchanged. This evidence is not a controlled benchmark or evidence of multi-model lift.
+
+## 2026-09-27 — DP-0.3 bounded ordinary Meeting timeout correction
+
+- The owner's P2 Proposal receipt stopped at 90,002 ms under the application's fixed 90 s timer. Ordinary participant and synthesis calls now use finite Lite/Medium/Uncapped deadlines of 180/240/300 s; matching room-time budgets avoid prematurely blocking later phases. Other call families remain at 90 s and Plan remains without an application timer. Explicit Stop, limits and no automatic retry remain.
+- `pnpm.cmd check` passes build, 79/79 offline tests, lint and generated typecheck. Fake timers and budget fixtures verify the boundary; no real-provider or live browser Meeting check, paid call, remote CI, push or deployment. The screenshot does not establish whether a longer provider call would finish or what it would cost. [Correction brief](correction-briefs/2026-09-27-ordinary-meeting-provider-timeout.md).
+
+## 2026-09-27 — DP-0.3 meeting speech depth follows Output Budget
+
+- Proposal, cross-review and named-Dispute statement guidance now follows the selected Lite, Medium or Uncapped profile (70/140/350, 60/120/280 and 50/80/160 words respectively). Medium preserves the prior targets; Uncapped allows fuller but still bounded working speech. Final Memo and structured Plan contracts are unchanged.
+- Both one-shot and resumable ordinary Meeting calls receive the profile. Existing Turn Envelope validation, 4,000-character working statement limit, provider/room budgets, source restrictions, call counts and retry policy remain. This changes prompt direction, not a deterministic word-count rule or a verified model-quality result.
+- `pnpm.cmd check` passes build, 78/78 offline tests, lint and generated typecheck. No paid call, live browser check, remote CI, push or deployment. Historical saved rooms have no known profile and are not backfilled. [Correction brief](correction-briefs/2026-09-27-meeting-speech-output-profiles.md).
+
+## 2026-09-27 — DP-0.3 Agenda language and call-trace focus correction
+
+- Ordinary Meeting Seat prompts now request the Agenda's primary language and script in speech and final prose, including targeted debate. Clearly Chinese Decide/Review objectives use localized final section headings while legacy English headings remain accepted. Other languages still use existing structural headings; prompt guidance is not a model-output guarantee.
+- Moved P2 call traces from the Meeting grid into a collapsed toolbar control with a bounded overlay, restoring the speaker/transcript row as the default visual focus. Receipt data and persistence did not change.
+- `pnpm.cmd check` passes build, 77/77 offline tests, lint and generated types. Mock provider streams and component checks passed; no live provider calls, live browser Meeting check, push or deployment. [Correction brief and limits](correction-briefs/2026-09-27-agenda-language-and-call-trace-focus.md).
+
+## 2026-09-27 — DP-0.3 windowed layout access correction
+
+- Removed the entry/Agenda page's unreachable overflow: one workspace scroll now reaches all setup controls and the launch action in ordinary windows. Chat and Packs use the same scroll path; the existing bottom stage navigation starts at 1180px to avoid a crowded header. A tall Decision rail can scroll internally; live Meeting layout is unchanged.
+- Local browser checks at 1280×720, 1024×600, 900×650 and 390×700 found the Agenda bottom action reachable with no document horizontal overflow. Chat/Packs and a 1024×600 Connection dialog were checked. `pnpm.cmd check` passes build, 75/75 tests, lint and typecheck. Live Meeting/restored Decision were not browser-exercised without a configured Connection or saved room. No paid call, remote CI or deployment. [Correction brief](correction-briefs/2026-09-27-windowed-layout-access.md).
+
+## 2026-09-27 — DP-0.3 narrow meeting controls layout correction
+
+- Made the Chair Control, Round Allowance, and Output Budget groups wrap according to their own sidebar width, with no meeting-policy behavior change.
+- Local browser inspection: separate full-width rows in a 369px desktop composer; 390px viewport has no horizontal overflow. `pnpm.cmd check` passes build, 75/75 tests, lint, and typecheck. No provider call or deployment. [Correction brief](correction-briefs/2026-09-27-protocol-controls-layout.md).
+
 ## 2026-09-27 — P1/P1B/P2 closeout and one-room diagnostic export
 
 - Preserved and separately committed the existing P1/P1B/P2 work as `4d16c9c` after `pnpm.cmd check` passed 71/71 tests. No push or deployment.

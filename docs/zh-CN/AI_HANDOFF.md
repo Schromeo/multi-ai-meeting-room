@@ -1,5 +1,43 @@
 # AI 交接说明
 
+## 2026-09-28 — 未配置完整的席位不能切换参与状态（本地）
+
+同一 `seatSetupIssue` 判定同时约束 Agenda／Setup 开关、可运行席位投影和启动。缺少连接／会话密钥、兼容模型、角色或自定义名称／Skill 时显示 `Not set up` 与 Setup 提示；新席位默认 Off，配置完整后才可切换。`pnpm.cmd check` 通过 87/87 项离线测试、构建、lint 和类型检查。无密钥浏览器检查确认两处未配置状态及禁用的 Start。未做真实凭据开关验收、供应商调用或部署。[简报](correction-briefs/2026-09-27-setup-seat-summary-and-completion.md)。
+
+## 2026-09-28 — Agenda 和 Setup 都有席位 On／Off（本地）
+
+用户截图修正了 D-076 过严的只读摘要：Agenda 和 Setup 现在共用同一个 `SeatDraft.enabled` 开关；其余席位编辑仍只在 Setup。Off 保留席位草稿但不计入可运行席位，不改变持久化或 API 合同。`pnpm.cmd check` 通过 86/86 项离线测试、构建、lint 和类型检查。无密钥浏览器检查证实 Agenda→Setup→Agenda 的开关同步，尚未以已配置连接验证就绪数变化。没有供应商调用或部署。[补充简报](correction-briefs/2026-09-27-setup-seat-summary-and-completion.md)。
+
+## 2026-09-27 — 席位编辑归 Setup，Agenda 只展示摘要（本地）
+
+针对十二席反馈，席位编辑全部留在 Setup；Agenda Room Composition 改为可用键盘聚焦的只读列表，高度上限为 360px／45dvh，内部滚动。从 Setup 切换其他阶段时先关闭 Setup，因此两席以上可运行时「①」显示绿色完成态，而不会继续是当前步骤。`pnpm.cmd check` 通过 86/86 项离线测试、构建、lint 和类型检查。本地 390×700 浏览器检查确认十二席摘要和内部滚动；绿色就绪态只做了源码／CSS 检查，未用凭据触发。没有供应商调用或部署。[简报](correction-briefs/2026-09-27-setup-seat-summary-and-completion.md)。
+
+## 2026-09-27 — 普通会议可配置 Setup（本地）
+
+用户批准的普通 Decide 纠错已在未提交工作区实现：Setup 变为页面而非连接弹窗；2–12 席可设置有界的自定义名称和职责；Lite／Medium／Extended 分别提供每席发言与最终 Memo 的 token 滑块。所选有限上限贯穿请求校验、供应商输出上限、房间输出额度、会议保存及完整 Markdown 导出。Review／Plan 保持最多三席，不接受这些自定义输出设置。读取旧房间时不补造设置或 P2 证据。发言解析器和 Canonical State 为容纳 12 席扩大了明确的有限容量。
+
+`pnpm.cmd check` 通过构建、85/85 项离线测试、lint 和类型检查。本地 390×700 浏览器检查确认 Setup 控件可滚动到达、阶段导航正常；未进行真实供应商调用、已保存会议浏览器回放、远程 CI、提交、推送或部署。token 上限不保证篇幅，也不是账单上限。任何真实模型校准前先按[纠错简报](correction-briefs/2026-09-27-configurable-ordinary-room-setup.md)执行。DP-0.3 仍未结束。
+
+## 2026-09-27 — 编号步骤栏选中态（本地）
+
+过去只要就绪席位少于两个，Setup 就持续高亮，即使当前页面已切换。桌面／移动共用步骤栏现根据连接弹窗是否打开或可见工作区阶段确定唯一当前项，完成态另算。`pnpm.cmd check` 通过 82/82 测试、构建、lint 和类型检查。尚未手动验收浏览器点击／布局；无供应商调用、提交、推送或部署。[简报](correction-briefs/2026-09-27-stage-navigation-active-state.md)。
+
+## 2026-09-27 — 可读会议和含正文导出（本地）
+
+Focus／Overview 现用安全 GFM 而非纯文本显示发言。独立的 `Export full .md` 主动入口将一间已保存房间及 Chair 事件投影为含正文记录；不能与 P3 脱敏诊断 JSON 混为一谈。供应商／模型标签只是配置，不是 API 凭据。人工指令尽可能锚定前一条发言；缺失的单轮时间和无法锚定的事件明确说明。已保存 Plan／Review 完整产物也包含在内。`pnpm.cmd check` 通过 81/81 测试、构建、lint 和类型检查。无浏览器下载／布局验收、付费调用、远程 CI、提交、推送或部署。[简报](correction-briefs/2026-09-27-readable-meeting-record.md)。
+
+## 2026-09-27 — 普通创作会议 Live 001 已记录，尚非基准测试
+
+用户的一轮中文 Decide 房间已[归档至项目私有仓库](evaluations/2026-09-27-ordinary-creative-meeting-live-001.md)：精确白名单诊断导出、用户提供的完整 Memo、十二张截图及[按会场顺序转录的截图可见发言](../evaluations/artifacts/ordinary-creative-live-001/visible-meeting-record.zh-CN.md)。用户明确批准此次归档；未经另行决定，不在该仓库之外发布或复用小说构思与完整 Memo。案例证据已提交为 `37cc250`，并获用户授权推送至项目私有仓库。九次真实供应商调用在一次 JSON 格式失败和另一次 Canonical State 归约失败经明确的新尝试后，得到人工批准的 Memo。一条 Anthropic 总结用时 103,659 ms 且完成；下文“没有超过 90 秒的真实验证”只是较早快照，现仅对这一调用失效。记录用户认可，但导出质量字段仍为 `not_evaluated`；平台事实、账单、实际服务模型身份和相对单模型增益均未验证。证据记录未新增供应商调用或代码修改。
+
+## 2026-09-27 — DP-0.3 普通会议超时纠错
+
+用户的 P2 提案回执触及本地 90 秒计时器。普通参与者／总结调用现按 Lite／Medium／Uncapped 设有限的 180／240／300 秒截止时间，并对齐房间时间额度。其他调用族保持 90 秒，Plan 仍无应用计时器；Stop 与不重试政策不变。`pnpm.cmd check` 通过 79/79 离线测试、构建、lint 与生成类型检查。无真实供应商／浏览器验收、付费调用、推送或部署；供应商能否完成及账单仍未知。[简报](correction-briefs/2026-09-27-ordinary-meeting-provider-timeout.md)。
+
+## 2026-09-27 — DP-0.3 普通会议发言档位纠错
+
+所选 Lite／Medium／Uncapped 现指导一次性与可恢复普通会议的提案、交叉审阅、具名分歧 statement 深度，既有传输上限继续生效。Medium 保留旧目标；严格 Turn Envelope／Card／来源合同、最终 Memo 与结构化 Plan 分开。`pnpm.cmd check` 通过 78/78 离线测试、构建、lint 与生成类型检查。Prompt 遵从、真实供应商质量、浏览器 Meeting 布局及历史档位选择未验证；旧房间不回填。无付费调用、推送或部署。[Brief](correction-briefs/2026-09-27-meeting-speech-output-profiles.md)。
+
 ## 2026-09-27 — P3 单间诊断导出本地 Gate
 
 P1/P1B/P2 已单独提交为 `4d16c9c`。`lib/meeting-diagnostic-export.ts` 是唯一 v1 导出契约：对一间已保存普通 Decide 房间做纯白名单投影。历史列表提供单行下载；三份脱敏 fixture 与 75/75 测试验证确定性 JSON、隐私及不补造 P2 回执。不做 Plan／Review／Observer／Solo 导出或导入／SDK。浏览器点击／下载与远程 CI 尚未验收；未推送或部署。[P3 简报](correction-briefs/2026-09-27-p3-one-room-diagnostic-export.md)。
