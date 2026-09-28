@@ -13,6 +13,11 @@ let meetingOrchestratorModule;
 let reviewArtifactModule;
 let planArtifactModule;
 let providerKeyDetectionModule;
+async function loadSourceAttemptModule() {
+  const source = await readFile(new URL("../lib/source-attempt.ts", import.meta.url), "utf8");
+  const output = ts.transpileModule(source, { compilerOptions: { module: ts.ModuleKind.ESNext, target: ts.ScriptTarget.ES2022 } }).outputText;
+  return import(`data:text/javascript;base64,${Buffer.from(output).toString("base64")}`);
+}
 
 async function loadProviderKeyDetectionModule() {
   if (!providerKeyDetectionModule) {
@@ -146,28 +151,34 @@ test("Solo rejects workspace credentials and invalid context before a provider c
 
 test("Solo makes one bounded session-key call and returns a credential-free reply", async () => {
   const originalFetch = globalThis.fetch;
-  let calls = 0;
+  const calls = [];
   globalThis.fetch = async (url, options) => {
-    assert.equal(url, "https://api.openai.com/v1/responses");
-    calls += 1;
-    assert.equal(options.headers.Authorization, "Bearer solo-fixture-key");
-    const sent = JSON.parse(options.body);
-    assert.equal(sent.max_output_tokens, 1600);
-    assert.match(sent.input, /User: Hello/);
+    // Assert outside the provider mock: route error handling would otherwise
+    // disguise a test assertion failure as a generic 502 provider failure.
+    calls.push({ url, options });
     return new Response('event: response.output_text.delta\ndata: {"type":"response.output_text.delta","delta":"Hello back"}\n\nevent: response.completed\ndata: {"type":"response.completed","response":{"usage":{"input_tokens":10,"output_tokens":2}}}\n\n', { headers: { "content-type": "text/event-stream" } });
   };
   try {
     const worker = await loadWorker();
-    const response = await worker.fetch(new Request("http://localhost/api/discuss", {
-      method: "POST", headers: { "content-type": "application/json" },
-      body: JSON.stringify({ solo: { connectionId: "session-1", provider: "openai", model: "gpt-test", messages: [{ role: "user", content: "Hello" }] }, connections: { "session-1": { provider: "openai", apiKey: "solo-fixture-key" } } }),
-    }), workerEnv(), executionContext());
-    assert.equal(response.status, 200);
-    const body = await response.json();
-    assert.equal(body.text, "Hello back");
-    assert.equal(body.usage.inputTokens, 10);
-    assert.equal(calls, 1);
-    assert.doesNotMatch(JSON.stringify(body), /solo-fixture-key/);
+    for (const [outputProfile, expectedCap] of [[undefined, 1200], ["lite", 600], ["medium", 1200], ["unlimited", 12000]]) {
+      calls.length = 0;
+      const response = await worker.fetch(new Request("http://localhost/api/discuss", {
+        method: "POST", headers: { "content-type": "application/json" },
+        body: JSON.stringify({ solo: { connectionId: "session-1", provider: "openai", model: "gpt-test", messages: [{ role: "user", content: "Hello" }], ...(outputProfile === undefined ? {} : { outputProfile }) }, connections: { "session-1": { provider: "openai", apiKey: "solo-fixture-key" } } }),
+      }), workerEnv(), executionContext());
+      assert.equal(calls.length, 1, `one call for ${outputProfile ?? "default"}`);
+      assert.equal(calls[0].url, "https://api.openai.com/v1/responses");
+      assert.equal(calls[0].options.headers.Authorization, "Bearer solo-fixture-key");
+      const sent = JSON.parse(calls[0].options.body);
+      assert.equal(sent.max_output_tokens, expectedCap, outputProfile ?? "default");
+      assert.match(sent.input, /User: Hello/);
+      assert.equal(response.status, 200);
+      const body = await response.json();
+      assert.equal(body.text, "Hello back");
+      assert.equal(body.usage.inputTokens, 10);
+      assert.equal(body.usage.outputTokens, 2);
+      assert.doesNotMatch(JSON.stringify(body), /solo-fixture-key/);
+    }
   } finally {
     globalThis.fetch = originalFetch;
   }
@@ -681,6 +692,7 @@ test("Retained originals round-trip through room history with rejected Findings 
   const discussSource = await readFile(new URL("../lib/discuss-protocol.ts", import.meta.url), "utf8");
   const discussOutput = ts.transpileModule(discussSource, { compilerOptions: { module: ts.ModuleKind.ESNext } }).outputText;
   const dependencies = {
+    "./source-attempt": await loadSourceAttemptModule(),
     "./plan-artifact": await loadPlanArtifactModule(),
     "./discuss-protocol": await import(`data:text/javascript;base64,${Buffer.from(discussOutput).toString("base64")}`),
     "./meeting-state": stateApi, "./meeting-orchestrator": protocolApi, "./review-artifact": reviewApi,
@@ -2926,6 +2938,289 @@ test("semantic reduction failures are excluded from downstream synthesis", async
   } finally {
     globalThis.fetch = originalFetch;
   }
+});
+
+
+test("P2 source receipts preserve reported failure usage and never alter call decisions", async () => {
+  const api = await loadSourceAttemptModule();
+  const { createInitialMeetingState } = await loadMeetingStateModule();
+  const originalFetch = globalThis.fetch;
+  const objective = "Inspect source attempts using synthetic private-output-marker.";
+  const seat = { id: "seat-one", connectionId: "fixture", provider: "openai", model: "gpt-fixture", role: "strategist" };
+  const envelope = validEnvelope({ statement: "private-output-marker", thesis: "safe" });
+  const cases = [
+    ["valid", () => sseResponse([{ type: "response.output_text.delta", delta: JSON.stringify(envelope) }, { type: "response.completed", response: { usage: { input_tokens: 10, output_tokens: 0, output_tokens_details: { reasoning_tokens: 0 } } } }]), "returned", "completed", "passed", 10, 0],
+    ["format", () => sseResponse([{ type: "response.output_text.delta", delta: JSON.stringify({ statement: "private-output-marker", card: null }) }, { type: "response.completed", response: { usage: { input_tokens: 7, output_tokens: 3 } } }]), "returned", "completed", "rejected", 7, 3],
+    ["incomplete", () => sseResponse([{ type: "response.incomplete", response: { incomplete_details: { reason: "max_output_tokens" }, usage: { input_tokens: 9, output_tokens: 4 } } }]), "error", "incomplete", "not_run", 9, 4],
+    ["missing-terminal", () => sseResponse([{ type: "response.output_text.delta", delta: JSON.stringify(envelope) }]), "returned", "unknown", "passed", null, null],
+    ["partial", () => sseResponse([{ type: "response.completed", response: { usage: { input_tokens: 5 } } }, { type: "error", message: "private-error-marker" }]), "error", "completed", "not_run", 5, null],
+    ["transport", () => { throw new Error("private-error-marker"); }, "error", "unknown", "not_run", null, null],
+    ["http", () => new Response("private-error-marker", { status: 429 }), "error", "unknown", "not_run", null, null],
+  ];
+  try {
+    const worker = await loadWorker();
+    for (const [name, respond, status, finish, validation, input, output] of cases) {
+      let calls = 0;
+      globalThis.fetch = async () => { calls++; return respond(); };
+      const body = { objective, seats: [seat, { ...seat, id: "seat-two", role: "critic" }], connections: { fixture: { provider: "openai", apiKey: "p2-fixture-key" } },
+        iteration: 1, priorMemo: "", requestId: "p2-" + name + "-fixture", protocolPhase: "proposal", seatIds: ["seat-one"],
+        meetingState: createInitialMeetingState(objective), contextTurns: [] };
+      const response = await worker.fetch(new Request("http://localhost/api/discuss", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify(body) }), workerEnv(), executionContext());
+      assert.equal(response.status, 200, name);
+      const events = (await response.text()).trim().split("\n").map(JSON.parse);
+      const receipts = events.filter(e => e.type === "source.attempt").map(e => e.receipt);
+      assert.equal(calls, 1, name + ": no retry");
+      assert.equal(receipts.length, 2, name);
+      assert.equal(receipts[0].lifecycle, "started");
+      assert.equal(receipts[1].lifecycle, "terminal");
+      assert.equal(receipts[0].attemptId, receipts[1].attemptId);
+      assert.equal(receipts[1].requestId, body.requestId);
+      assert.equal(receipts[1].callStatus, status, name);
+      assert.equal(receipts[1].providerFinish, finish, name);
+      assert.equal(receipts[1].validation, validation, name);
+      assert.equal(receipts[1].inputTokens.value, input, name);
+      assert.equal(receipts[1].outputTokens.value, output, name);
+      assert.equal(receipts[1].outputTokens.source, output === null ? "unknown" : "reported");
+      assert.ok(receipts[1].elapsedMs >= 0);
+      assert.ok(api.parseSourceAttempts(receipts));
+      assert.doesNotMatch(JSON.stringify(receipts), /private-output-marker|private-error-marker|p2-fixture-key/);
+      if (name === "format") assert.deepEqual([receipts[1].validationCode, receipts[1].validationPath], ["invalid_type", "card"]);
+      if (name === "incomplete") assert.equal(receipts[1].providerReason, "output_limit");
+      // Capture does not silently "fix" the legacy acceptance of text without a terminal event.
+      assert.equal(events.some(e => e.type === "agent.done"), validation === "passed", name);
+    }
+  } finally { globalThis.fetch = originalFetch; }
+});
+
+test("P2 partial provider telemetry and cancellation stay separate from zeros", async () => {
+  const { createInitialMeetingState } = await loadMeetingStateModule();
+  const originalFetch = globalThis.fetch;
+  const worker = await loadWorker();
+  const objective = "Preserve partial provider source observations.";
+  try {
+    for (const provider of ["anthropic", "gemini", "openai"]) {
+      const controller = new AbortController();
+      globalThis.fetch = async () => {
+        if (provider === "openai") { controller.abort(); throw new Error("Abort private-key"); }
+        return provider === "anthropic"
+          ? sseResponse([{ type: "message_start", message: { usage: { input_tokens: 11 } } }, { type: "error", error: { message: "private-output-marker" } }])
+          : sseResponse([{ candidates: [{ finishReason: "STOP", content: { parts: [{ text: JSON.stringify(validEnvelope({ statement: "safe", thesis: "safe" })) }] } }], usageMetadata: { candidatesTokenCount: 2, thoughtsTokenCount: 3 } }, { candidates: [{ finishReason: "STOP" }] }]);
+      };
+      const seat = { id: "seat-one", connectionId: "fixture", provider, model: "fixture-model", role: "strategist" };
+      const body = { objective, seats: [seat, { ...seat, id: "seat-two", role: "critic" }], connections: { fixture: { provider, apiKey: "p2-fake-key" } },
+        iteration: 1, priorMemo: "", requestId: "p2-provider-" + provider, protocolPhase: "proposal", seatIds: ["seat-one"],
+        meetingState: createInitialMeetingState(objective), contextTurns: [] };
+      const response = await worker.fetch(new Request("http://localhost/api/discuss", { method: "POST", signal: controller.signal, headers: { "content-type": "application/json" }, body: JSON.stringify(body) }), workerEnv(), executionContext());
+      const events = (await response.text()).trim().split("\n").map(JSON.parse);
+      const terminal = events.filter(e => e.type === "source.attempt").at(-1).receipt;
+      if (provider === "anthropic") {
+        assert.equal(terminal.inputTokens.value, 11); assert.equal(terminal.outputTokens.value, null);
+        assert.equal(terminal.callStatus, "error");
+      } else if (provider === "gemini") {
+        assert.equal(terminal.outputTokens.value, 2); assert.equal(terminal.reasoningTokens.value, 3);
+        assert.equal(terminal.outputTokenBasis, "visible_output"); assert.equal(terminal.inputTokens.value, null);
+      } else {
+        assert.equal(terminal.callStatus, "cancelled"); assert.equal(terminal.inputTokens.value, null);
+      }
+      assert.doesNotMatch(JSON.stringify(terminal), /private-output-marker|private-key|p2-fake-key/);
+    }
+  } finally { globalThis.fetch = originalFetch; }
+});
+
+test("P2 strict receipt schema rejects secrets, conflicts and invented completion", async () => {
+  const api = await loadSourceAttemptModule();
+  const receipt = { version: 1, captureVersion: "mamr-turn-v1", validatorVersion: "turn-envelope/v1",
+    attemptId: "attempt-fixture", requestId: "request-fixture", turnId: "turn-fixture", seatId: "seat-one",
+    provider: "openai", configuredModel: "fixture-model", phase: "proposal", round: 1, outputLimit: 1200,
+    lifecycle: "started", startedAt: "2026-09-27T12:00:00.000Z", endedAt: null, elapsedMs: null,
+    callStatus: "started", providerFinish: "unknown", providerReason: "unknown", validation: "not_run",
+    validationCode: null, validationPath: null, inputTokens: api.reportedCount(null),
+    outputTokens: api.reportedCount(null), reasoningTokens: api.reportedCount(null), outputTokenBasis: "provider_output" };
+  assert.ok(api.parseSourceAttempt(receipt));
+  for (const patch of [{ secret: "sk-fixture" }, { version: 2 }, { inputTokens: { value: 0, source: "unknown" } },
+    { providerReason: "raw-private-message" }, { elapsedMs: -1 }, { endedAt: receipt.startedAt },
+    { validationCode: "invalid_type", validationPath: "secret-field" }, { configuredModel: "model\nsecret" }])
+    assert.equal(api.parseSourceAttempt({ ...receipt, ...patch }), null);
+  const started = api.appendSourceAttempt([], receipt);
+  assert.equal(api.appendSourceAttempt(started, { ...receipt }), started);
+  const reordered = Object.fromEntries(Object.entries(receipt).reverse());
+  reordered.inputTokens = { source: "unknown", value: null };
+  assert.equal(api.appendSourceAttempt(started, reordered), started, "Field ordering does not change receipt identity");
+  const terminal = { ...receipt, lifecycle: "terminal", endedAt: receipt.startedAt, elapsedMs: 0,
+    callStatus: "returned", providerFinish: "completed", validation: "passed", outputTokens: api.reportedCount(0) };
+  const both = api.appendSourceAttempt(started, terminal);
+  assert.equal(both.length, 2);
+  assert.deepEqual(api.parseSourceAttempts([receipt]), [receipt], "missing terminal remains started");
+  assert.throws(() => api.appendSourceAttempt(both, { ...terminal, elapsedMs: 1 }), /Conflicting/);
+  assert.throws(() => api.appendSourceAttempt([terminal], receipt), /ordering/);
+  assert.throws(() => api.appendSourceAttempt(started, { ...terminal, requestId: "different-request" }), /ordering/);
+  assert.equal(api.parseSourceAttempts(Array(api.sourceAttemptLimit + 1).fill(receipt)), null);
+});
+
+test("P1 Turn Envelope reasons are field-specific, bounded and private", async () => {
+  const { parseTurnEnvelope } = await loadMeetingStateModule();
+  const make = () => validEnvelope({ statement: "A safe statement.", thesis: "A safe thesis." });
+  const cases = [
+    [() => "raw-secret-not-json", "invalid_json at $"],
+    [() => "x".repeat(50_001), "output_too_long at $"],
+    [() => null, "invalid_type at $"],
+    [() => ({ ...make(), "secret-property-name": "secret-value" }), "unsupported_fields at $"],
+    [() => { const v = make(); delete v.statement; return v; }, "missing_field at statement"],
+    [() => ({ ...make(), statement: 7 }), "invalid_type at statement"],
+    [() => ({ ...make(), statement: "  \n " }), "empty_string at statement"],
+    [() => ({ ...make(), statement: "s".repeat(4_001) }), "string_too_long at statement"],
+    [() => { const v = make(); delete v.card; return v; }, "missing_field at card"],
+    [() => ({ ...make(), card: null }), "invalid_type at card"],
+    [() => ({ ...make(), card: [] }), "invalid_type at card"],
+    [() => ({ ...make(), card: "sk-private-fixture" }), "invalid_type at card"],
+    [() => { const v = make(); v.card["secret-property-name"] = "secret-value"; return v; }, "unsupported_fields at card"],
+    [() => { const v = make(); delete v.card.stance; return v; }, "missing_field at card.stance"],
+    [() => { const v = make(); v.card.stance = "sk-private-fixture"; return v; }, "invalid_enum at card.stance"],
+    [() => { const v = make(); v.card.thesis = ""; return v; }, "empty_string at card.thesis"],
+    [() => { const v = make(); v.card.newClaims = {}; return v; }, "invalid_type at card.newClaims"],
+    [() => { const v = make(); v.card.newClaims = Array(4).fill({}); return v; }, "too_many_items at card.newClaims"],
+    [() => { const v = make(); v.card.newClaims = [{ text: "sk-private-fixture", assumptionLevel: "secret-value" }]; return v; }, "invalid_record at card.newClaims[0]"],
+    [() => { const v = make(); v.card.claimUpdates = [{}]; return v; }, "too_many_items at card.claimUpdates"],
+    [() => { const v = make(); v.card.objections = [{}]; return v; }, "invalid_record at card.objections[0]"],
+    [() => { const v = make(); delete v.card.confidence; return v; }, "missing_field at card.confidence"],
+    [() => { const v = make(); v.card.confidence = []; return v; }, "invalid_type at card.confidence"],
+    [() => { const v = make(); v.card.confidence["secret-property-name"] = 1; return v; }, "unsupported_fields at card.confidence"],
+    [() => { const v = make(); v.card.confidence.level = "sk-private-fixture"; return v; }, "invalid_enum at card.confidence.level"],
+    [() => { const v = make(); v.card.confidence.reason = " "; return v; }, "empty_string at card.confidence.reason"],
+    [() => { const v = make(); v.card.questionForChair = null; return v; }, "invalid_type at card.questionForChair"],
+    [() => { const v = make(); v.card.recommendedAction = "a".repeat(601); return v; }, "string_too_long at card.recommendedAction"],
+    [() => { const v = make(); v.card.stance = "no_new_information"; v.card.newClaims = [{ text: "Known fact", assumptionLevel: "low" }]; return v; }, "state_changes_forbidden at card"],
+  ];
+  for (const [input, expected] of cases) {
+    const result = parseTurnEnvelope(input(), "proposal");
+    assert.equal(result.ok, false, expected);
+    assert.ok(result.error.includes(expected), result.error);
+    assert.match(result.error, /\[turn-envelope\/v1 /);
+    assert.ok(result.error.length < 1_000, "must fit existing saved formatError limit");
+    assert.doesNotMatch(result.error, /raw-secret|secret-property-name|secret-value|sk-private-fixture/);
+  }
+  // The MAMR case's two formerly indistinguishable branches are now distinct.
+  assert.match(parseTurnEnvelope({ ...make(), statement: [] }, "review").error, /invalid_type at statement/);
+  assert.match(parseTurnEnvelope({ ...make(), card: null }, "review").error, /invalid_type at card/);
+  const invalidUpdate = make();
+  invalidUpdate.card.claimUpdates = [{ claimId: "id", action: "secret-value", reason: "private" }];
+  assert.match(parseTurnEnvelope(invalidUpdate, "review").error, /invalid_record at card.claimUpdates\[0\]/);
+});
+
+test("P1 preserves Turn Envelope acceptance and normalization boundaries", async () => {
+  const { parseTurnEnvelope } = await loadMeetingStateModule();
+  for (const phase of ["proposal", "review", "synthesis"]) {
+    const limit = phase === "synthesis" ? 24_000 : 4_000;
+    const input = validEnvelope({ statement: "s".repeat(limit), thesis: " t " });
+    input.card.newClaims = null;
+    delete input.card.claimUpdates;
+    delete input.card.objections;
+    if (phase === "synthesis") {
+      // Existing synthesis intentionally ignores even malformed administrative deltas.
+      input.card.newClaims = "ignored";
+      input.card.claimUpdates = { ignored: true };
+      input.card.objections = [null];
+    }
+    const parsed = parseTurnEnvelope(input, phase);
+    assert.equal(parsed.ok, true);
+    assert.equal(parsed.value.card.thesis, "t");
+    for (const field of ["newClaims", "claimUpdates", "objections"]) assert.deepEqual(parsed.value.card[field], []);
+    assert.deepEqual(parseTurnEnvelope(JSON.stringify(input), phase), parsed);
+    assert.deepEqual(parseTurnEnvelope("\u0060\u0060\u0060json\n" + JSON.stringify(input) + "\n\u0060\u0060\u0060", phase), parsed);
+    assert.equal(parseTurnEnvelope({ ...input, statement: "s".repeat(limit + 1) }, phase).ok, false);
+  }
+  const invalid = validEnvelope({ statement: " ".repeat(4_000) + "a", thesis: "ok" });
+  assert.match(parseTurnEnvelope(invalid, "proposal").error, /string_too_long at statement/);
+});
+
+test("P1 format reasons survive the route and saved history without retry or raw content", async () => {
+  const originalFetch = globalThis.fetch;
+  let calls = 0;
+  globalThis.fetch = async (input) => {
+    const url = typeof input === "string" ? input : input.url;
+    assert.match(url, /^https:\/\/api\.openai\.com\//, "unexpected network is blocked");
+    calls += 1;
+    return sseResponse([
+      { type: "response.output_text.delta", delta: JSON.stringify({
+        statement: "sk-private-output-fixture", card: null,
+      }) },
+      { type: "response.completed", response: { usage: { input_tokens: 5, output_tokens: 2 } } },
+    ]);
+  };
+  let failure;
+  try {
+    const worker = await loadWorker();
+    const response = await worker.fetch(new Request("http://localhost/api/discuss", {
+      method: "POST", headers: { "content-type": "application/json" },
+      body: JSON.stringify({
+        objective: "Locate one invalid card without replaying the meeting.",
+        seats: [
+          { id: "seat-1", connectionId: "shared", provider: "openai", model: "gpt-a", role: "strategist" },
+          { id: "seat-2", connectionId: "shared", provider: "openai", model: "gpt-b", role: "critic" },
+        ],
+        connections: { shared: { provider: "openai", apiKey: "p1-fake-session-key" } },
+        iteration: 1, priorMemo: "", requestId: "p1-format-fixture",
+      }),
+    }), workerEnv(), executionContext());
+    assert.equal(response.status, 200);
+    const events = (await response.text()).trim().split("\n").map((line) => JSON.parse(line));
+    const failures = events.filter((event) => event.type === "agent.format_error");
+    assert.equal(calls, 2, "one request per selected seat, no retry");
+    assert.equal(failures.length, 2);
+    assert.equal(events.filter((event) => event.type === "agent.done" || event.type === "agent.error").length, 0);
+    assert.equal(events.some((event) => event.type === "phase.start" && event.phase === "review"), false);
+    failure = failures[0];
+    assert.match(failure.message, /The turn statement or card is invalid\. \[turn-envelope\/v1 invalid_type at card; expected object; got null\]/);
+    assert.deepEqual([failure.usage.inputTokens, failure.usage.outputTokens], [5, 2]);
+    assert.doesNotMatch(JSON.stringify(failures), /sk-private-output-fixture|p1-fake-session-key/);
+  } finally {
+    globalThis.fetch = originalFetch;
+  }
+
+  const discussSource = await readFile(new URL("../lib/discuss-protocol.ts", import.meta.url), "utf8");
+  const discussOutput = ts.transpileModule(discussSource, { compilerOptions: { module: ts.ModuleKind.ESNext } }).outputText;
+  const dependencies = {
+    "./source-attempt": await loadSourceAttemptModule(),
+    "./plan-artifact": await loadPlanArtifactModule(),
+    "./discuss-protocol": await import(`data:text/javascript;base64,${Buffer.from(discussOutput).toString("base64")}`),
+    "./meeting-state": await loadMeetingStateModule(),
+    "./meeting-orchestrator": await loadMeetingOrchestratorModule(),
+    "./review-artifact": await loadReviewArtifactModule(),
+  };
+  const source = await readFile(new URL("../lib/meeting-record.ts", import.meta.url), "utf8");
+  const compiled = ts.transpileModule(source, { compilerOptions: { module: ts.ModuleKind.CommonJS, target: ts.ScriptTarget.ES2022 } }).outputText;
+  const mod = { exports: {} };
+  new Function("require", "module", "exports", compiled)((id) => {
+    assert.ok(dependencies[id], `Unexpected dependency ${id}`);
+    return dependencies[id];
+  }, mod, mod.exports);
+  const record = {
+    version: 1, id: "p1-room", objective: "Locate an invalid card.", taskMode: "decide",
+    stage: "meeting", decision: "waiting", memo: "", iteration: 1,
+    transcript: [{
+      id: failure.id, provider: "openai", providerName: "OpenAI", role: "strategist",
+      model: "gpt-a", phase: "proposal", status: "error",
+      text: `This seat returned an invalid Turn Envelope: ${failure.message}`,
+      formatError: failure.message, usage: failure.usage,
+    }],
+    usage: failure.usage,
+    participants: [{ provider: "openai", providerName: "OpenAI", model: "gpt-a", role: "strategist" }],
+    createdAt: "2026-09-27T12:00:00.000Z", updatedAt: "2026-09-27T12:00:00.000Z",
+  };
+  const restored = mod.exports.parseMeetingRecord(JSON.parse(JSON.stringify(record)));
+  assert.ok(restored);
+  assert.equal(restored.transcript[0].formatError, failure.message);
+  assert.equal(restored.transcript[0].text, record.transcript[0].text);
+  assert.deepEqual(restored.transcript[0].usage, failure.usage);
+  assert.doesNotMatch(JSON.stringify(restored), /sk-private-output-fixture|p1-fake-session-key/);
+  const legacy = structuredClone(record);
+  legacy.transcript[0].formatError = "The turn statement or card is invalid.";
+  assert.ok(mod.exports.parseMeetingRecord(legacy), "legacy messages remain readable");
+
+  const page = await readFile(new URL("../app/page.tsx", import.meta.url), "utf8");
+  assert.match(page, /formatError: event\.message/);
+  assert.ok(page.includes("This seat returned an invalid Turn Envelope: ${event.message}"));
+  assert.ok(page.includes('item.status === "streaming" ? turnProgressLabel(item.progress) : item.text'));
 });
 
 test("Turn Envelope validation and the Canonical Reducer preserve lineage", async () => {

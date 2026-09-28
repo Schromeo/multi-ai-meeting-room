@@ -1,5 +1,52 @@
 # Development Log
 
+## 2026-09-27 — P2 approved source-attempt capture
+
+- Owner approved the additive event/local-record boundary. Added strict metadata
+  module, source lifecycle events, provider diagnostic observers, optional saved
+  receipt collection, append-only local events and the production receipt view.
+  Reused P1 diagnostic codes directly; never parse the explanatory error suffix.
+- Preserved old validation/prompts/budgets, legacy usage totals, saved rooms and
+  P1/P1B changes. No new dependency or database store/version.
+- Final `pnpm.cmd check`: exit 0, 71/71 tests; build, lint and types pass. Covers
+  success/rejection/incomplete/error/cancellation, partial/zero/unknown usage,
+  safe metadata, canonical-key dedup, conflicts and missing terminal evidence.
+- Actual isolated browser IndexedDB checks passed: old record, unresolved start,
+  round-trip/dedup, atomic conflict rollback and deletion/reused ID. The real
+  receipt component displayed restored synthetic evidence, not a live meeting.
+  Reproduce via `node scripts/preview-source-attempt.mjs`, port 4398, Run storage
+  acceptance. Fixture has no model/network calls and cleans its test room.
+- Self-review: no remaining blocking finding in this bounded slice. Timer-expiry,
+  full live-page meeting/reload, remote CI and real provider behavior were not
+  newly verified. Browser disconnect may lose terminal receipt; no billing,
+  task-quality, arbitrary-workflow coverage or historical reconstruction claim.
+- Correction-loop decision: Continue only to a separately selected P3 slice.
+  No commit/push/release/deployment or paid call; P2 stops here.
+  [Detailed gate results](correction-briefs/2026-09-27-p2-source-attempts.md).
+
+## 2026-09-27 — P1B validation baseline restored locally
+
+P1's inherited check blockers are resolved without changing runtime budgets,
+prompts or validator behavior. `pnpm.cmd check` now exits 0: build, 68/68 tests,
+lint and types pass. No live call, remote CI, commit/push or deployment.
+[Cause, patch and exact evidence](correction-briefs/2026-09-27-p1b-validation-baseline.md).
+P2 remains unimplemented; DP-0.3 product acceptance is not closed by this repair.
+The dated P1 gate failures below describe the earlier tree, not the current gate.
+
+## 2026-09-27 — P1 safe validator diagnostics (local only)
+
+- Implemented precise Turn Envelope failure codes/paths/structural summaries in
+  the existing error string. No schema, prompt, acceptance, retry or model change.
+- Three new offline tests pass; 1,107 baseline comparisons preserve parser
+  acceptance/normalization. Build/lint pass. Full check FAIL: 67/68 tests,
+  existing Solo 502; typecheck FAIL: 41 errors identical with HEAD parser source.
+- No paid calls, historical trace rewrite, commit/push or deployment. This is
+  a bounded correction alongside DP-0.3, not completion of that product stage.
+- [Validation, actual sample and limits](evaluations/2026-09-27-p1-turn-validation-diagnostics.md).
+  P2 capture/import is not implemented. Baseline full-check failures require a
+  separate correction before a green integration claim.
+
+
 This chronological log records shipped work, validation, limitations, and the next decision. It is not a place for uncommitted feature ideas; those belong in the roadmap or decision record.
 
 ## 2026-09-25 - DP-0.3 Meeting Output and Round Recovery Correction

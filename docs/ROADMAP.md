@@ -1,5 +1,37 @@
 # Roadmap
 
+## 2026-09-27 — P2 bounded source capture complete locally
+
+P1/P1B are followed by locally validated P2 ordinary-turn evidence. SledTrace's
+next candidate is P3 privacy/atomic-import design, not implemented or implicitly
+authorized here. This is a cross-project diagnostic slice, not a replacement for
+MAMR's DP train or completion of DP-0.3. No sequence or paid-work expansion.
+[Acceptance and explicit coverage limits](correction-briefs/2026-09-27-p2-source-attempts.md).
+Older P2-unimplemented statements below describe historical checkpoints.
+
+## 2026-09-27 — P1B validation baseline restored locally
+
+P1's inherited check blockers are resolved without changing runtime budgets,
+prompts or validator behavior. `pnpm.cmd check` now exits 0: build, 68/68 tests,
+lint and types pass. No live call, remote CI, commit/push or deployment.
+[Cause, patch and exact evidence](correction-briefs/2026-09-27-p1b-validation-baseline.md).
+P2 remains unimplemented; DP-0.3 product acceptance is not closed by this repair.
+The dated P1 gate failures below describe the earlier tree, not the current gate.
+
+## 2026-09-27 — P1 safe validator diagnostics (local only)
+
+- Implemented precise Turn Envelope failure codes/paths/structural summaries in
+  the existing error string. No schema, prompt, acceptance, retry or model change.
+- Three new offline tests pass; 1,107 baseline comparisons preserve parser
+  acceptance/normalization. Build/lint pass. Full check FAIL: 67/68 tests,
+  existing Solo 502; typecheck FAIL: 41 errors identical with HEAD parser source.
+- No paid calls, historical trace rewrite, commit/push or deployment. This is
+  a bounded correction alongside DP-0.3, not completion of that product stage.
+- [Validation, actual sample and limits](evaluations/2026-09-27-p1-turn-validation-diagnostics.md).
+  P2 capture/import is not implemented. Baseline full-check failures require a
+  separate correction before a green integration claim.
+
+
 Statuses: `Complete`, `Current`, `Planned`, `Deferred`.
 
 ## Current Position

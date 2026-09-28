@@ -97,6 +97,7 @@ export type RoundBrief = {
 };
 
 export type DiscussEvent =
+  | { type: "source.attempt"; receipt: import("./source-attempt").SourceAttempt }
   | { type: "plan.checkpoint"; artifact: import("./plan-artifact").PlanArtifact }
   | { type: "plan.work"; stage: "building" | "reviewing"; status: "started" | "done"; usage?: UsageSummary }
   | {

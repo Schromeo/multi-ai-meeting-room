@@ -21,6 +21,8 @@ import {
   ReviewHumanRevision,
 } from "./review-artifact";
 
+import { sourceAttemptKey, type SourceAttempt } from "./source-attempt";
+
 const databaseName = "multi-ai-meeting-room";
 type PlanRequest = NonNullable<MeetingRecord["planRequest"]>;
 type PlanArtifact = NonNullable<MeetingRecord["planArtifact"]>;
@@ -61,6 +63,7 @@ type EventRow = {
   roomId: string;
   sequence: number;
   type:
+    | "source.attempt"
     | "agenda.published"
     | "turn.completed"
     | "turn.failed"
@@ -72,7 +75,7 @@ type EventRow = {
     | "chair.directive"
     | "human.choice";
   createdAt: string;
-  payload: TranscriptItem | ProtocolTransition | ProcessReport | RoundBrief | ChairDirective | HumanChoice;
+  payload: TranscriptItem | ProtocolTransition | ProcessReport | RoundBrief | ChairDirective | HumanChoice | SourceAttempt;
 };
 
 type SnapshotRow = {
@@ -301,6 +304,18 @@ async function writeRoomRecord(database: Promise<IDBDatabase>, record: MeetingRe
   });
 
   const eventStore = transaction.objectStore(stores.events);
+  record.sourceAttempts?.forEach((receipt, sequence) => {
+    const row: EventRow = {
+      id: `${record.id}:source-attempt:${sourceAttemptKey(receipt)}`, roomId: record.id,
+      sequence, type: "source.attempt", createdAt: receipt.endedAt ?? receipt.startedAt, payload: receipt,
+    };
+    const existing = eventStore.get(row.id);
+    existing.onsuccess = () => {
+      if (existing.result) {
+        if (JSON.stringify(existing.result.payload) !== JSON.stringify(receipt)) transaction.abort();
+      } else eventStore.add(row);
+    };
+  });
   record.transcript.forEach((item, sequence) => {
     if (item.status === "streaming") return;
     const request = eventStore.add({
@@ -561,6 +576,8 @@ async function listRoomRecords(db: IDBDatabase): Promise<MeetingRecord[]> {
       )
       .sort((a, b) => a.sequence - b.sequence)
       .map((item) => item.payload as TranscriptItem);
+    const sourceAttempts = eventRows.filter(item => item.roomId === room.id && item.type === "source.attempt")
+      .sort((a, b) => a.sequence - b.sequence).map(item => item.payload as SourceAttempt);
     const artifact = artifactRows
       .filter((item) => item.roomId === room.id && item.type === "decision.memo")
       .sort((a, b) => b.version - a.version)[0];
@@ -576,6 +593,7 @@ async function listRoomRecords(db: IDBDatabase): Promise<MeetingRecord[]> {
       ...(room.planRequest ? { planRequest: room.planRequest } : {}),
       stage: snapshot.stage,
       transcript,
+      ...(sourceAttempts.length ? { sourceAttempts } : {}),
       memo: artifact?.content ?? "",
       decision: snapshot.decision,
       usage: usage

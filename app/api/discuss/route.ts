@@ -54,6 +54,9 @@ import { buildPlanPrompt, buildPlanReviewPrompt, createPlanDayStream, missingPla
 import { buildPlanAmendmentPrompt, parsePlanAmendmentDraft, parsePlanRecheck } from "../../../lib/plan-artifact";
 import { createStartedPlanAttempt, planRejectionLabels, upsertPlanAttempt, type PlanAttempt } from "../../../lib/plan-artifact";
 
+import { reportedCount, type SourceAttempt } from "../../../lib/source-attempt";
+type DiagnosticObserver = (value: NonNullable<ProviderResult["diagnostics"]>) => void;
+
 type ProviderConfig = ProviderSummary & {
   apiKey?: string;
   inputUsdPerMTok: number;
@@ -121,6 +124,7 @@ type SessionConnection = {
 
 type AgentWork = Omit<SeatRequest, "id"> & {
   id: string;
+  requestId: string;
   seatId: string;
   round: number;
   config: ProviderConfig;
@@ -210,6 +214,7 @@ export async function POST(request: Request) {
   const work = seats.map((seat, index): AgentWork => ({
     ...seat,
     id: `${requestId}-${iteration}-${seat.id}-${index}`,
+    requestId,
     seatId: seat.id,
     round: iteration,
     config: getProviderConfig(
@@ -1114,6 +1119,8 @@ function observerPhaseResponse(
 function validatePhaseRequest(body: DiscussRequest):
   | {
       ok: true;
+      value: {
+        objective: string;
         outputProfile: OutputProfile;
         taskMode: TaskMode;
         reviewInput?: ReviewTaskInput;
@@ -1132,7 +1139,8 @@ function validatePhaseRequest(body: DiscussRequest):
         reviewEditCheckpoint?: ReviewEditCheckpoint;
         planRequest?: PlanRequest;
         planArtifact?: PlanArtifact;
-      }
+      };
+    }
   | { ok: false; error: string } {
   const round = Number(body.iteration);
   if (!Number.isInteger(round) || round < 1 || round > 5) {
@@ -1397,6 +1405,7 @@ function createAgentWork(
   return {
     ...seat,
     id: `${requestId}-${round}-${seat.id}-${phase}`,
+    requestId,
     seatId: seat.id,
     round,
     config: getProviderConfig(
@@ -2007,6 +2016,30 @@ async function runAgent(
     target,
   });
 
+  const startedAt = new Date().toISOString();
+  const clockStart = performance.now();
+  let diagnostics = unknownProviderDiagnostics();
+  let timedOut = false;
+  const started: SourceAttempt = {
+    version: 1, captureVersion: "mamr-turn-v1", validatorVersion: "turn-envelope/v1",
+    attemptId: crypto.randomUUID(), requestId: item.requestId, turnId: item.id, seatId: item.seatId,
+    provider: item.provider, configuredModel: redactSecret(item.config.model, item.config.apiKey),
+    phase, round: item.round, outputLimit: maxOutputTokens, lifecycle: "started", startedAt,
+    endedAt: null, elapsedMs: null, callStatus: "started", providerFinish: "unknown", providerReason: "unknown",
+    validation: "not_run", validationCode: null, validationPath: null,
+    inputTokens: reportedCount(null), outputTokens: reportedCount(null), reasoningTokens: reportedCount(null),
+    outputTokenBasis: item.provider === "gemini" ? "visible_output" : "provider_output",
+  };
+  emit({ type: "source.attempt", receipt: started });
+  const terminal = (status: SourceAttempt["callStatus"], validation: SourceAttempt["validation"],
+    detail?: { code: string; path: string }) => emit({ type: "source.attempt", receipt: {
+      ...started, lifecycle: "terminal", endedAt: new Date().toISOString(),
+      elapsedMs: Math.max(0, Math.round(performance.now() - clockStart)), callStatus: status,
+      providerFinish: diagnostics.finish, providerReason: diagnostics.reason, validation,
+      validationCode: detail?.code ?? null, validationPath: detail?.path ?? null,
+      inputTokens: reportedCount(diagnostics.inputTokens), outputTokens: reportedCount(diagnostics.outputTokens),
+      reasoningTokens: reportedCount(diagnostics.reasoningTokens),
+    } });
   try {
     const result = await streamProvider(
       item.config,
@@ -2014,11 +2047,13 @@ async function runAgent(
       prompt,
       signal,
       (delta) => emit({ type: "agent.delta", id: item.id, delta }),
-      maxOutputTokens,
+      maxOutputTokens, false, "judgment", undefined,
+      (value) => { diagnostics = value; }, () => { timedOut = true; },
     );
     emit({ type: "agent.progress", id: item.id, stage: "validating" });
     const parsed = parseTurnEnvelope(result.text, phase);
     if (!parsed.ok) {
+      terminal("returned", "rejected", parsed.diagnostic);
       emit({
         type: "agent.format_error",
         id: item.id,
@@ -2027,9 +2062,11 @@ async function runAgent(
       });
       throw new TurnFormatError(parsed.error);
     }
+    terminal("returned", "passed");
     return { ...result, envelope: parsed.value };
   } catch (error) {
     if (!(error instanceof TurnFormatError)) {
+      terminal(signal.aborted ? "cancelled" : timedOut ? "timeout" : "error", "not_run");
       emit({
         type: "agent.error",
         id: item.id,
@@ -2180,6 +2217,8 @@ async function streamProvider(
   planQuality = false,
   planReasoningProfile: "builder" | "judgment" = "judgment",
   structuredOutputSchema?: Readonly<Record<string, unknown>>,
+  observeDiagnostics?: DiagnosticObserver,
+  observeTimeout?: () => void,
 ): Promise<ProviderResult> {
   if (!config.apiKey) throw new Error(`${config.name} is not configured.`);
   const controller = new AbortController();
@@ -2187,18 +2226,18 @@ async function streamProvider(
   parentSignal.addEventListener("abort", abort, { once: true });
   if (parentSignal.aborted) abort();
   // Long Plan artifacts are bounded by tokens and explicit cancellation, not elapsed thinking time.
-  const timeout = planQuality ? undefined : setTimeout(() => controller.abort("provider_timeout"), PROVIDER_TIMEOUT_MS);
+  const timeout = planQuality ? undefined : setTimeout(() => { observeTimeout?.(); controller.abort("provider_timeout"); }, PROVIDER_TIMEOUT_MS);
   const startedAt = Date.now();
   const reasoningSetting = requestedReasoningSetting(config, planQuality, planReasoningProfile);
 
   try {
     if (config.id === "openai") {
-      return await streamOpenAI(config, system, prompt, controller.signal, onDelta, startedAt, maxOutputTokens, planQuality, reasoningSetting);
+      return await streamOpenAI(config, system, prompt, controller.signal, onDelta, startedAt, maxOutputTokens, planQuality, reasoningSetting, observeDiagnostics);
     }
     if (config.id === "anthropic") {
-      return await streamAnthropic(config, system, prompt, controller.signal, onDelta, startedAt, maxOutputTokens, planQuality, reasoningSetting, structuredOutputSchema);
+      return await streamAnthropic(config, system, prompt, controller.signal, onDelta, startedAt, maxOutputTokens, planQuality, reasoningSetting, structuredOutputSchema, observeDiagnostics);
     }
-    return await streamGemini(config, system, prompt, controller.signal, onDelta, startedAt, maxOutputTokens, planQuality, reasoningSetting);
+    return await streamGemini(config, system, prompt, controller.signal, onDelta, startedAt, maxOutputTokens, planQuality, reasoningSetting, observeDiagnostics);
   } finally {
     if (timeout !== undefined) clearTimeout(timeout);
     parentSignal.removeEventListener("abort", abort);
@@ -2221,6 +2260,7 @@ async function streamOpenAI(
   maxOutputTokens: number,
   planQuality: boolean,
   reasoningSetting: NonNullable<PlanAttempt["reasoningSetting"]>,
+  observeDiagnostics?: DiagnosticObserver,
 ): Promise<ProviderResult> {
   const response = await fetch("https://api.openai.com/v1/responses", {
     method: "POST",
@@ -2267,6 +2307,7 @@ async function streamOpenAI(
       diagnostics.outputTokens = reportedTokenCount(usage?.output_tokens);
       diagnostics.reasoningTokens = reportedTokenCount(objectValue(usage, "output_tokens_details")?.reasoning_tokens);
     }
+    observeDiagnostics?.({ ...diagnostics });
     if (event.type === "error") throw new Error(apiEventMessage(event, config.name));
   }).catch((error) => { if (!planQuality) throw error; transportError = true; diagnostics.finish = "failed"; });
   const result = { text, inputTokens, outputTokens, latencyMs: Date.now() - startedAt, diagnostics, ...(incomplete ? { incomplete: true } : {}), ...(transportError ? { transportError: true } : {}) };
@@ -2300,6 +2341,7 @@ async function streamAnthropic(
   planQuality: boolean,
   reasoningSetting: NonNullable<PlanAttempt["reasoningSetting"]>,
   structuredOutputSchema?: Readonly<Record<string, unknown>>,
+  observeDiagnostics?: DiagnosticObserver,
 ): Promise<ProviderResult> {
   const response = await fetch("https://api.anthropic.com/v1/messages", {
     method: "POST",
@@ -2348,6 +2390,7 @@ async function streamAnthropic(
         diagnostics.reason = reason === "max_tokens" ? "output_limit" : reason === "model_context_window_exceeded" ? "context_limit" : reason === "refusal" ? "content_filter" : "other";
       }
     }
+    observeDiagnostics?.({ ...diagnostics });
     if (event.type === "error") throw new Error(apiEventMessage(event, config.name));
   }).catch((error) => { if (!planQuality) throw error; transportError = true; diagnostics.finish = "failed"; });
   const result = { text, inputTokens, outputTokens, latencyMs: Date.now() - startedAt, diagnostics,
@@ -2365,6 +2408,7 @@ async function streamGemini(
   maxOutputTokens: number,
   planQuality: boolean,
   reasoningSetting: NonNullable<PlanAttempt["reasoningSetting"]>,
+  observeDiagnostics?: DiagnosticObserver,
 ): Promise<ProviderResult> {
   const model = encodeURIComponent(config.model);
   const response = await fetch(
@@ -2390,6 +2434,7 @@ async function streamGemini(
   let outputTokens = 0;
   let visibleTokens = 0;
   let thoughtTokens = 0;
+  let reportedVisibleTokens: number | null = null;
   const diagnostics = unknownProviderDiagnostics(reasoningSetting);
   let transportError = false;
   await readSSE(response, (event) => {
@@ -2416,6 +2461,9 @@ async function streamGemini(
     diagnostics.inputTokens = reportedTokenCount(usage?.promptTokenCount) ?? diagnostics.inputTokens;
     diagnostics.reasoningTokens = reportedTokenCount(usage?.thoughtsTokenCount) ?? diagnostics.reasoningTokens;
     if (reportedTokenCount(usage?.candidatesTokenCount) !== null) diagnostics.outputTokens = outputTokens;
+    // Source evidence reports visible output separately; it does not assume missing thought tokens are zero.
+    reportedVisibleTokens = reportedTokenCount(usage?.candidatesTokenCount) ?? reportedVisibleTokens;
+    observeDiagnostics?.({ ...diagnostics, outputTokens: reportedVisibleTokens });
   }).catch((error) => { if (!planQuality) throw error; transportError = true; diagnostics.finish = "failed"; });
   const result = { text, inputTokens, outputTokens, latencyMs: Date.now() - startedAt, diagnostics,
     ...(planQuality && diagnostics.finish !== "completed" ? { incomplete: true } : {}), ...(transportError ? { transportError: true } : {}) };

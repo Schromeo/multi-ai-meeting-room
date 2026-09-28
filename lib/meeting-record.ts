@@ -29,6 +29,8 @@ import {
 } from "./review-artifact";
 import { parsePlanRequest, parsePlanArtifact, parsePlanApproval, parsePlanHumanRevision, planReady, type PlanRequest, type PlanArtifact, type PlanApproval, type PlanHumanRevision } from "./plan-artifact";
 
+import { parseSourceAttempts, type SourceAttempt } from "./source-attempt";
+
 export type TranscriptItem = {
   id: string;
   seatId?: string;
@@ -93,6 +95,7 @@ export type MeetingRecord = {
   reviewApprovedArtifact?: ReviewApprovedArtifact;
   stage: "meeting" | "decision";
   transcript: TranscriptItem[];
+  sourceAttempts?: SourceAttempt[];
   memo: string;
   decision: DecisionStatus;
   usage: UsageSummary;
@@ -123,6 +126,7 @@ export function parseMeetingRecord(value: unknown): MeetingRecord | null {
     ? undefined
     : parseReviewTaskInput(record.reviewInput);
   const transcript = parseTranscript(record.transcript);
+  const sourceAttempts = record.sourceAttempts === undefined ? undefined : parseSourceAttempts(record.sourceAttempts);
   const planRequest = record.planRequest === undefined ? undefined : parsePlanRequest(record.planRequest);
   const planArtifact = record.planArtifact === undefined ? undefined : planRequest && typeof record.objective === "string"
     ? parsePlanArtifact(record.planArtifact, planRequest, record.objective) : null;
@@ -191,6 +195,7 @@ export function parseMeetingRecord(value: unknown): MeetingRecord | null {
       (!reviewApprovedArtifact || taskMode !== "review" || record.decision !== "approved")) ||
     (record.stage !== "meeting" && record.stage !== "decision") ||
     transcript === null ||
+    (record.sourceAttempts !== undefined && sourceAttempts === null) ||
     typeof record.memo !== "string" ||
     record.memo.length > 200_000 ||
     !isDecisionStatus(record.decision) ||
@@ -224,6 +229,7 @@ export function parseMeetingRecord(value: unknown): MeetingRecord | null {
     ...(reviewApprovedArtifact ? { reviewApprovedArtifact } : {}),
     stage: record.stage,
     transcript,
+    ...(sourceAttempts ? { sourceAttempts } : {}),
     memo: record.memo,
     decision: record.decision,
     usage,

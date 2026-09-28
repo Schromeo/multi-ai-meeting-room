@@ -487,3 +487,36 @@ Durable product and architecture choices live here. New entries are append-only.
 - **Date:** 2026-09-25
 - **Decision:** the `unlimited` profile raises application output caps, aligns total room budgets, and adds task-shaped synthesis instructions for creative/planning work. It must preserve the user's language and produce an actionable expanded deliverable rather than only short options. Provider, transport, reasoning, content-filter, cost, and host limits remain authoritative; incomplete work preserves the prior memo and exposes explicit recovery.
 - **Reason:** larger token ceilings alone did not turn concise structured meeting turns into a usable novel outline, and an incomplete second-round provider stream left the user without a visible prior result or recovery path. Prompt responsibility and failure presentation must change with the user-facing depth.
+
+## D-069 - Safe Turn Validation Reasons In The Existing Error String
+
+- **Status:** Accepted locally; repository-wide check is not green.
+- **Date:** 2026-09-27
+- **Decision:** preserve parser acceptance and the old message prefix; append
+  versioned reason codes, application-owned paths and type/length facts. Reuse
+  the current format-error event and saved-record string instead of adding a
+  public schema. Never include rejected content, unknown keys or parser exceptions.
+- **Boundary:** first error only; collection diagnosis stops at item index.
+  No automatic repair, prompt change, native SledTrace capture or live call.
+- **Evidence:** [P1 validation](evaluations/2026-09-27-p1-turn-validation-diagnostics.md).
+  Diagnostic suffixes are explanatory text, not a structured API to parse.
+
+## D-070 - Approved Ordinary-Turn Source Evidence Is Additive And Local
+
+- **Status:** User approved; locally validated, not committed/deployed.
+- **Date:** 2026-09-27
+- **Decision:** add strict versioned started/terminal metadata at ordinary
+  runAgent calls, source.attempt transport events and optional local record
+  receipts. Preserve existing stores/version, old records, prompts, validation
+  decisions and usage totals. Separate application call outcome, provider finish
+  and Turn Envelope validation; never conflate them with task quality.
+- **Boundary:** nullable reported usage, fixed safe codes, monotonic duration,
+  append/dedup/conflict semantics and room deletion. Started is not a bill.
+  Browser loss can leave unknown terminal evidence. No Plan/Observer/Solo/Review
+  work coverage, SledTrace import, automatic repair or live calls.
+- **Reason:** failed calls and posthoc timestamps cannot support honest failure
+  localization. Explicit source receipts retain bounded facts without collecting
+  raw text or reconstructing historical failures.
+- **Evidence:** [P2 brief](correction-briefs/2026-09-27-p2-source-attempts.md).
+  D-069's explanatory suffix remains non-API; source capture uses its internal
+  diagnostic object, not string parsing.

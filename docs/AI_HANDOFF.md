@@ -1,6 +1,40 @@
 # AI Handoff
 
-Last updated: 2026-09-24
+## 2026-09-27 — P2 source evidence locally validated
+
+Ordinary `runAgent` meeting calls now emit strict started/terminal receipts, keep
+reported usage even on failure, and distinguish call status, provider finish and
+Turn Envelope validation. Local history and an expandable receipt view preserve
+unknowns; configured model is not verified served model. No capture for Plan,
+Observer, Solo or Review Editor/Verifier, and no SledTrace export/import yet.
+[Approved scope, implementation and acceptance](correction-briefs/2026-09-27-p2-source-attempts.md).
+This supersedes older P2-unimplemented snapshots below. Locally validated only:
+no paid calls, commit/push, remote CI or deployment; DP-0.3 is not closed.
+
+## 2026-09-27 — P1B validation baseline restored locally
+
+P1's inherited check blockers are resolved without changing runtime budgets,
+prompts or validator behavior. `pnpm.cmd check` now exits 0: build, 68/68 tests,
+lint and types pass. No live call, remote CI, commit/push or deployment.
+[Cause, patch and exact evidence](correction-briefs/2026-09-27-p1b-validation-baseline.md).
+P2 remains unimplemented; DP-0.3 product acceptance is not closed by this repair.
+The dated P1 gate failures below describe the earlier tree, not the current gate.
+
+## 2026-09-27 — P1 safe validator diagnostics (local only)
+
+- Implemented precise Turn Envelope failure codes/paths/structural summaries in
+  the existing error string. No schema, prompt, acceptance, retry or model change.
+- Three new offline tests pass; 1,107 baseline comparisons preserve parser
+  acceptance/normalization. Build/lint pass. Full check FAIL: 67/68 tests,
+  existing Solo 502; typecheck FAIL: 41 errors identical with HEAD parser source.
+- No paid calls, historical trace rewrite, commit/push or deployment. This is
+  a bounded correction alongside DP-0.3, not completion of that product stage.
+- [Validation, actual sample and limits](evaluations/2026-09-27-p1-turn-validation-diagnostics.md).
+  P2 capture/import is not implemented. Baseline full-check failures require a
+  separate correction before a green integration claim.
+
+
+Last updated: 2026-09-27
 
 ## Current Snapshot
 

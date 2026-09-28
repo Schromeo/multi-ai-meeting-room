@@ -414,3 +414,31 @@ S1 009 暴露了下载取回失败和看似精确的通用估价。开放现有�
 - **决定：** `pnpm check`是唯一有序工程契约：由固定 Wrangler 与`wrangler.jsonc`重新生成 worker types，通过仓库自带跨平台 vinext launcher 构建，运行完整离线测试，lint 手写源码，并进行不输出文件的 type check。GitHub Actions 用`pnpm/action-setup@v6`安装固定 pnpm 11.19.0，再于 Windows 与 Ubuntu 的 Node 22.13.0 环境执行 frozen install 与同一检查。确定性生成 declaration 被 ignore；inactive D1 binding 继续作为显式 optional augmentation，不进入 runtime 配置。
 - **边界：** 生成 declaration 不手改、不提交，也不当作手写代码 lint；每次完整 check 前重新创建，随后立即由 TypeScript 验证。本决定不新增 package、不升级依赖、不调用供应商、不部署、不配置 D1，也不开始首次使用界面工作。
 - **原因：** 分离的平台命令让 Windows shell 语法、CRLF 假设、缺失 runtime 声明和过期成功说法发生漂移。首次远程运行暴露两个 OS 上安装前的 Corepack 签名 key 不匹配；官方 pnpm 安装步骤修复了这一 runner 差异。随后`97b865a`上的两项 job 在[CI 运行 36076954748](https://github.com/Schromeo/multi-ai-meeting-room/actions/runs/36076954748)中通过。
+
+## D-069 - 在既有错误字符串中提供安全校验原因
+
+- **状态：** 本地已接受；全仓检查尚未全绿。
+- **日期：** 2026-09-27
+- **决定：** 保留判定与旧消息前缀，追加版本化原因码、应用固定路径和类型／长度。
+  复用格式错误事件及历史字符串，不新增公开 schema；不包含被拒绝原文、未知 key
+  或解析器异常。
+- **边界：** 只报首个错误；集合到元素下标。无自动修复、prompt 修改、
+  SledTrace 原生采集或真实调用。
+- **证据：** [P1 验收](evaluations/2026-09-27-p1-turn-validation-diagnostics.md)。
+  后缀是解释文本，不是供调用方解析的结构化 API。
+
+## D-070 - 已批准的普通调用源头证据是本地增量契约
+
+- **状态：** 用户已批准；本地验收，未提交／部署。
+- **日期：** 2026-09-27
+- **决定：** 普通 runAgent 边界新增严格版本化开始／终态元数据、
+  source.attempt 传输事件和可选本地记录。保留既有 store／版本、旧记录、
+  prompt、校验判定和用量总计。应用调用、provider 结束与 Turn Envelope
+  校验分开，绝不等同任务质量。
+- **边界：** 可空上报用量、固定安全原因、单调耗时、追加／去重／冲突及随房间删除。
+  started 不等于账单；浏览器丢失可导致终态未知。不覆盖 Plan／Observer／Solo／
+  Review-work，不做 SledTrace 导入、自动修复或真实调用。
+- **原因：** 失败用量丢失和事后时间无法支持诚实定位；源头回执只保留有界事实，
+  不采原文，不还原历史失败。
+- **证据：** [P2 简报](correction-briefs/2026-09-27-p2-source-attempts.md)。
+  D-069 解释后缀仍非 API，采集使用其内部诊断对象，不解析错误字符串。

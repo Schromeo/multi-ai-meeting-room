@@ -2,6 +2,8 @@
 
 import { FormEvent, useEffect, useMemo, useRef, useState } from "react";
 import { PlanView } from "./plan-view";
+import { SourceAttemptView } from "./source-attempt-view";
+import { appendSourceAttempt, type SourceAttempt } from "../lib/source-attempt";
 import { PlanAmendmentPanel } from "./plan-amendment";
 import { modelRevisedPlan, planDecisionReady, validPlanConcernSelection, preparePlanRecovery } from "../lib/plan-artifact";
 import { PlanDayEditor } from "./plan-day-editor";
@@ -304,6 +306,8 @@ export default function Home() {
   const meetingStateRef = useRef<MeetingState | null>(null);
   const protocolStateRef = useRef<MeetingProtocolState | null>(null);
   const transcriptRef = useRef<TranscriptItem[]>([]);
+  const [sourceAttempts, setSourceAttempts] = useState<SourceAttempt[]>([]);
+  const sourceAttemptsRef = useRef<SourceAttempt[]>([]);
   const usageRef = useRef<UsageSummary>(emptyUsage);
   const memoRef = useRef("");
   const reviewEditCheckpointRef = useRef<ReviewEditCheckpoint | null>(null);
@@ -592,6 +596,7 @@ export default function Home() {
       ...(reviewApprovedArtifact ? { reviewApprovedArtifact } : {}),
       stage: memo ? "decision" : "meeting",
       transcript,
+      sourceAttempts: sourceAttemptsRef.current,
       memo,
       decision,
       usage,
@@ -646,8 +651,14 @@ export default function Home() {
     planSaving,
     taskMode,
     transcript,
+    sourceAttempts,
     usage,
   ]);
+
+  function updateSourceAttempts(next: SourceAttempt[]) {
+    sourceAttemptsRef.current = next;
+    setSourceAttempts(next);
+  }
 
   function updateTranscript(
     update: TranscriptItem[] | ((current: TranscriptItem[]) => TranscriptItem[]),
@@ -751,6 +762,7 @@ export default function Home() {
         : {}),
       stage: memoRef.current ? "decision" : "meeting",
       transcript: transcriptRef.current,
+      sourceAttempts: sourceAttemptsRef.current,
       memo: memoRef.current,
       decision: decisionRef.current,
       usage: usageRef.current,
@@ -1097,6 +1109,7 @@ export default function Home() {
       ...(reviewApprovedArtifact ? { reviewApprovedArtifact } : {}),
       stage: memo ? "decision" : "meeting",
       transcript,
+      sourceAttempts: sourceAttemptsRef.current,
       memo,
       decision,
       usage,
@@ -1143,6 +1156,7 @@ export default function Home() {
     updateReviewHumanRevision(record.reviewHumanRevision ?? null);
     updateReviewApprovedArtifact(record.reviewApprovedArtifact ?? null);
     updateTranscript(record.transcript);
+    updateSourceAttempts(record.sourceAttempts ?? []);
     updateMemo(record.memo);
     updateDecision(record.decision);
     updateUsage(record.usage);
@@ -1152,7 +1166,7 @@ export default function Home() {
     const rawProtocol = record.protocolState ?? legacyProtocolState(record);
     const restoredProtocol = rawProtocol
       ? record.planRequest ? rawProtocol : record.taskMode === "review"
-        ? ensureReviewArtifactBudget(rawProtocol, record.participants.length, outputProfile)
+        ? ensureReviewArtifactBudget(rawProtocol, record.participants.length)
         : ensureDecisionPackageBudget(rawProtocol, record.participants.length, record.transcript, outputProfile)
       : rawProtocol;
     updateProtocol(restoredProtocol);
@@ -1222,6 +1236,7 @@ export default function Home() {
     updateReviewApprovedArtifact(null);
     setReviewWork(null);
     updateTranscript([]);
+    updateSourceAttempts([]);
     updateMemo("");
     updateUsage(emptyUsage);
     updateDecision("waiting");
@@ -1298,6 +1313,7 @@ export default function Home() {
       status: "done",
     }];
     updateTranscript(openingTranscript);
+    updateSourceAttempts([]);
     updatePlan(null);
     updatePlanApproval(null);
     updateMemo("");
@@ -1439,7 +1455,7 @@ export default function Home() {
     setError("");
     setCopied(false);
     let nextState = planRequest ? startState : taskMode === "review"
-      ? ensureReviewArtifactBudget(startState, seats.length, outputProfile)
+      ? ensureReviewArtifactBudget(startState, seats.length)
       : ensureDecisionPackageBudget(startState, seats.length, transcriptRef.current, outputProfile);
     let activeTransitionId = "";
     try {
@@ -1578,6 +1594,15 @@ export default function Home() {
           }
           if (roomEvent.type === "review.work.error" && !phaseBoundary.detail) {
             phaseBoundary.detail = `${roomEvent.stage === "editing" ? "Editor" : "Verifier"} stopped: ${roomEvent.message}`;
+          }
+          if (roomEvent.type === "source.attempt") {
+            try {
+              updateSourceAttempts(appendSourceAttempt(sourceAttemptsRef.current, roomEvent.receipt));
+              await flushProtocolRecord(nextState);
+            } catch {
+              setHistoryError("Source evidence could not be saved. Missing receipts remain unknown; the meeting is not retried.");
+            }
+            return;
           }
           handleEvent(roomEvent);
         });
@@ -1842,6 +1867,11 @@ export default function Home() {
   }
 
   function handleEvent(event: DiscussEvent) {
+    if (event.type === "source.attempt") {
+      try { updateSourceAttempts(appendSourceAttempt(sourceAttemptsRef.current, event.receipt)); }
+      catch { setHistoryError("Invalid or conflicting source evidence was not saved."); }
+      return;
+    }
     if (event.type === "plan.work") {
       setPlanWork(event.stage);
       if (event.usage) updateUsage((current) => mergeUsage(current, event.usage!));
@@ -2375,6 +2405,7 @@ export default function Home() {
     updatePlan(null);
     updatePlanApproval(null);
     updateTranscript([]);
+    updateSourceAttempts([]);
     updateMemo("");
     updateReviewEditCheckpoint(null);
     updateReviewResult(null);
@@ -2896,6 +2927,8 @@ export default function Home() {
                 </div>
               </div>
             </header>
+
+            <SourceAttemptView receipts={sourceAttempts} />
 
             {observerProgress ? (
               <div className="observer-live" role="status" aria-live="polite">
