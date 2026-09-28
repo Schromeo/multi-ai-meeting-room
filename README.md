@@ -6,6 +6,14 @@ This repository is a private, pre-release development build. It has no release t
 
 The implemented foundation includes OpenAI, Anthropic, and Gemini adapters; session-only BYOK; reusable model Seats; bounded discussion, Review, and structured Plan paths; Human Gates; and credential-free browser-local room history. The canonical forward queue is the [Detailed Development Milestones](docs/DEVELOPMENT_MILESTONES.md). Product quality evidence remains incomplete: Review and Plan have useful mechanical evidence and known semantic failures, so this repository does not claim that multi-model review is already superior to one strong model.
 
+## Current Progress (2026-09-28)
+
+**DP-0.3, First-run Information Architecture, remains open.** The ordinary Decide Setup now supports 2–12 Seats, bounded custom names and responsibilities, and independently adjustable finite output ceilings for each Seat turn and the final Memo. Seat participation is controlled in Agenda and Setup; incomplete Seats cannot participate or launch a meeting. Review and structured Plan keep their own participant and artifact limits.
+
+Completed meeting speech renders as safe GFM, and saved rooms have an explicit full-Markdown export. That export contains private meeting content and should be shared carefully.
+
+The latest local `pnpm.cmd check` passes the build, 87/87 offline tests, lint, and TypeScript checks. No-key browser QA verified that incomplete Seats show their setup state and disable launch; configured-credential readiness has not been browser-verified. The owner-approved [Live 001 case](docs/evaluations/2026-09-27-ordinary-creative-meeting-live-001.md) records a real provider-backed meeting, but it is not a controlled benchmark: quality remains `not_evaluated`, there is no matched single-model baseline, and it does not establish multi-model lift.
+
 ## Product Structure
 
 Task Packs define the job: **Review**, **Decide / Plan**, **Explore**, **Create**, and future **Play**.
