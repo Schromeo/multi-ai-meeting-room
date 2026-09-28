@@ -528,3 +528,45 @@ Durable product and architecture choices live here. New entries are append-only.
 - **Decision:** export one saved ordinary Decide meeting as deterministic versioned JSON through a fresh explicit field projection. Preserve P2 receipt lifecycle, original timestamps, reported/unknown usage, and missing evidence without reconstructing receipts. Keep Turn Envelope rejection, workflow interruption, human decision and unevaluated quality as separate signals.
 - **Boundary:** omit objective, prompts, response/transcript/memo bodies, credentials, configured model strings and arbitrary error text. Do not reuse raw MeetingRecord serialization or add Plan, Review, Observer, Solo, import, SDK or remote sync. P1/P1B/P2 are separately committed at `4d16c9c`.
 - **Reason:** a reusable diagnostic must be inspectable without turning a local meeting archive into a sensitive transcript export or a fictional billing/quality ledger. [P3 evidence](correction-briefs/2026-09-27-p3-one-room-diagnostic-export.md).
+
+## D-072 - Ordinary Meeting Speech Depth Follows The Selected Output Profile
+
+- **Status:** Accepted locally; live model quality unverified.
+- **Date:** 2026-09-27
+- **Decision:** Lite, Medium, and Uncapped direct the visible Proposal, cross-review, and named-Dispute statement depth in both ordinary Meeting execution paths. Medium keeps the prior concise targets; Uncapped permits developed but bounded working contributions. The separate Final Memo, Plan artifacts, Turn Envelope and Card validation, source policy, provider/room budgets, call count and retry boundary do not change.
+- **Reason:** varying only transport token caps left all participant speech under the same short prompt, making the user's depth selection ineffective at the point they were reading. This refines D-045's concise-working-turn policy without treating more prose as proof of better decisions. [Local gate](correction-briefs/2026-09-27-meeting-speech-output-profiles.md).
+
+## D-073 - Ordinary Meeting Deadlines Follow Output Profile
+
+- **Status:** Accepted locally; one owner-supplied live Anthropic synthesis completed after 103,659 ms, while the earlier `gpt-5-pro` case, broader host/provider behavior and billing remain unverified.
+- **Date:** 2026-09-27
+- **Decision:** ordinary Meeting participant and synthesis calls have finite application deadlines of 180 s for Lite, 240 s for Medium and 300 s for Uncapped, with matching room-time allowances. This supersedes D-056's ordinary-discussion 90 s clause only. Other call families remain at 90 s; Plan keeps no application deadline. Explicit Stop, output and turn limits, source validation and no automatic retry remain.
+- **Reason:** the owner's Proposal receipt ended at 90,002 ms with application `timeout` after the speech-depth change. A matching room allowance avoids admitting a slower call only to block its next phase. The receipt does not prove provider completion or billing. [Correction brief](correction-briefs/2026-09-27-ordinary-meeting-provider-timeout.md).
+
+## D-074 - Rich Meeting Markdown Is An Explicit, Separate Export
+
+- **Status:** Accepted locally; browser download and real-room replay unverified.
+- **Date:** 2026-09-27
+- **Decision:** render completed Meeting speech with safe GFM, and offer an explicitly requested one-room Markdown record containing the saved agenda, configured provider/model/role, transcript, recorded Chair actions, usage and result. This content-rich file is distinct from D-071's privacy-safe diagnostic JSON. Never export API credentials or arbitrary failed-call exception text; never invent old per-turn timestamps or absent human events.
+- **Reason:** the owner needs a readable, portable account of an actual meeting without flattening headings/tables or manually reconstructing intervention history, while the diagnostic export must remain safe to share for debugging. [Correction brief](correction-briefs/2026-09-27-readable-meeting-record.md).
+
+## D-075 - Ordinary Setup Has Composable Seats And Adjustable Per-Call Ceilings
+
+- **Status:** Accepted locally; live model calibration and saved-room browser replay unverified.
+- **Date:** 2026-09-27
+- **Decision:** make Setup a page; allow 2–12 ordinary Decide Seats with bounded custom display names and skill mandates. Lite, Medium and Extended each expose independent adjustable participant-turn and final-Memo token ceilings. Derive the room output allowance from Seat count, rounds and selected ceilings. Save the choice for new rooms; never infer it for old rooms. Review and Plan remain at their existing three-Seat and artifact-contract limits. Extend ordinary Turn Envelope and Canonical State bounds explicitly to support the larger room, without relaxing the JSON/human gates.
+- **Reason:** fixed three-Seat composition and fixed profile numbers prevent user-shaped rooms; an isolated per-Seat ceiling gives the owner control without prescribing a false Lite:Medium ratio. Ceilings do not promise visible prose, quality or billing. [Correction brief](correction-briefs/2026-09-27-configurable-ordinary-room-setup.md).
+
+## D-076 - Setup Owns Seat Editing; Agenda Uses A Bounded Summary
+
+- **Status:** Accepted locally; credentialed ready-state browser check remains open.
+- **Date:** 2026-09-27
+- **Decision:** keep Connection, Model, Role, name, Skill, Add and Remove edits in Setup. Agenda displays an internally scrollable summary capped at 360px/45dvh; On/Off participation is the sole Seat edit available in both Agenda and Setup, backed by the same `enabled` field. Moving from Setup to another stage closes it; the Setup step is green-complete only when at least two Seats are runnable, not merely because the page was visited.
+- **Reason:** twelve expanded Seat forms overwhelm the Agenda and duplicate Skill editing, but changing whether an already configured Seat participates is a useful in-room control. Stage navigation must distinguish a selected page from a valid completed configuration. [Correction brief](correction-briefs/2026-09-27-setup-seat-summary-and-completion.md).
+
+## D-077 - Seat Participation Requires Complete Setup
+
+- **Status:** Accepted locally; credentialed browser verification remains open.
+- **Date:** 2026-09-28
+- **Decision:** before exposing On/Off in either Agenda or Setup, require a configured Connection and (for session credentials) API key, a model offered by that Connection, a valid Role, and the required bounded Custom name and Skill. Show `Not set up` with a Setup hint while incomplete; preserve the draft and derive the runnable Seat set and launch eligibility from the same verdict. New Seats begin Off until configured.
+- **Reason:** On/Off implies a usable Seat. A misleading On state must not send a partial Seat into a paid meeting or mark Setup complete. This qualifies D-076 without moving Seat editing out of Setup. [Correction brief](correction-briefs/2026-09-27-setup-seat-summary-and-completion.md).
