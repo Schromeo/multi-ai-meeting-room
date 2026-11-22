@@ -1,5 +1,13 @@
 # Development Log
 
+## 2026-11-21 — DP-0.3 history, Solo and entry refresh
+
+- Review baseline was `eabf737`. Created local backup `codex/backup-before-dp-0-3-refresh` before refreshing the home and Agenda layouts, navigation, and Solo composer.
+- Scoped IndexedDB participant keys to their rooms and restored custom Seat data and output limits. The reader accepts surviving legacy Seat keys. Opening Agenda from an existing meeting now creates a draft while the stored objective, artifacts and approvals remain associated with the old room.
+- Solo retains the full visible conversation and sends recent message pairs under the shared API limits. Reply length controls the token cap, and each adapter uses its native chat roles. The local production preview serves the built Worker and asset binding through Wrangler and fixes Windows stylesheet loading.
+- `pnpm.cmd check` passed with 89 offline tests. Isolated Chrome verified the 1440px and 390px layouts, mocked Solo follow-up after a long reply, failure with draft restoration and one call per send, Seat toggles and launch readiness, and old Review/Plan approval preservation across edits and reload. Both launch paths returned HTTP 200. All six assets referenced by the production HTML returned 200, and CSS had the expected content type.
+- DP-0.3 passed local acceptance. Seat data overwritten before the storage repair may be unrecoverable. Real-provider quality, comparative value and public readiness remain unverified.
+
 ## 2026-09-28 — DP-0.3 Seat configuration gate before participation (local)
 
 - A Seat without a configured Connection/API key, compatible Model, valid Role, or required Custom name/Skill now appears as `Not set up` in Agenda and Setup, with a Setup hint instead of an On/Off switch. A new Seat starts Off; once complete, the shared On/Off control becomes available. Clearing a required field removes the switch again without discarding the draft.

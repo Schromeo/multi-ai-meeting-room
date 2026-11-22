@@ -48,13 +48,16 @@ type RoomRow = {
   taskMode?: TaskMode;
   reviewInput?: ReviewTaskInput;
   planRequest?: PlanRequest;
+  outputProfile?: MeetingRecord["outputProfile"];
+  outputLimits?: MeetingRecord["outputLimits"];
   stage: MeetingRecord["stage"];
   createdAt: string;
   updatedAt: string;
 };
 
-type ParticipantRow = ParticipantSnapshot & {
+type ParticipantRow = Omit<ParticipantSnapshot, "id"> & {
   id: string;
+  seatId?: string;
   roomId: string;
   position: number;
 };
@@ -300,23 +303,27 @@ async function writeRoomRecord(database: Promise<IDBDatabase>, record: MeetingRe
     taskMode: record.taskMode,
     ...(record.reviewInput ? { reviewInput: record.reviewInput } : {}),
     ...(record.planRequest ? { planRequest: record.planRequest } : {}),
+    ...(record.outputProfile ? { outputProfile: record.outputProfile } : {}),
+    ...(record.outputLimits ? { outputLimits: record.outputLimits } : {}),
     stage: record.stage,
     createdAt: record.createdAt,
     updatedAt: record.updatedAt,
   } satisfies RoomRow);
 
   const participantStore = transaction.objectStore(stores.participants);
-  for (let position = 0; position < 20; position += 1) {
-    participantStore.delete(`${record.id}:participant:${position}`);
-  }
-  record.participants.forEach((participant, position) => {
-    participantStore.put({
-      id: `${record.id}:participant:${position}`,
-      roomId: record.id,
-      position,
-      ...participant,
-    } satisfies ParticipantRow);
-  });
+  const previousParticipantKeys = participantStore.index("roomId").getAllKeys(record.id);
+  previousParticipantKeys.onsuccess = () => {
+    for (const key of previousParticipantKeys.result) participantStore.delete(key);
+    record.participants.forEach(({ id: seatId, ...participant }, position) => {
+      participantStore.put({
+        ...participant,
+        id: `${record.id}:participant:${position}`,
+        roomId: record.id,
+        position,
+        ...(seatId ? { seatId } : {}),
+      } satisfies ParticipantRow);
+    });
+  };
 
   const eventStore = transaction.objectStore(stores.events);
   record.sourceAttempts?.forEach((receipt, sequence) => {
@@ -583,7 +590,11 @@ async function listRoomRecords(db: IDBDatabase): Promise<MeetingRecord[]> {
     const participants = participantRows
       .filter((item) => item.roomId === room.id)
       .sort((a, b) => a.position - b.position)
-      .map(({ provider, providerName, model, role }) => ({ provider, providerName, model, role }));
+      .map(({ id, roomId, position, seatId, ...participant }) => {
+        // Older writes used the Seat ID as the row key when the Seat had an ID.
+        const restoredId = seatId ?? (id !== `${roomId}:participant:${position}` ? id : undefined);
+        return { ...participant, ...(restoredId ? { id: restoredId } : {}) };
+      });
     const transcript = eventRows
       .filter((item) =>
         item.roomId === room.id &&
@@ -606,6 +617,8 @@ async function listRoomRecords(db: IDBDatabase): Promise<MeetingRecord[]> {
       ...(room.taskMode ? { taskMode: room.taskMode } : {}),
       ...(room.reviewInput ? { reviewInput: room.reviewInput } : {}),
       ...(room.planRequest ? { planRequest: room.planRequest } : {}),
+      ...(room.outputProfile ? { outputProfile: room.outputProfile } : {}),
+      ...(room.outputLimits ? { outputLimits: room.outputLimits } : {}),
       stage: snapshot.stage,
       transcript,
       ...(sourceAttempts.length ? { sourceAttempts } : {}),

@@ -17,7 +17,7 @@ test("numbered stage navigation closes Setup and distinguishes current from comp
     assert.ok(page.includes(`aria-current={visibleStage === "${step}" ? "step" : undefined}`));
   }
   assert.doesNotMatch(page, /readySeatCount >= 2 \? "complete" : "active"/);
-  assert.match(page, /onClick=\{\(\) => \{ if \(!running\) \{ closeConnectionManager\(\); setStage\("agenda"\); \} \}\}/);
+  assert.match(page, /onClick=\{\(\) => void openAgenda\(\)\}/);
   assert.match(page, /visibleStage === "setup" \? "active" : readySeatCount >= 2 \? "complete" : ""/);
   assert.match(css, /\.stage-nav button\.complete span \{[^}]*background: var\(--mint\)/);
 });
@@ -229,6 +229,25 @@ test("Solo rejects workspace credentials and invalid context before a provider c
   assert.equal(invalid.status, 400);
 });
 
+test("Solo keeps recent conversation pairs within the server's context limits", async () => {
+  const source = await readFile(new URL("../lib/solo-chat.ts", import.meta.url), "utf8");
+  const compiled = ts.transpileModule(source, { compilerOptions: { module: ts.ModuleKind.ESNext } }).outputText;
+  const { buildSoloContext, soloLimits } = await import(`data:text/javascript;base64,${Buffer.from(compiled).toString("base64")}`);
+  const history = Array.from({ length: 8 }, (_, index) => [
+    { role: "user", content: String(index).repeat(4_000) },
+    { role: "assistant", content: "ab".repeat(3_000) },
+  ]).flat();
+  const latest = { role: "user", content: "Then what?" };
+  const context = buildSoloContext(history, latest);
+  assert.equal(context.length, 5);
+  assert.deepEqual(context.map(({ role }) => role), ["user", "assistant", "user", "assistant", "user"]);
+  assert.equal(context[0].content, history[12].content);
+  assert.equal(context.at(-1), latest);
+  assert.equal(context[1].content.length, soloLimits.messageCharacters);
+  assert.equal(history.at(-1).content.length, 6_000, "The visible answer stays intact");
+  assert.ok(context.reduce((size, message) => size + message.content.length, 0) <= soloLimits.contextCharacters);
+});
+
 test("Solo makes one bounded session-key call and returns a credential-free reply", async () => {
   const originalFetch = globalThis.fetch;
   const calls = [];
@@ -251,13 +270,69 @@ test("Solo makes one bounded session-key call and returns a credential-free repl
       assert.equal(calls[0].options.headers.Authorization, "Bearer solo-fixture-key");
       const sent = JSON.parse(calls[0].options.body);
       assert.equal(sent.max_output_tokens, expectedCap, outputProfile ?? "default");
-      assert.match(sent.input, /User: Hello/);
+      assert.deepEqual(sent.input, [{ role: "user", content: "Hello" }]);
+      assert.equal(sent.text, undefined, "Solo requests plain text");
       assert.equal(response.status, 200);
       const body = await response.json();
       assert.equal(body.text, "Hello back");
       assert.equal(body.usage.inputTokens, 10);
       assert.equal(body.usage.outputTokens, 2);
       assert.doesNotMatch(JSON.stringify(body), /solo-fixture-key/);
+    }
+  } finally {
+    globalThis.fetch = originalFetch;
+  }
+});
+
+test("Solo sends native Anthropic and Gemini chat roles and reports incomplete replies", async () => {
+  const originalFetch = globalThis.fetch;
+  const worker = await loadWorker();
+  const messages = [
+    { role: "user", content: "First question" },
+    { role: "assistant", content: "First answer" },
+    { role: "user", content: "Follow-up" },
+  ];
+  const fixtures = {
+    anthropic: [
+      { type: "message_start", message: { usage: { input_tokens: 30 } } },
+      { type: "content_block_delta", delta: { type: "text_delta", text: "Partial reply" } },
+      { type: "message_delta", delta: { stop_reason: "max_tokens" }, usage: { output_tokens: 10 } },
+    ],
+    gemini: [
+      { candidates: [{ content: { parts: [{ text: "Partial reply" }] }, finishReason: "MAX_TOKENS" }],
+        usageMetadata: { promptTokenCount: 30, candidatesTokenCount: 10 } },
+    ],
+  };
+  try {
+    for (const [provider, events] of Object.entries(fixtures)) {
+      const requests = [];
+      globalThis.fetch = async (url, options) => {
+        requests.push({ url, body: JSON.parse(options.body) });
+        return new Response(events.map((event) => `data: ${JSON.stringify(event)}\n\n`).join(""),
+          { headers: { "content-type": "text/event-stream" } });
+      };
+      const response = await worker.fetch(new Request("http://localhost/api/discuss", {
+        method: "POST", headers: { "content-type": "application/json" },
+        body: JSON.stringify({
+          solo: { connectionId: "session-1", provider, model: "fixture-model", messages, outputProfile: "lite" },
+          connections: { "session-1": { provider, apiKey: "solo-fixture-key" } },
+        }),
+      }), workerEnv(), executionContext());
+      assert.equal(requests.length, 1);
+      assert.equal(response.status, 200);
+      const body = await response.json();
+      assert.equal(body.text, "Partial reply");
+      assert.equal(body.incomplete, true);
+      if (provider === "anthropic") {
+        assert.deepEqual(requests[0].body.messages, messages);
+        assert.equal(requests[0].body.output_config, undefined);
+        assert.equal(requests[0].body.max_tokens, 600);
+      } else {
+        assert.deepEqual(requests[0].body.contents, messages.map(({ role, content }) => ({
+          role: role === "assistant" ? "model" : role, parts: [{ text: content }],
+        })));
+        assert.deepEqual(requests[0].body.generationConfig, { maxOutputTokens: 600 });
+      }
     }
   } finally {
     globalThis.fetch = originalFetch;

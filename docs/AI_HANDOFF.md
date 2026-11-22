@@ -1,5 +1,9 @@
 # AI Handoff
 
+## 2026-11-21 — DP-0.3 local closure
+
+DP-0.3 passed local acceptance on 2026-11-21. Real-provider quality, comparative value and broader hosted readiness remain under evaluation. [Development log](DEVLOG.md)
+
 ## 2026-09-28 — Incomplete Seats cannot toggle participation (local)
 
 One `seatSetupIssue` verdict gates both Agenda/Setup switches, runnable Seat projection and launch. Missing Connection/session key, compatible Model, Role, or Custom name/Skill displays `Not set up` and a Setup hint; new Seats start Off until configured. `pnpm.cmd check` passes 87/87 offline tests, build, lint and types. No-key browser QA saw the incomplete state on both surfaces and disabled Start. No credentialed live toggle, provider call or deployment. [Brief](correction-briefs/2026-09-27-setup-seat-summary-and-completion.md).

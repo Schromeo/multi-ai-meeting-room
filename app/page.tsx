@@ -42,6 +42,7 @@ import { canExportOrdinaryMeeting, serializeMeetingDiagnosticExport } from "../l
 import { serializeMeetingMarkdown } from "../lib/meeting-markdown-export";
 import { defaultMeetingOutputLimits, meetingOutputRanges, type MeetingOutputLimits, type OutputProfile } from "../lib/meeting-output-profile";
 import { seatSetupIssue } from "../lib/seat-setup";
+import { buildSoloContext, soloLimits, type SoloMessage } from "../lib/solo-chat";
 import { inferProviderFromApiKey } from "../lib/provider-key-detection";
 import {
   addChairFindingByChair,
@@ -96,6 +97,7 @@ import ReplayReceipt from "./replay-receipt";
 
 type WorkspaceStage = "agenda" | "meeting" | "decision";
 type EntryMode = "chat" | "council" | "artifact" | "packs";
+type SavedAgenda = Pick<MeetingRecord, "objective" | "taskMode" | "reviewInput" | "planRequest" | "outputProfile" | "outputLimits">;
 type TranscriptMode = "focus" | "overview";
 type ProviderChoice = ProviderId | "auto";
 type ReviewResultView = "artifact" | "changes" | "verification" | "brief";
@@ -201,7 +203,8 @@ export default function Home() {
   const [soloConnectionId, setSoloConnectionId] = useState("");
   const [soloModel, setSoloModel] = useState("");
   const [soloInput, setSoloInput] = useState("");
-  const [soloMessages, setSoloMessages] = useState<Array<{ role: "user" | "assistant"; content: string }>>([]);
+  const [soloMessages, setSoloMessages] = useState<SoloMessage[]>([]);
+  const [soloOutputProfile, setSoloOutputProfile] = useState<OutputProfile>("medium");
   const [soloRunning, setSoloRunning] = useState(false);
   const soloRunningRef = useRef(false);
   const [soloError, setSoloError] = useState("");
@@ -211,6 +214,8 @@ export default function Home() {
   const [reviewTruthConstraints, setReviewTruthConstraints] = useState("");
   const [providers, setProviders] = useState<ProviderSummary[]>([]);
   const [sessionConnections, setSessionConnections] = useState<ConnectionRecord[]>([]);
+  const soloConnection = sessionConnections.find((item) => item.id === soloConnectionId && item.apiKey);
+  const selectedSoloModel = soloConnection?.models.find((model) => model.id === soloModel)?.id ?? soloConnection?.models[0]?.id;
   const [seatDrafts, setSeatDrafts] = useState<SeatDraft[]>(initialSeatDrafts);
   const [outputOverrides, setOutputOverrides] = useState<Record<OutputProfile, MeetingOutputLimits>>({
     lite: defaultMeetingOutputLimits("lite"),
@@ -331,6 +336,8 @@ export default function Home() {
   const currentObserverRef = useRef<ObserverSnapshot | null>(null);
   const currentRoomIdRef = useRef("");
   const currentRoomCreatedAtRef = useRef("");
+  const savedAgendaRef = useRef<SavedAgenda | null>(null);
+  const openingAgendaRef = useRef(false);
   const raiseHandRef = useRef(false);
   const keepingOriginalRef = useRef(false);
 
@@ -596,18 +603,15 @@ export default function Home() {
   }, [followLive, transcript, transcriptMode]);
 
   useEffect(() => {
-    if (planSaving || !historyReady || !currentRoomId || iteration === 0 || transcript.length === 0) return;
+    const agenda = savedAgendaRef.current;
+    if (!agenda || planSaving || !historyReady || !currentRoomId || iteration === 0 || transcript.length === 0) return;
 
     const record: MeetingRecord = {
       version: 1,
       id: currentRoomId,
-      objective: objective.trim() || "Untitled meeting",
-      taskMode,
-      ...(taskMode === "decide" && !planRequest ? { outputProfile, outputLimits: selectedOutputLimits } : {}),
-      ...(taskMode === "review" && reviewInput ? { reviewInput } : {}),
+      ...agenda,
       ...(reviewEditCheckpoint ? { reviewEditCheckpoint } : {}),
       ...(reviewResult ? { reviewResult } : {}),
-      ...(planRequest ? { planRequest } : {}),
       ...(planArtifact ? { planArtifact } : {}),
       ...(planApproval ? { planApproval } : {}),
       ...(planHumanRevision ? { planHumanRevision } : {}),
@@ -629,7 +633,7 @@ export default function Home() {
     };
 
     const timer = window.setTimeout(() => {
-      if (planSavingRef.current) return;
+      if (planSavingRef.current || currentRoomIdRef.current !== record.id) return;
       if (planArtifact !== planRef.current) return;
       if (planHumanRevision !== planHumanRevisionRef.current) return;
       const nextRecords = upsertMeetingRecord(meetingRecordsRef.current, record);
@@ -656,21 +660,15 @@ export default function Home() {
     iteration,
     memo,
     meetingState,
-    objective,
-    outputProfile,
-    selectedOutputLimits,
     protocolState,
-    reviewInput,
     reviewEditCheckpoint,
     reviewHumanRevision,
     reviewApprovedArtifact,
     reviewResult,
-    planRequest,
     planArtifact,
     planApproval,
     planHumanRevision,
     planSaving,
-    taskMode,
     transcript,
     sourceAttempts,
     usage,
@@ -758,21 +756,18 @@ export default function Home() {
   ) {
     const roomId = currentRoomIdRef.current || currentRoomId;
     const createdAt = currentRoomCreatedAtRef.current || currentRoomCreatedAt;
-    if (!historyReady || !roomId || transcriptRef.current.length === 0 || !nextProtocol) {
+    const agenda = savedAgendaRef.current;
+    if (!agenda || !historyReady || !roomId || transcriptRef.current.length === 0 || !nextProtocol) {
       throw new Error("The resumable room is not ready for durable storage.");
     }
     const record: MeetingRecord = {
       version: 1,
       id: roomId,
-      objective: objective.trim() || "Untitled meeting",
-      taskMode,
-      ...(taskMode === "decide" && !planRequest ? { outputProfile, outputLimits: selectedOutputLimits } : {}),
-      ...(taskMode === "review" && reviewInput ? { reviewInput } : {}),
+      ...agenda,
       ...(reviewEditCheckpointRef.current
         ? { reviewEditCheckpoint: reviewEditCheckpointRef.current }
         : {}),
       ...(reviewResultRef.current ? { reviewResult: reviewResultRef.current } : {}),
-      ...(planRequest ? { planRequest } : {}),
       ...(planRef.current ? { planArtifact: planRef.current } : {}),
       ...(planApprovalRef.current ? { planApproval: planApprovalRef.current } : {}),
       ...(planHumanRevisionRef.current ? { planHumanRevision: planHumanRevisionRef.current } : {}),
@@ -863,6 +858,7 @@ export default function Home() {
   }
 
   function openConnectionManager(seatId?: string, connectionId?: string) {
+    if (soloRunningRef.current) return;
     setConnectionTargetSeatId(seatId ?? null);
     setFocusedConnectionId(connectionId ?? null);
     setPendingDisconnectId(null);
@@ -1079,6 +1075,7 @@ export default function Home() {
   }
 
   function removeSessionConnection(connectionId: string) {
+    if (connectionId === soloConnectionId) selectSoloConnection("");
     setSessionConnections((current) => current.filter((item) => item.id !== connectionId));
     setSeatDrafts((current) =>
       current.map((seat) =>
@@ -1116,17 +1113,14 @@ export default function Home() {
 
   async function saveCurrentMeetingNow() {
     if (planSavingRef.current) return;
-    if (!historyReady || !currentRoomId || iteration === 0 || transcript.length === 0) return;
+    const agenda = savedAgendaRef.current;
+    if (!agenda || !historyReady || !currentRoomId || iteration === 0 || transcript.length === 0) return;
     return persistMeetingRecord({
       version: 1,
       id: currentRoomId,
-      objective: objective.trim() || "Untitled meeting",
-      taskMode,
-      ...(taskMode === "decide" && !planRequest ? { outputProfile, outputLimits: selectedOutputLimits } : {}),
-      ...(taskMode === "review" && reviewInput ? { reviewInput } : {}),
+      ...agenda,
       ...(reviewEditCheckpoint ? { reviewEditCheckpoint } : {}),
       ...(reviewResult ? { reviewResult } : {}),
-      ...(planRequest ? { planRequest } : {}),
       ...(planArtifact ? { planArtifact } : {}),
       ...(planApproval ? { planApproval } : {}),
       ...(planHumanRevision ? { planHumanRevision } : {}),
@@ -1154,6 +1148,8 @@ export default function Home() {
     await saveCurrentMeetingNow();
     const record = meetingRecordsRef.current.find((item) => item.id === roomId);
     if (!record) return;
+    const { objective, taskMode, reviewInput, planRequest, outputProfile, outputLimits } = record;
+    savedAgendaRef.current = { objective, taskMode, reviewInput, planRequest, outputProfile, outputLimits };
 
     setCurrentRoomId(record.id);
     currentRoomIdRef.current = record.id;
@@ -1169,8 +1165,9 @@ export default function Home() {
     objectiveDraftsRef.current = { review: "", decide: "", [record.taskMode]: record.objective };
     setObjective(record.objective);
     setTaskMode(record.taskMode);
-    if (record.outputProfile) setOutputProfile(record.outputProfile);
-    if (record.outputProfile && record.outputLimits) setOutputOverrides((current) => ({ ...current, [record.outputProfile!]: record.outputLimits! }));
+    const restoredOutputProfile = outputProfile ?? "medium";
+    setOutputProfile(restoredOutputProfile);
+    setOutputOverrides((current) => ({ ...current, [restoredOutputProfile]: outputLimits ?? defaultMeetingOutputLimits(restoredOutputProfile) }));
     setEntryMode(record.taskMode === "review" ? "artifact" : "council");
     setPlanEnabled(Boolean(record.planRequest));
     if (record.planRequest) setPlanSettings(record.planRequest);
@@ -1198,8 +1195,8 @@ export default function Home() {
     const rawProtocol = record.protocolState ?? legacyProtocolState(record);
     const restoredProtocol = rawProtocol
       ? record.planRequest ? rawProtocol : record.taskMode === "review"
-        ? ensureReviewArtifactBudget(rawProtocol, record.participants.length, outputProfile)
-        : ensureDecisionPackageBudget(rawProtocol, record.participants.length, record.transcript, record.outputProfile ?? outputProfile, record.outputLimits)
+        ? ensureReviewArtifactBudget(rawProtocol, record.participants.length, restoredOutputProfile)
+        : ensureDecisionPackageBudget(rawProtocol, record.participants.length, record.transcript, restoredOutputProfile, outputLimits)
       : rawProtocol;
     updateProtocol(restoredProtocol);
     setControlMode(restoredProtocol?.controlMode ?? "checkpoints");
@@ -1243,6 +1240,7 @@ export default function Home() {
     if (editingPlanDay || planSavingRef.current) { setError("Save or cancel the day edit before starting another meeting."); return; }
     if (running) return;
     if (preserveCurrent) await saveCurrentMeetingNow();
+    savedAgendaRef.current = null;
     const now = new Date().toISOString();
     const nextRoomId = createRoomId();
     setCurrentRoomId(nextRoomId);
@@ -1306,6 +1304,13 @@ export default function Home() {
       currentRoomCreatedAtRef.current = now;
     }
     const initialMeetingState = createInitialMeetingState(objective.trim());
+    savedAgendaRef.current = {
+      objective: initialMeetingState.objective,
+      taskMode,
+      ...(taskMode === "decide" && !planRequest ? { outputProfile, outputLimits: selectedOutputLimits } : {}),
+      ...(taskMode === "review" && reviewInput ? { reviewInput } : {}),
+      ...(planRequest ? { planRequest } : {}),
+    };
     const now = new Date().toISOString();
     const initialProtocolState = planRequest
       ? createArtifactFirstProtocolState(reviewArtifactSeatIds, controlMode, now, setupBudget)
@@ -2491,7 +2496,14 @@ export default function Home() {
   async function resetRoom() {
     if (editingPlanDay || planSavingRef.current) { setError("Save or cancel the day edit before resetting this meeting."); return; }
     if (running) return;
-    await saveCurrentMeetingNow();
+    if (await saveCurrentMeetingNow() === false) return false;
+    savedAgendaRef.current = null;
+    const now = new Date().toISOString();
+    const roomId = createRoomId();
+    currentRoomIdRef.current = roomId;
+    currentRoomCreatedAtRef.current = now;
+    setCurrentRoomId(roomId);
+    setCurrentRoomCreatedAt(now);
     updatePlan(null);
     updatePlanApproval(null);
     updateTranscript([]);
@@ -2518,6 +2530,20 @@ export default function Home() {
     setFollowLive(true);
     setStage("agenda");
     setObserverProgress(null);
+    return true;
+  }
+
+  async function openAgenda(entry?: EntryMode) {
+    if (running || soloRunning || openingAgendaRef.current) return;
+    openingAgendaRef.current = true;
+    try {
+      if (iteration > 0 && !await resetRoom()) return;
+      closeConnectionManager();
+      setStage("agenda");
+      if (entry) setEntryMode(entry);
+    } finally {
+      openingAgendaRef.current = false;
+    }
   }
 
   async function copyMemo() {
@@ -2586,15 +2612,24 @@ export default function Home() {
     if (next === "council") switchTaskMode("decide");
   }
 
+  function selectSoloConnection(connectionId: string) {
+    setSoloConnectionId(connectionId);
+    setSoloModel("");
+    setSoloMessages([]);
+    setSoloUsage(null);
+    setSoloError("");
+  }
+
   async function submitSolo(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
-    const connection = sessionConnections.find((item) => item.id === soloConnectionId && item.apiKey);
-    const model = soloModel || connection?.models[0]?.id;
+    const connection = soloConnection;
+    const model = selectedSoloModel;
     const content = soloInput.trim();
     if (!connection || !model || !content || soloRunningRef.current) return;
     soloRunningRef.current = true;
-    const messages = [...soloMessages, { role: "user" as const, content }].slice(-12);
-    setSoloMessages(messages);
+    const userMessage: SoloMessage = { role: "user", content };
+    const messages = buildSoloContext(soloMessages, userMessage);
+    setSoloMessages([...soloMessages, userMessage]);
     setSoloInput("");
     setSoloError("");
     setSoloRunning(true);
@@ -2602,11 +2637,14 @@ export default function Home() {
       const response = await fetch("/api/discuss", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ solo: { connectionId: connection.id, provider: connection.provider, model, messages }, connections: { [connection.id]: { provider: connection.provider, apiKey: connection.apiKey } }, outputProfile }),
+        body: JSON.stringify({
+          solo: { connectionId: connection.id, provider: connection.provider, model, messages, outputProfile: soloOutputProfile },
+          connections: { [connection.id]: { provider: connection.provider, apiKey: connection.apiKey } },
+        }),
       });
       const payload = await response.json() as { text?: string; error?: string; usage?: UsageSummary; incomplete?: boolean };
       if (!response.ok || !payload.text) throw new Error(payload.error || "The Solo response was unavailable.");
-      setSoloMessages([...messages, { role: "assistant", content: payload.text }]);
+      setSoloMessages([...soloMessages, userMessage, { role: "assistant", content: payload.text }]);
       setSoloUsage(payload.usage ?? null);
       if (payload.incomplete) setSoloError("The provider stopped before the reply was complete.");
     } catch (reason) {
@@ -2664,8 +2702,8 @@ export default function Home() {
   return (
     <main className="meeting-app">
       <header className="app-header">
-        <button className="brand" type="button" onClick={() => { if (!running) { setStage("agenda"); setEntryMode("chat"); } }}>
-          <span className="brand-mark">M</span>
+        <button className="brand" type="button" onClick={() => void openAgenda("chat")}>
+          <span className="brand-mark" aria-hidden="true"><i /><i /><i /></span>
           <span>
             <strong>Meeting Room</strong>
             <small>Human-chaired AI deliberation</small>
@@ -2676,7 +2714,7 @@ export default function Home() {
           <button type="button" className={visibleStage === "setup" ? "active" : readySeatCount >= 2 ? "complete" : ""} aria-current={visibleStage === "setup" ? "step" : undefined} onClick={() => openConnectionManager()}>
             <span>1</span> Setup
           </button>
-          <button type="button" className={visibleStage === "agenda" ? "active" : transcript.length ? "complete" : ""} aria-current={visibleStage === "agenda" ? "step" : undefined} onClick={() => { if (!running) { closeConnectionManager(); setStage("agenda"); } }}>
+          <button type="button" className={visibleStage === "agenda" ? "active" : transcript.length ? "complete" : ""} aria-current={visibleStage === "agenda" ? "step" : undefined} onClick={() => void openAgenda()} title={iteration ? "Start a draft from this meeting's agenda" : undefined}>
             <span>2</span> Agenda
           </button>
           <button type="button" className={visibleStage === "meeting" ? "active" : memo ? "complete" : ""} aria-current={visibleStage === "meeting" ? "step" : undefined} disabled={!transcript.length} onClick={() => { closeConnectionManager(); setStage("meeting"); }}>
@@ -2703,24 +2741,31 @@ export default function Home() {
 
       <section className={`workspace-frame${connectionOpen ? " setup-hidden" : ""}`}>
         {stage === "agenda" && <div className="entry-switcher" aria-label="Choose an entry">
-          <button type="button" className={entryMode === "chat" ? "active" : ""} onClick={() => selectEntry("chat")}>Chat <small>One model</small></button>
-          <button type="button" className={entryMode === "council" ? "active" : ""} onClick={() => selectEntry("council")}>Ask the Room <small>Two to twelve seats</small></button>
-          <button type="button" className={entryMode === "artifact" ? "active" : ""} onClick={() => selectEntry("artifact")}>Drop an Artifact <small>Review pack</small></button>
-          <button type="button" className={entryMode === "packs" ? "active" : ""} onClick={() => selectEntry("packs")}>Browse Packs <small>Current packs</small></button>
+          <button type="button" className={entryMode === "chat" ? "active" : ""} aria-pressed={entryMode === "chat"} onClick={() => selectEntry("chat")}>Chat <small>One model</small></button>
+          <button type="button" className={entryMode === "council" ? "active" : ""} aria-pressed={entryMode === "council"} onClick={() => selectEntry("council")}>Ask the Room <small>Two to twelve seats</small></button>
+          <button type="button" className={entryMode === "artifact" ? "active" : ""} aria-pressed={entryMode === "artifact"} onClick={() => selectEntry("artifact")}>Drop an Artifact <small>Review and revise</small></button>
+          <button type="button" className={entryMode === "packs" ? "active" : ""} aria-pressed={entryMode === "packs"} onClick={() => selectEntry("packs")}>Browse Packs <small>Structured workflows</small></button>
         </div>}
         {stage === "agenda" && entryMode === "chat" ? (
           <section className="solo-workspace">
-            <div className="section-kicker">Solo chat</div>
-            <h1>Start with one model.</h1>
-            <p>Use a session Connection for an ordinary conversation. Nothing is sent until you press Send. This chat is held only in this page and is not saved in meeting history.</p>
-            {soloMessages.length > 0 && <div className="solo-messages" aria-live="polite">{soloMessages.map((message, index) => <article className={`solo-message ${message.role}`} key={index}><strong>{message.role === "user" ? "You" : "Assistant"}</strong><p>{message.content}</p></article>)}</div>}
-            <form onSubmit={submitSolo} className="solo-composer">
-              <label>Connection<select value={soloConnectionId} disabled={soloRunning} onChange={(event) => { setSoloConnectionId(event.target.value); setSoloModel(""); setSoloMessages([]); setSoloUsage(null); setSoloError(""); }}><option value="">Choose a session Connection</option>{sessionConnections.filter((item) => item.apiKey).map((item) => <option key={item.id} value={item.id}>{item.name} · {providerUi[item.provider].label}</option>)}</select></label>
-              <label>Model<select value={soloModel} disabled={soloRunning} onChange={(event) => setSoloModel(event.target.value)}><option value="">Default model</option>{sessionConnections.find((item) => item.id === soloConnectionId)?.models.map((model) => <option key={model.id} value={model.id}>{model.id}</option>)}</select></label>
-              <label>Your message<textarea value={soloInput} onChange={(event) => setSoloInput(event.target.value)} maxLength={4000} rows={4} placeholder="Ask anything, from everyday questions to a project idea..." /></label>
-              <div className="solo-actions"><button type="button" className="quiet-button" onClick={() => openConnectionManager()}>Manage Connections</button><button className="primary-button" type="submit" disabled={soloRunning || !soloInput.trim() || !soloConnectionId}>{soloRunning ? "Waiting..." : "Send"}</button></div>
-              {soloError && <p role="alert">{soloError}</p>}{soloUsage && <small>Last reply: {soloUsage.inputTokens} input + {soloUsage.outputTokens} output tokens; estimated ${soloUsage.estimatedUsd.toFixed(4)}.</small>}
-            </form>
+            <header className="solo-intro">
+              <h1>Start with one model.</h1>
+              <p>Use a session Connection to chat. The conversation stays on this page and is excluded from meeting history.</p>
+            </header>
+            <div className="solo-thread">
+              {soloMessages.length > 0 && <div className="solo-messages" role="log" aria-label="Conversation">{soloMessages.map((message, index) => <article className={`solo-message ${message.role}`} key={index}><strong>{message.role === "user" ? "You" : "Assistant"}</strong>{message.role === "assistant" ? <MeetingMarkdown text={message.content} /> : <p>{message.content}</p>}</article>)}</div>}
+              <form onSubmit={submitSolo} className="solo-composer" aria-busy={soloRunning}>
+                <div className="solo-settings">
+                  <label>Connection<select value={soloConnectionId} disabled={soloRunning} onChange={(event) => selectSoloConnection(event.target.value)}><option value="">Choose a session Connection</option>{sessionConnections.filter((item) => item.apiKey).map((item) => <option key={item.id} value={item.id}>{item.name} · {providerUi[item.provider].label}</option>)}</select></label>
+                  <label>Model<select value={selectedSoloModel ?? ""} disabled={soloRunning || !soloConnection} onChange={(event) => setSoloModel(event.target.value)}>{!selectedSoloModel && <option value="">Select a model</option>}{soloConnection?.models.map((model) => <option key={model.id} value={model.id}>{model.id}</option>)}</select></label>
+                  <label>Reply length<select value={soloOutputProfile} disabled={soloRunning} onChange={(event) => setSoloOutputProfile(event.target.value as OutputProfile)}><option value="lite">Lite</option><option value="medium">Medium</option><option value="unlimited">Extended</option></select></label>
+                </div>
+                <label>Your message<textarea value={soloInput} disabled={soloRunning} onChange={(event) => setSoloInput(event.target.value)} maxLength={soloLimits.messageCharacters} rows={5} placeholder="Ask a question or explore an idea…" /></label>
+                <div className="solo-actions"><button type="button" className="quiet-button" disabled={soloRunning} onClick={() => openConnectionManager()}>Manage Connections</button><button className="primary-button" type="submit" disabled={soloRunning || !soloInput.trim() || !selectedSoloModel}>{soloRunning ? "Waiting…" : "Send"}<span aria-hidden="true">↗</span></button></div>
+                {soloError && <p className="solo-error" role="alert">{soloError}</p>}
+                {soloUsage && <small className="solo-usage">Last reply · {soloUsage.inputTokens} input + {soloUsage.outputTokens} output tokens · estimated ${soloUsage.estimatedUsd.toFixed(4)}</small>}
+              </form>
+            </div>
           </section>
         ) : stage === "agenda" && entryMode === "packs" ? (
           <section className="solo-workspace"><div className="section-kicker">Available packs</div><h1>Choose a deeper workflow.</h1><p>These packs currently use the existing two- or three-seat room. More packs are planned, not available yet.</p><div className="pack-actions"><button type="button" className="primary-button" onClick={() => selectEntry("artifact")}>Review an artifact</button><button type="button" className="quiet-button" onClick={() => selectEntry("council")}>Decide / Plan</button></div></section>

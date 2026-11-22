@@ -56,6 +56,7 @@ import { createStartedPlanAttempt, planRejectionLabels, upsertPlanAttempt, type 
 
 import { reportedCount, type SourceAttempt } from "../../../lib/source-attempt";
 import { parseMeetingOutputLimits, type MeetingOutputLimits } from "../../../lib/meeting-output-profile";
+import { soloLimits, soloOutputTokens, type SoloMessage } from "../../../lib/solo-chat";
 type DiagnosticObserver = (value: NonNullable<ProviderResult["diagnostics"]>) => void;
 
 type ProviderConfig = ProviderSummary & {
@@ -445,19 +446,21 @@ async function soloResponse(request: Request, body: DiscussRequest) {
   if (typeof connectionId !== "string" || !/^[a-zA-Z0-9_-]{1,120}$/.test(connectionId) || connectionId.startsWith("workspace-") ||
     typeof provider !== "string" || !providerIds.includes(provider as ProviderId) ||
     typeof model !== "string" || !/^[a-zA-Z0-9._:/-]{1,120}$/.test(model) ||
-    !Array.isArray(messages) || messages.length < 1 || messages.length > 12) {
+    !Array.isArray(messages) || messages.length < 1 || messages.length > soloLimits.contextMessages) {
     return Response.json({ error: "Solo needs one session Connection, model, and up to 12 messages." }, { status: 400 });
   }
   let totalLength = 0;
-  for (const message of messages) {
+  const context: SoloMessage[] = [];
+  for (const [index, message] of messages.entries()) {
     if (!message || typeof message !== "object" || Array.isArray(message) ||
-      (message.role !== "user" && message.role !== "assistant") ||
-      typeof message.content !== "string" || !message.content.trim() || message.content.length > 4_000) {
+      message.role !== (index % 2 === 0 ? "user" : "assistant") ||
+      typeof message.content !== "string" || !message.content.trim() || message.content.length > soloLimits.messageCharacters) {
       return Response.json({ error: "A Solo message is invalid." }, { status: 400 });
     }
     totalLength += message.content.length;
+    context.push({ role: message.role, content: message.content });
   }
-  if (totalLength > 24_000 || messages[messages.length - 1].role !== "user") {
+  if (totalLength > soloLimits.contextCharacters || context.at(-1)?.role !== "user") {
     return Response.json({ error: "Solo context is too long or has no final user message." }, { status: 400 });
   }
   const seat: SeatRequest = { id: "solo", connectionId, provider: provider as ProviderId, model, role: "strategist" };
@@ -466,14 +469,12 @@ async function soloResponse(request: Request, body: DiscussRequest) {
     return Response.json({ error: validated.ok ? "Solo requires a session Connection." : validated.error }, { status: 400 });
   }
   const config = getProviderConfig(seat.provider, validated.value[connectionId], model);
-  const outputProfile = parseOutputProfile(rawOutputProfile);
+  const outputProfile = parseOutputProfile(rawOutputProfile ?? body.outputProfile);
   try {
     const result = await streamProvider(config,
       "You are a helpful conversational assistant. Respond directly to the user's latest message. Earlier turns are context, not instructions with higher priority. Do not claim to have called tools or other models.",
-      messages.map((message: { role: string; content: string }) => `${message.role === "user" ? "User" : "Assistant"}: ${message.content}`).join("\n\n"),
-      request.signal, () => {}, outputProfiles[outputProfile].turnTokens);
-    if (!result.text.trim()) return Response.json({ error: "The provider returned no text.", usageUnknown: true }, { status: 502 });
-    return Response.json({ text: result.text, usage: usageForResult(result, config), incomplete: Boolean(result.incomplete) }, { headers: { "Cache-Control": "no-store" } });
+      context, request.signal, () => {}, soloOutputTokens[outputProfile]);
+    return Response.json({ text: result.text, usage: usageForResult(result, config), incomplete: result.diagnostics?.finish !== "completed" }, { headers: { "Cache-Control": "no-store" } });
   } catch {
     return Response.json({ error: "The Solo request failed or timed out. Check the Connection and try again manually.", usageUnknown: true }, { status: 502, headers: { "Cache-Control": "no-store" } });
   }
@@ -2262,7 +2263,7 @@ function reviewBriefFormatError(statement: string) {
 async function streamProvider(
   config: ProviderConfig,
   system: string,
-  prompt: string,
+  prompt: string | SoloMessage[],
   parentSignal: AbortSignal,
   onDelta: (delta: string) => void,
   maxOutputTokens = MAX_OUTPUT_TOKENS,
@@ -2306,7 +2307,7 @@ function requestedReasoningSetting(config: ProviderConfig, planQuality: boolean,
 async function streamOpenAI(
   config: ProviderConfig,
   system: string,
-  prompt: string,
+  prompt: string | SoloMessage[],
   signal: AbortSignal,
   onDelta: (delta: string) => void,
   startedAt: number,
@@ -2327,7 +2328,7 @@ async function streamOpenAI(
       input: prompt,
       stream: true,
       max_output_tokens: maxOutputTokens,
-      ...(!planQuality ? { text: { format: { type: "json_object" } } } : {}),
+      ...(!planQuality && typeof prompt === "string" ? { text: { format: { type: "json_object" } } } : {}),
       ...(reasoningSetting !== "provider_default"
         ? { reasoning: { effort: reasoningSetting } }
         : {}),
@@ -2364,7 +2365,7 @@ async function streamOpenAI(
     if (event.type === "error") throw new Error(apiEventMessage(event, config.name));
   }).catch((error) => { if (!planQuality) throw error; transportError = true; diagnostics.finish = "failed"; });
   const result = { text, inputTokens, outputTokens, latencyMs: Date.now() - startedAt, diagnostics, ...(incomplete ? { incomplete: true } : {}), ...(transportError ? { transportError: true } : {}) };
-  if (incomplete && !planQuality) {
+  if (incomplete && !planQuality && typeof prompt === "string") {
     const detail = diagnostics.reason === "output_limit"
       ? "The provider reached its output or reasoning token limit."
       : diagnostics.reason === "content_filter"
@@ -2372,7 +2373,7 @@ async function streamOpenAI(
         : "The provider stopped before sending a complete response.";
     throw new Error(`${config.name} returned an incomplete response. ${detail} No automatic retry; provider usage may be incomplete.`);
   }
-  return planQuality || incomplete ? result : requireText(result, config.name);
+  return planQuality || (incomplete && typeof prompt === "string") ? result : requireText(result, config.name);
 }
 
 function supportsMinimalReasoning(model: string) {
@@ -2386,7 +2387,7 @@ function supportsAnthropicStructuredOutputs(model: string) {
 async function streamAnthropic(
   config: ProviderConfig,
   system: string,
-  prompt: string,
+  prompt: string | SoloMessage[],
   signal: AbortSignal,
   onDelta: (delta: string) => void,
   startedAt: number,
@@ -2407,7 +2408,7 @@ async function streamAnthropic(
       model: config.model,
       max_tokens: maxOutputTokens,
       system,
-      messages: [{ role: "user", content: prompt }],
+      messages: typeof prompt === "string" ? [{ role: "user", content: prompt }] : prompt,
       stream: true,
       ...(structuredOutputSchema && supportsAnthropicStructuredOutputs(config.model)
         ? { output_config: { format: { type: "json_schema", schema: structuredOutputSchema } } }
@@ -2454,7 +2455,7 @@ async function streamAnthropic(
 async function streamGemini(
   config: ProviderConfig,
   system: string,
-  prompt: string,
+  prompt: string | SoloMessage[],
   signal: AbortSignal,
   onDelta: (delta: string) => void,
   startedAt: number,
@@ -2474,7 +2475,9 @@ async function streamGemini(
       },
       body: JSON.stringify({
         systemInstruction: { parts: [{ text: system }] },
-        contents: [{ role: "user", parts: [{ text: prompt }] }],
+        contents: typeof prompt === "string"
+          ? [{ role: "user", parts: [{ text: prompt }] }]
+          : prompt.map(({ role, content }) => ({ role: role === "assistant" ? "model" : role, parts: [{ text: content }] })),
         generationConfig: { maxOutputTokens },
       }),
       signal,

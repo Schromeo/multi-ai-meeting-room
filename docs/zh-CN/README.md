@@ -1,5 +1,7 @@
 # 中文项目文档
 
+> DP-0.3 于 2026-11-21 通过本地验收。真实供应商质量、相对收益和公开就绪状态仍待验证。
+
 这些文件用于快速了解项目，并防止后续开发忘记初衷、重复工作或进入无限循环。
 
 当前执行入口：[详细开发里程碑](DEVELOPMENT_MILESTONES.md)中的 DP-0.3“首次使用信息架构”。DP-0.0 至 DP-0.2 已完成；DP-0.3 当前聚焦 Chat、Ask the Room、Drop an Artifact、Browse Packs 入口，以及一键启动和首次运行信息真实性。[Plan 问题清单](PLAN_ISSUE_REGISTER.md)继续作为 DP-2 的保留证据，但不属于立即构建队列。
@@ -39,3 +41,5 @@ DP-0.3“首次使用信息架构”仍在进行中。普通 Decide 的 Setup �
 唯一支持的包管理器是 pnpm 11.19.0，Node.js 需要 22.13+。首次安装后，Windows 用户可以双击仓库根目录的 `start-meeting-room.cmd`。它会切换到仓库目录，仅在 `node_modules` 缺失时执行锁定安装，在 3000 端口启动开发服务器，等待 HTTP 服务正常后打开 `http://localhost:3000`。
 
 VS Code 用户可以通过 **Terminal > Run Task** 运行 `Start Meeting Room`；命令行等价入口是 `pnpm launch`。停止任务请使用终端的停止控制；如果 3000 端口已经有服务，不要重复启动第二个 launcher。完整检查使用 `pnpm check`，准确结果与已知测试限制见最新[开发日志](DEVLOG.md)。
+
+本地预览生产构建时，先运行 `pnpm build`，再运行 `pnpm start`。Wrangler 会在 `127.0.0.1:3000` 提供构建后的 Worker 和静态资源。可用 `pnpm start --port 3001` 选择其他端口。

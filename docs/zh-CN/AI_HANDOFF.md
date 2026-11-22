@@ -1,5 +1,9 @@
 # AI 交接说明
 
+## 2026-11-21 — DP-0.3 本地收口
+
+DP-0.3 于 2026-11-21 通过本地验收。真实供应商质量、相对收益和公开就绪状态仍待验证。 [开发日志](DEVLOG.md)
+
 ## 2026-09-28 — 未配置完整的席位不能切换参与状态（本地）
 
 同一 `seatSetupIssue` 判定同时约束 Agenda／Setup 开关、可运行席位投影和启动。缺少连接／会话密钥、兼容模型、角色或自定义名称／Skill 时显示 `Not set up` 与 Setup 提示；新席位默认 Off，配置完整后才可切换。`pnpm.cmd check` 通过 87/87 项离线测试、构建、lint 和类型检查。无密钥浏览器检查确认两处未配置状态及禁用的 Start。未做真实凭据开关验收、供应商调用或部署。[简报](correction-briefs/2026-09-27-setup-seat-summary-and-completion.md)。

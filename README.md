@@ -1,5 +1,7 @@
 # Multi-AI Meeting Room
 
+> **Development focus (2026-11-21)** DP-0.3 passed local acceptance on 2026-11-21. Real-provider quality, comparative value and broader hosted readiness remain under evaluation. [Acceptance evidence](docs/DEVLOG.md)
+
 A human-chaired workspace where independent AI perspectives challenge consequential differences and produce inspectable artifacts, decisions, and eventually verified actions.
 
 This repository is a private, pre-release development build. It has no release tags; current source is identified by the Git commit and the active `DP-*` milestone. Historical `v0.x` labels in evaluations describe preserved development snapshots, not published package releases. The package therefore uses `0.0.0-development` until the owner deliberately creates a tagged release.
@@ -8,11 +10,11 @@ The implemented foundation includes OpenAI, Anthropic, and Gemini adapters; sess
 
 ## Current Progress (2026-09-28)
 
-**DP-0.3, First-run Information Architecture, remains open.** The ordinary Decide Setup now supports 2–12 Seats, bounded custom names and responsibilities, and independently adjustable finite output ceilings for each Seat turn and the final Memo. Seat participation is controlled in Agenda and Setup; incomplete Seats cannot participate or launch a meeting. Review and structured Plan keep their own participant and artifact limits.
+**September baseline for DP-0.3.** The ordinary Decide Setup now supports 2–12 Seats, bounded custom names and responsibilities, and independently adjustable finite output ceilings for each Seat turn and the final Memo. Seat participation is controlled in Agenda and Setup; incomplete Seats cannot participate or launch a meeting. Review and structured Plan keep their own participant and artifact limits.
 
 Completed meeting speech renders as safe GFM, and saved rooms have an explicit full-Markdown export. That export contains private meeting content and should be shared carefully.
 
-The latest local `pnpm.cmd check` passes the build, 87/87 offline tests, lint, and TypeScript checks. No-key browser QA verified that incomplete Seats show their setup state and disable launch; configured-credential readiness has not been browser-verified. The owner-approved [Live 001 case](docs/evaluations/2026-09-27-ordinary-creative-meeting-live-001.md) records a real provider-backed meeting, but it is not a controlled benchmark: quality remains `not_evaluated`, there is no matched single-model baseline, and it does not establish multi-model lift.
+The September 28 local check passed the build, 87 offline tests, lint and TypeScript. No-key browser QA showed that incomplete Seats expose their setup state and disable launch. The owner-approved [Live 001 case](docs/evaluations/2026-09-27-ordinary-creative-meeting-live-001.md) records a real provider-backed meeting. It remains an uncontrolled case with `not_evaluated` quality and no matched single-model baseline.
 
 ## Product Structure
 
@@ -61,6 +63,8 @@ pnpm check
 After installing Node.js 22.13+ and pnpm 11.19.0, double-click `start-meeting-room.cmd` in the repository root. The launcher changes to the repository directory, installs the locked dependencies only when `node_modules` is missing, starts the development server on port 3000, waits for a healthy HTTP response, and opens `http://localhost:3000` in the default browser.
 
 In VS Code, run `Start Meeting Room` from **Terminal > Run Task**. The command-line equivalent is `pnpm launch`. Stop the task with the terminal stop control; do not start a second launcher while port 3000 is already in use.
+
+For a local preview of the production bundle, run `pnpm build` and then `pnpm start`. The preview serves the built Worker and static assets through local Wrangler on `127.0.0.1:3000`. Use `pnpm start --port 3001` to select a different port.
 
 `pnpm check` is the canonical local and CI entry. It regenerates ignored Cloudflare types from the pinned Wrangler configuration, builds, runs the offline tests, lints handwritten source, and type-checks without emitting files. The standalone `pnpm typecheck` command also regenerates those types, so it works after a clean clone. The Windows and Ubuntu GitHub Actions jobs passed on the DP-0.2 branch. See the latest [Development Log](docs/DEVLOG.md) for exact results and known test limitations.
 
